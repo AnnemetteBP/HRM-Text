@@ -21,9 +21,9 @@ MAX_RUNS_TO_SHOW = 50
 EVAL_X_AXIS = "eval/epoch"
 DFM_EVAL_X_AXIS = "dfm_eval/epoch"
 EUROEVAL_X_AXIS = "euroeval/epoch"
-HEADLINE_AVG_X_AXIS = "headline_avg_v2/epoch"
-HEADLINE_AVG_PREFIX = "headline_avg_v2"
-SUITE_AVG_PREFIX = "suite_avg_v2"
+HEADLINE_AVG_X_AXIS = "headline_avg_v3/epoch"
+HEADLINE_AVG_PREFIX = "headline_avg_v3"
+SUITE_AVG_PREFIX = "suite_avg_v3"
 TRAIN_X_AXIS = "_step"
 
 DANISH_METRICS = [

@@ -295,6 +295,55 @@ def adapt_bfcl_response(response: dict[str, Any]) -> tuple[dict[str, Any], bool]
     return response, changed
 
 
+def is_vllm_tool_parser_coercion_error(exc: HTTPException) -> bool:
+    if exc.status_code != 400:
+        return False
+    detail = str(exc.detail)
+    return (
+        "cannot convert float infinity to integer" in detail
+        or "OverflowError" in detail and "coerce_to_schema_type" in detail
+    )
+
+
+def invalid_bfcl_tool_response(model_name: str, reason: str) -> dict[str, Any]:
+    """Return a valid OpenAI response for a malformed native tool generation.
+
+    vLLM's native Gemma tool parser can raise a 400 if the model emits a tool
+    argument such as Infinity for an integer field. That is a model error for
+    BFCL scoring, not an infrastructure failure. Returning a syntactically
+    valid empty tool-call answer lets the benchmark score the item as wrong
+    while allowing the dataset run to continue.
+    """
+    return {
+        "id": f"chatcmpl-proxy-invalid-{uuid.uuid4().hex}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model_name,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps(
+                        {
+                            "tool_calls": [],
+                            "invalid_generation": reason,
+                        },
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                },
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        },
+    }
+
+
 def make_app(args: argparse.Namespace) -> FastAPI:
     app = FastAPI(title="Native-compatible OpenAI proxy for HRM")
     target_base = args.target_base_url.rstrip("/")
@@ -379,7 +428,23 @@ def make_app(args: argparse.Namespace) -> FastAPI:
                 "outgoing": outgoing,
             }
         )
-        response = await post_json("/chat/completions", outgoing)
+        try:
+            response = await post_json("/chat/completions", outgoing)
+        except HTTPException as exc:
+            if bfcl_tools is not None and is_vllm_tool_parser_coercion_error(exc):
+                response = invalid_bfcl_tool_response(args.model_name, "vllm_tool_parser_coercion_error")
+                log_record(
+                    {
+                        "time": time.time(),
+                        "endpoint": "/v1/chat/completions",
+                        "gemma_native_bfcl_parser_error_coerced_to_invalid": True,
+                        "status_code": exc.status_code,
+                        "detail": str(exc.detail)[:1000],
+                        "response_id": response.get("id"),
+                    }
+                )
+            else:
+                raise
         response["model"] = args.model_name
         if bfcl_tools is not None:
             response, changed = adapt_bfcl_response(response)

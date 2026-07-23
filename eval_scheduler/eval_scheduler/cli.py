@@ -16,7 +16,7 @@ import typer
 from .catalog import BatchDefaults
 from .locking import PlanLock
 from .model import JobStatus, read_plan, write_plan
-from .monitor import status_text, watch
+from .monitor import rich_status_renderable, rich_watch, status_text, watch
 from .plan import PlanConfig, plan_path, save_new_plan, set_batch, summarize_plan
 from .runtime import Runner
 
@@ -523,10 +523,19 @@ def monitor(
     gpus: str = typer.Option("0,1,2,3,4,5,6,7", help="Comma-separated GPU ids to show."),
     interval: float = typer.Option(5.0, min=0.5, help="Refresh interval in seconds."),
     once: bool = typer.Option(False, help="Print once and exit."),
+    rich: bool = typer.Option(False, "--rich", help="Use a Rich table/live display instead of plain text."),
 ) -> None:
     gpu_ids = parse_gpus(gpus)
     if once:
+        if rich:
+            from rich.console import Console
+
+            Console().print(rich_status_renderable(plan_dir, gpus=gpu_ids))
+            return
         typer.echo(status_text(plan_dir, gpus=gpu_ids))
+        return
+    if rich:
+        rich_watch(plan_dir, gpus=gpu_ids, interval=interval)
         return
     watch(plan_dir, gpus=gpu_ids, interval=interval)
 

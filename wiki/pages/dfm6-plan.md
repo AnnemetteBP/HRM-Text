@@ -1,6 +1,6 @@
 # DFM6 Plan
 
-Last updated: 2026-06-25
+Last updated: 2026-06-28
 Confidence: high
 Scope: Forward-looking DFM6 training/data plan based on DFM5-L eval behavior, local scheduler/eval experience, and current repo constraints.
 
@@ -54,6 +54,120 @@ reports `total_length=62,819,933,768` tokens per epoch. Both
 `checkpoints/dfm6/XL/all_config.yaml` and `checkpoints/dfm6/XL-gas2/all_config.yaml`
 set `epochs=5`, so the nominal five-epoch DFM6 training exposure is
 `314,099,668,840` tokens, or about `314.10B` tokens.
+
+Resume point, 2026-06-28. Confidence: high from local checkpoint metadata.
+The latest observed DFM6 XL-gas2 ephemeral checkpoint is
+`checkpoints/dfm6/XL-gas2/fsdp2_ephemeral_step_566500`, with matching
+`checkpoint_state_ephemeral_step_566500.json` and carry files for ranks 0-7.
+The checkpoint state records `step=566500`, `epoch=3`,
+`batch_in_epoch=172888`, `gradient_accumulation_steps=2`, and
+`global_batch_size=262144`. The associated W&B run id used locally for
+`dfm6-XL-gas2` is `39ht9plp`.
+
+Eval scheduler restart, 2026-06-28. Confidence: high from local scheduler
+status and process inspection. The combined DFM6 XL-gas2 plan
+`logs/scheduler/dfm6_XL_gas2_steps550k_600k_stopfix_clean_20260627` contains
+completed `step_550000` evals and pending checkpoint-wait subgraphs for
+`step_600000`, `step_650000`, `step_700000`, and `step_750000`. Four stale
+`running` wait rows were reset with:
+
+```bash
+cd /work/dfm/HRM-Text
+/home/ucloud/miniforge3/envs/hrm/bin/python -m eval_scheduler plan reset-running \
+  --plan-dir logs/scheduler/dfm6_XL_gas2_steps550k_600k_stopfix_clean_20260627
+```
+
+The scheduler was restarted in tmux window `hrm-0:3`:
+
+```bash
+cd /work/dfm/HRM-Text
+/home/ucloud/miniforge3/envs/hrm/bin/python -m eval_scheduler run \
+  --plan-dir logs/scheduler/dfm6_XL_gas2_steps550k_600k_stopfix_clean_20260627 \
+  --gpus 0,1,2,3,4,5,6,7
+```
+
+The monitor is running in the adjacent pane:
+
+```bash
+cd /work/dfm/HRM-Text
+/home/ucloud/miniforge3/envs/hrm/bin/python -m eval_scheduler monitor \
+  --plan-dir logs/scheduler/dfm6_XL_gas2_steps550k_600k_stopfix_clean_20260627 \
+  --gpus 0,1,2,3,4,5,6,7 \
+  --interval 30
+```
+
+At restart time only regular checkpoints through `step_560000` existed, so
+the expected state was `jobs done=216 running=4 ready=0 blocked_pending=860`:
+the four active jobs are checkpoint waits for 600K/650K/700K/750K.
+
+Eval scheduler vLLM startup failure, 2026-06-29. Confidence: high from local
+logs and environment inspection. The `step_600000` eval rows in
+`logs/scheduler/dfm6_XL_gas2_steps550k_600k_stopfix_clean_20260627` initially
+failed because vLLM could not find CUDA/nvcc. After CUDA toolkit installation,
+`/usr/local/cuda/bin/nvcc` exists and vLLM starts far enough to load the model.
+The next failure is not the attention backend: logs show both
+`Using FlashInfer for top-p & top-k sampling` and
+`Using FlashAttention version 4`. FlashAttention 4 is the attention backend;
+FlashInfer is only the sampler path selected by vLLM. The current root cause is
+that FlashInfer's sampler JIT calls `ninja`, but the scheduler was relaunched
+from a `(base)` shell whose `PATH` does not include
+`/home/ucloud/miniforge3/envs/hrm/bin`, even though
+`/home/ucloud/miniforge3/envs/hrm/bin/ninja` exists. The scheduler's
+`python_bin` metadata selects the HRM Python interpreter, but native build
+tools launched by subprocess name still resolve through `PATH`. Robust fix:
+ensure the scheduler/vLLM environment prepends the directory containing
+`python_bin(job)` before CUDA paths, or launch the scheduler from an activated
+`hrm` shell. Do not disable FA4; if avoiding FlashInfer sampling is needed, use
+`VLLM_USE_FLASHINFER_SAMPLER=0`, which only changes top-k/top-p sampling.
+
+Follow-up, 2026-06-29. Confidence: high from local tmux and log inspection. The
+scheduler was restarted without code changes from an activated `hrm` shell. The
+successful launch command in tmux pane `hrm-0:3.1` was:
+
+```bash
+cd /work/dfm/HRM-Text
+source /home/ucloud/miniforge3/etc/profile.d/conda.sh
+conda activate hrm
+python -m eval_scheduler run \
+  --plan-dir logs/scheduler/dfm6_XL_gas2_steps550k_600k_stopfix_clean_20260627 \
+  --gpus 0,1,2,3,4,5,6,7 \
+  2>&1 | tee -a logs/scheduler/dfm6_XL_gas2_steps550k_600k_stopfix_clean_20260627/restart_20260629_hrm_env.log
+```
+
+Before restart, stale `running` rows from the failed environment attempt were
+reset with:
+
+```bash
+cd /work/dfm/HRM-Text
+/home/ucloud/miniforge3/envs/hrm/bin/python -m eval_scheduler plan reset-running \
+  --plan-dir logs/scheduler/dfm6_XL_gas2_steps550k_600k_stopfix_clean_20260627
+rm -f logs/scheduler/dfm6_XL_gas2_steps550k_600k_stopfix_clean_20260627/stop.request
+```
+
+Fresh `step_600000` EuroEval vLLM logs show FlashInfer sampling and
+FlashAttention 4 attention, and the server logs show successful
+`POST /v1/chat/completions` requests. This confirms the failure was the launch
+environment, not an FA4 problem.
+
+Follow-up, 2026-06-29 GPU4/GPU5 EuroEval failures. Confidence: high from local
+vLLM logs and `nvidia-smi`. After restarting from the `hrm` environment,
+`euroeval:nordjylland-news` and `euroeval:danske-talemaader` repeatedly failed
+on GPUs 4 and 5 while colocated with the ongoing DFM6 XL-gas2 training ranks.
+The vLLM logs show FlashInfer sampling and FlashAttention 4 attention start
+correctly, then fail during sampler warm-up:
+
+```text
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 1024.00 MiB.
+RuntimeError: CUDA out of memory occurred when warming up sampler with 1024 dummy requests.
+Please try lowering `max_num_seqs` or `gpu_memory_utilization`.
+```
+
+The "GPU 0" in those logs is the single visible CUDA device inside each vLLM
+process, corresponding to physical GPU4/GPU5 via `CUDA_VISIBLE_DEVICES`.
+`nvidia-smi` showed those physical GPUs dominated by the training ranks
+`pretrain.py` PIDs 24946/24947, leaving roughly 0.6-0.9 GiB at the exact
+sampler warm-up point. This is an OOM from colocating vLLM server warm-up with
+training memory pressure, not a missing `ninja`, missing CUDA, or FA4 issue.
 
 Update 2026-06-18: DFM6 preparation files were added without touching the
 current training run:
@@ -2071,3 +2185,131 @@ MCQ math subsets enough tokens to finish a short reasoning trace and extract the
 final letter, or add a logits/grammar constraint for MCQ tasks if we want a pure
 direct-answer evaluation. Confidence: high for the local observations; medium
 for the proposed fixes until full-checkpoint reruns compare scores.
+
+DFM6 XL-GAS2 step-600000 EuroEval IFEval recovery, 2026-06-29.
+Confidence: high from local plan/log inspection and NLTK verification. Two
+EuroEval batched IFEval rows failed after generation during local scoring, not
+because of vLLM, FA4, CUDA, or OOM:
+
+```text
+eval-00228 euroeval:ifeval-da shard 8/20
+eval-00237 euroeval:ifeval    shard 17/20
+```
+
+Both logs failed in `scripts/run_ifeval_batched_openai.py` while EuroEval's
+IFEval scorer called `nltk.tokenize.word_tokenize`; the missing resource was
+`tokenizers/punkt_tab/english/`. Fixed in the HRM environment with:
+
+```bash
+/home/ucloud/miniforge3/envs/hrm/bin/python - <<'PY'
+import nltk
+for pkg in ['punkt_tab', 'punkt']:
+    nltk.download(pkg, download_dir='/home/ucloud/nltk_data')
+PY
+```
+
+Then only the two failed plan rows were reset to `pending`, `attempt=0`, while
+preserving `vllm_gpu_memory_utilization=0.25`. The running scheduler picked
+them up immediately, leaving `failed=0`; downstream EuroEval/Danish/English
+averages were pending only on these two rows.
+
+DFM6 BFCL tool-call data/eval contract investigation, 2026-06-30.
+Confidence: high from local code inspection, rendered training examples, vLLM
+parser tests, and EuroEval proxy logs. The low BFCL score is plausibly caused
+in part by a mismatch between the dominant tool-call training syntax and the
+evaluation serving/parser contract.
+
+Verified facts:
+
+- DFM6 data and eval Gemma templates are byte-identical:
+  `data_io/chat_templates/gemma4_native_chat.jinja` and
+  `evaluation/chat_templates/gemma4_native_chat.jinja` have SHA-256
+  `33204f1acb5bd0002713e16a593847f24ceeafe711ed88bda2a352dc996a3373`.
+- BFCL eval uses the vLLM native proxy with OpenAI `tools` and vLLM's Gemma4
+  parser: `--enable-auto-tool-choice --tool-call-parser gemma4`.
+- The vLLM Gemma4 parser expects Gemma argument syntax like
+  `q:<|"|>Paris<|"|>,days:5`. Local parser tests showed it returns `{}` for
+  DOLCI-style `q="Paris", days=5` or `quantity=2, from_unit="pounds"`.
+- DOLCI tool-use rows retain system instructions saying functions are inside
+  `<functions></functions>` and assistant calls should be inside
+  `<function_calls></function_calls>`, while our Jinja renderer also injects
+  Gemma-native `<|tool>declaration:...<tool|>` blocks. The resulting prompt is
+  therefore mixed: XML/function-call instructions plus Gemma-native tools.
+- `scripts/tokenize_chat_template.py::normalize_tool_calls()` converts
+  `tool_name(args)` strings to `tool_calls`, but leaves the argument substring
+  as a raw string. The rendered supervised target for a DOLCI row is therefore
+  e.g.:
+
+```text
+<|tool_call>call:weather.forecast_weather_api{q="Paris", days=5}<tool_call|>
+```
+
+  not the canonical parser-compatible:
+
+```text
+<|tool_call>call:weather.forecast_weather_api{q:<|"|>Paris<|"|>,days:5}<tool_call|>
+```
+
+- In the first sampled `20,002` DOLCI tool-use assistant-call messages,
+  `33,313` rendered calls had string arguments and `32,932` contained `=`.
+  DOLCI tool-use-SA similarly had `2,938/2,938` string-argument calls with `=`.
+- Recent BFCL proxy logs show the proxy is active and adapts most responses
+  (`step_700000`: `234/250` BFCL responses adapted), so the low score is not
+  simply a no-call or disabled-parser failure. It is more consistent with exact
+  function/argument mismatches after parsing.
+
+Interpretation: the output-side special tokens are broadly aligned, but a large
+part of the tool-call supervision teaches raw Python/function-call argument
+syntax and XML-style prompt instructions, whereas BFCL scoring goes through the
+OpenAI tools -> vLLM Gemma parser path and requires parser-compatible, exact
+JSON arguments. For future data preparation, normalize `tool_name(args)` source
+arguments into mappings before rendering, strip or rewrite XML
+`<functions>/<function_calls>` instructions when Gemma-native tool declarations
+are injected, and add a small contract test that renders a training tool-call
+row then feeds the target through vLLM's Gemma4 parser expecting non-empty
+arguments. No main code was changed during this investigation.
+
+DFM6 epoch-boundary data replacement/resume plan, 2026-06-30.
+Confidence: high from local inspection of `pretrain.py`, `dataset_new.py`, and
+`config/data/dfm6.yaml`. If the DFM6 run needs corrected data after the
+tool-call contract fix, the safe intervention point is a fully written epoch
+checkpoint, not an intra-epoch step or ephemeral checkpoint.
+
+Relevant mechanics:
+
+- `resolve_resume_state()` treats `resume_checkpoint_tag=epoch_N` as
+  `start_epoch=N+1` and `skip_batches=0`.
+- The main training loop calls `train_loader.dataset.set_epoch(start_epoch - 1)`
+  before iterating. Therefore resuming from `epoch_3` starts training epoch 4
+  from sampled data directory `epoch_3` in the replacement dataset.
+- Step and ephemeral checkpoints carry `batch_in_epoch` or row-cursor resume
+  state. Those references are tied to the old epoch ordering and should not be
+  used after changing the sampled data.
+- `init_train()` recomputes `total_steps` from the new dataset metadata:
+  `config.epochs * int(train_metadata.total_length // global_batch_size)`.
+  The loaded checkpoint step stays exact if checkpoint metadata contains
+  `step`, but future LR/progress scheduling uses the new total length.
+
+Recommended operational pattern:
+
+1. Wait until all rank checkpoint artifacts for `epoch_3` exist and the write
+   is complete (`fsdp2_epoch_3` or equivalent, all `carry_epoch_3.*.pt`, and
+   `checkpoint_state_epoch_3.json`).
+2. Stop training only after that checkpoint is complete.
+3. Build the corrected data in a new sampled directory, e.g.
+   `data/sampled_dfm6_toolfix`, rather than overwriting `data/sampled_dfm6`.
+4. Add a new Hydra data config such as `config/data/dfm6_toolfix.yaml` pointing
+   to that directory. Keep the tokenizer/vocab and max-sequence metadata
+   compatible with the model.
+5. Resume from `resume_checkpoint_tag=epoch_3`, with `data=dfm6_toolfix`.
+   If `epochs=5`, the loop will train epochs 4 and 5 on the corrected data.
+
+This is a clean training continuation mechanically, but analytically it is a
+data intervention: the first three epochs were trained on the old data
+contract. For reproducibility, keep the original sampled dataset immutable,
+store the new config separately, and label the W&B run/checkpoint path so the
+epoch-4 data switch is visible.
+
+Forward-looking math answer-format and direct-vs-CoT prompt-contract notes were
+moved to `wiki/pages/dfm7-plan.md` on 2026-06-30. Keep this DFM6 page focused
+on the active DFM6 intervention and checkpoint-resume mechanics.

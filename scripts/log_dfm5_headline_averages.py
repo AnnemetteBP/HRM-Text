@@ -132,9 +132,11 @@ def gather_metrics(item: EvalItem) -> dict[str, float]:
     return metrics
 
 
-def normalize_0_1(value: float) -> float | None:
+def normalize_metric_0_1(key: str, value: float) -> float | None:
     if not math.isfinite(value):
         return None
+    if key.startswith("euroeval/"):
+        return max(0.0, value) / 100.0
     if value < 0:
         return 0.0
     if value <= 1:
@@ -149,7 +151,7 @@ def section_average(metrics: dict[str, float], keys: list[str]) -> tuple[float |
     for key in keys:
         if key not in metrics:
             continue
-        value = normalize_0_1(metrics[key])
+        value = normalize_metric_0_1(key, metrics[key])
         if value is not None:
             values.append(value)
     if not values:

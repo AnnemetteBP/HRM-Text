@@ -459,12 +459,12 @@ def make_plan(config: PlanConfig) -> list[Job]:
                 return None
             average_metadata = metadata | {
                 "average_scope": scope,
-                "average_prefix": "headline_avg_v2",
+                "average_prefix": "headline_avg_v3",
                 "extra_average_prefixes": [],
             }
             if suite:
                 average_metadata |= {
-                    "average_prefix": "suite_avg_v2",
+                    "average_prefix": "suite_avg_v3",
                     "extra_average_prefixes": [],
                 }
             average = Job(

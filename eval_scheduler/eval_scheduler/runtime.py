@@ -1369,6 +1369,26 @@ def run_average(job: Job) -> int:
     return run_command(argv, log_path=Path(job.log_dir) / f"{job.name}.log")
 
 
+def run_relog_project_averages(job: Job) -> int:
+    argv = [
+        python_bin(job),
+        "scripts/relog_project_averages_v3.py",
+        "--entity",
+        str(job.metadata.get("wandb_entity") or "peter-sk-sdu"),
+        "--project",
+        str(job.metadata["wandb_project"]),
+        "--audit",
+        str(Path(job.log_dir) / "relog_project_averages_v3_audit.jsonl"),
+    ]
+    for run_id in job.metadata.get("run_ids", []):
+        argv.extend(["--run-id", str(run_id)])
+    for needle in job.metadata.get("name_contains", []):
+        argv.extend(["--name-contains", str(needle)])
+    if job.metadata.get("dry_run"):
+        argv.append("--dry-run")
+    return run_command(argv, log_path=Path(job.log_dir) / f"{job.name}.log")
+
+
 def run_report(job: Job) -> int:
     return run_command([python_bin(job), "scripts/generate_dfm5_l_eval_comparison_report.py"], log_path=Path(job.log_dir) / "generate_report.log")
 
@@ -1403,6 +1423,8 @@ def run_job(job: Job, gpu: int | None) -> int:
         return run_merge_ifeval(job)
     if job.action == Action.AVERAGE:
         return run_average(job)
+    if job.action == Action.RELOG_PROJECT_AVERAGES:
+        return run_relog_project_averages(job)
     if job.action == Action.REPORT:
         return run_report(job)
     raise SchedulerError(f"Unsupported action: {job.action}")

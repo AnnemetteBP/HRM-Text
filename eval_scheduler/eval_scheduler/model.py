@@ -28,6 +28,7 @@ class Action(StrEnum):
     MERGE_DFM = "merge_dfm"
     MERGE_IFEVAL = "merge_ifeval"
     AVERAGE = "average"
+    RELOG_PROJECT_AVERAGES = "relog_project_averages"
     REPORT = "report"
 
 

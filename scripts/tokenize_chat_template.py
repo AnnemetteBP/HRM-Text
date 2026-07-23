@@ -11,6 +11,7 @@ import argparse
 import gzip
 import json
 import os
+import shutil
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -97,6 +98,48 @@ def hrm_row_to_messages(condition: str, instruction: str, response: str) -> Exam
     )
 
 
+def generic_row_to_messages(row: dict[str, Any]) -> Example | None:
+    """Best-effort adapter for HF instruction rows with common field names."""
+    instruction = first_string(
+        row,
+        (
+            "instruction",
+            "prompt",
+            "question",
+            "input",
+            "text",
+            "source",
+            "document",
+            "article",
+        ),
+    )
+    response = first_string(
+        row,
+        (
+            "response",
+            "completion",
+            "answer",
+            "target",
+            "output",
+            "summary",
+            "translation",
+            "label",
+        ),
+    )
+    if instruction is None or response is None:
+        return None
+    condition = str(row.get("condition") or row.get("task") or "direct")
+    return hrm_row_to_messages(condition, instruction, response)
+
+
+def first_string(row: dict[str, Any], fields: tuple[str, ...]) -> str | None:
+    for field in fields:
+        value = row.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def parse_json_maybe(value: Any) -> Any:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -143,6 +186,13 @@ def normalize_tool_call_arguments(tool_calls: list[dict[str, Any]] | None) -> li
             if isinstance(parsed, dict):
                 function["arguments"] = parsed
             call["function"] = function
+        elif isinstance(function, str) and function.strip():
+            arguments = call.get("arguments", call.get("parameters", {}))
+            parsed = parse_json_maybe(arguments)
+            if isinstance(parsed, dict):
+                arguments = parsed
+            call["function"] = {"name": function.strip(), "arguments": arguments}
+            call.setdefault("type", "function")
         normalized.append(call)
     return normalized
 
@@ -232,7 +282,10 @@ def read_jsonl(path: Path) -> Iterable[Example]:
                 tools = row.get("tools") if isinstance(row.get("tools"), list) else None
                 yield from examples_from_messages(row["messages"], tools)
             else:
-                raise ValueError(f"{path}:{start_line}: expected response or messages")
+                example = generic_row_to_messages(row)
+                if example is None:
+                    raise ValueError(f"{path}:{start_line}: expected response, messages, or generic instruction/target fields")
+                yield example
         if buffer.strip():
             if WORKER_SKIP_BAD_JSON:
                 print(f"Skipping incomplete JSON object at {path}:{start_line}", file=sys.stderr)
@@ -242,7 +295,37 @@ def read_jsonl(path: Path) -> Iterable[Example]:
 
 def read_parquet(path: Path) -> Iterable[Example]:
     parquet_file = pq.ParquetFile(path)
-    for batch in parquet_file.iter_batches():
+    names = set(parquet_file.schema_arrow.names)
+    if {"condition", "instruction", "response"}.issubset(names):
+        columns: list[str] | None = ["condition", "instruction", "response"]
+    elif "messages" in names:
+        columns = ["messages"]
+        if "tools" in names:
+            columns.append("tools")
+    else:
+        generic_columns = [
+            "instruction",
+            "prompt",
+            "question",
+            "input",
+            "text",
+            "source",
+            "document",
+            "article",
+            "response",
+            "completion",
+            "answer",
+            "target",
+            "output",
+            "summary",
+            "translation",
+            "label",
+            "condition",
+            "task",
+        ]
+        columns = [column for column in generic_columns if column in names] or None
+
+    for batch in parquet_file.iter_batches(columns=columns):
         names = set(batch.schema.names)
         rows = batch.to_pylist()
         if {"condition", "instruction", "response"}.issubset(names):
@@ -259,7 +342,10 @@ def read_parquet(path: Path) -> Iterable[Example]:
                     tools = row.get("tools")
                     yield from examples_from_messages(messages, tools if isinstance(tools, list) else None)
         else:
-            raise ValueError(f"{path}: expected condition/instruction/response or messages columns")
+            for row in rows:
+                example = generic_row_to_messages(row)
+                if example is not None:
+                    yield example
 
 
 def read_examples(path: Path) -> Iterable[Example]:
@@ -337,6 +423,8 @@ def process_file(
     out = output_dir / found.safe_name
     if not should_process(found.path, out, force):
         return found.safe_name, 0, 0
+    if out.exists():
+        shutil.rmtree(out)
 
     tokens: list[int] = []
     inst_start: list[int] = []

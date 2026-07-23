@@ -336,9 +336,9 @@ def audit_plan(export_dir: Path, args: argparse.Namespace) -> dict[str, Any]:
 
     average_jobs = {job.name: job for job in jobs if job.action == Action.AVERAGE}
     for name in ("standard-average", "dfm-average", "euroeval-average"):
-        assert_eq(average_jobs[name].metadata.get("average_prefix"), "suite_avg_v2", f"{name} prefix")
+        assert_eq(average_jobs[name].metadata.get("average_prefix"), "suite_avg_v3", f"{name} prefix")
     for name in ("danish-average", "english-average", "math-code-average", "headline-averages"):
-        assert_eq(average_jobs[name].metadata.get("average_prefix"), "headline_avg_v2", f"{name} prefix")
+        assert_eq(average_jobs[name].metadata.get("average_prefix"), "headline_avg_v3", f"{name} prefix")
     headline_deps = set(average_jobs["headline-averages"].deps)
     expected_headline_deps = {
         average_jobs["standard-average"].job_id,

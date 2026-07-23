@@ -224,19 +224,37 @@ python -m eval_scheduler plan reset-running \
   --plan-dir logs/scheduler/dfm5_L_step300000
 ```
 
-Monitor:
+Plain monitor:
 
 ```bash
 python -m eval_scheduler status --plan-dir logs/scheduler/dfm5_L_step300000
 ```
 
-Rich monitor with per-GPU workload, queue counts, and task-specific progress:
+Live monitor with per-GPU workload, queue counts, and task-specific progress:
 
 ```bash
 python -m eval_scheduler monitor \
   --plan-dir logs/scheduler/dfm5_L_step300000 \
   --gpus 0,1,2,3,4,5,6,7
 ```
+
+Optional Rich live monitor:
+
+```bash
+python -m eval_scheduler monitor \
+  --plan-dir logs/scheduler/dfm5_L_step300000 \
+  --gpus 0,1,2,3,4,5,6,7 \
+  --rich
+```
+
+The Rich monitor adapts to the current terminal width and height on each
+refresh. Its summary is a compact one-line status block, each GPU is shown on
+one row, and the ready/blocked tables are truncated to fit the screen with a
+final `... N more` row when needed. If one queue section is empty or short, the
+unused vertical space is reassigned to the other section. GPU and non-GPU
+running jobs share one `Running jobs` table; GPU rows are labeled `GPU0`,
+`GPU1`, etc., while checkpoint waits, exports, merges, averages, and reports are
+labeled `CPU`.
 
 For a one-shot snapshot:
 
@@ -245,6 +263,16 @@ python -m eval_scheduler monitor \
   --plan-dir logs/scheduler/dfm5_L_step300000 \
   --gpus 0,1,2,3,4,5,6,7 \
   --once
+```
+
+For a one-shot Rich snapshot:
+
+```bash
+python -m eval_scheduler monitor \
+  --plan-dir logs/scheduler/dfm5_L_step300000 \
+  --gpus 0,1,2,3,4,5,6,7 \
+  --once \
+  --rich
 ```
 
 ## Notes

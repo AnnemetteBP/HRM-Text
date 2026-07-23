@@ -1,8 +1,291 @@
 # Current State
 
-Last updated: 2026-06-19
+Last updated: 2026-07-11
 Confidence: high
 Scope: Local repo state and verified commands from this session.
+
+## 2026-07-11 DFM8 Pre-Training Gate
+
+Confidence: high for local request preparation and process inspection.
+
+Do **not** restart DFM8 training until the prepared Danish OpenHermes
+derivative generation/audit has been run, inspected, integrated into
+`data/tokenized_dfm8`, and DFM8 has been resampled.
+
+The current `dfm8-synthetic-*` generation is still active and must not be
+disturbed. The Danish OpenHermes job has only been prepared offline:
+
+```text
+package:       dfm8_openhermes_da/
+requests:      data/dfm8_openhermes_da_synthetic
+upload root:   export-upload-dfm8-openhermes-da
+runner:        dfm8_openhermes_da/scripts/run_openhermes_da_8gpu.sh
+default ports: 8600-8607
+prepared rows: 1,001,551
+request shards: 512
+```
+
+The runner has a safety guard and refuses to start while the active
+`dfm8_synthetic.cli generate|audit` or
+`run_dfm8_targeted_synthetic_8gpu.sh` processes are present.
+
+When GPUs are free, run from `/work/dfm/HRM-Text`:
+
+```bash
+CONCURRENCY=128 \
+GPU_MEMORY_UTILIZATION=0.7 \
+MAX_NUM_SEQS=128 \
+bash dfm8_openhermes_da/scripts/run_openhermes_da_8gpu.sh
+```
+
+After it finishes, inspect row counts/examples, tokenize the accepted upload
+folder with the Gemma4 chat-template path, rebuild `data/tokenized_dfm8`,
+resample `data/sampled_dfm8`, and only then restart training.
+
+## 2026-07-11 DFM8-XL W&B Preparation
+
+Confidence: high for local script output and W&B API verification; medium for
+the source-history caveat below.
+
+A new W&B run has been prepared for continuing from the completed
+DFM6-DFM7 `epoch_5` checkpoint onto DFM8 data:
+
+```text
+project: DFM5
+run id:  dfm8-xl-from-dfm6-dfm7-epoch5
+name:    DFM8-XL from DFM6-DFM7 epoch5
+url:     https://wandb.ai/peter-sk-sdu/DFM5/runs/dfm8-xl-from-dfm6-dfm7-epoch5
+```
+
+The backfill script is:
+
+```text
+scripts/backfill_dfm8_xl_from_dfm6_dfm7_wandb.py
+```
+
+It cloned numeric history from source run
+`peter-sk-sdu/DFM5/dfm6-dfm7-xl-gas2` into the new run and rewrote the new run
+config for DFM8 continuation:
+
+```text
+data.path:                  data/sampled_dfm8
+checkpoint_path:            checkpoints/dfm8/XL-from-dfm6-dfm7-epoch5
+resume_checkpoint_path:     checkpoints/dfm7/XL-gas2-from-dfm6-epoch3
+resume_checkpoint_tag:      epoch_5
+resume checkpoint step:     1229504
+```
+
+W&B API verification after sync showed:
+
+```text
+state: finished
+_step: 1200000
+dfm8_backfill/backfilled_through_step: 1229504
+dfm8_backfill/resume_checkpoint_tag: epoch_5
+dfm8_backfill/target_data: data/sampled_dfm8
+```
+
+The source W&B history scan yielded:
+
+```text
+rows logged into new run: 199999
+eval-like rows:          25
+history min/max step:    0 / 1200000
+eval steps:              0, 50K, ..., 1200K
+audit file:              logs/dfm8/dfm8_xl_from_dfm6_dfm7_backfill_rows.jsonl
+online log:              logs/dfm8/dfm8_xl_from_dfm6_dfm7_backfill_online_20260711T090235.log
+```
+
+Superseded caveat: the local checkpoint sidecar
+`checkpoints/dfm7/XL-gas2-from-dfm6-epoch3/checkpoint_state_epoch_5.json`
+records `step=1229504`, `epoch=5`, and `batch_in_epoch=0`, but the source
+W&B scan exposed usable history rows only through step `1200000`. The new run
+therefore has resume metadata for `epoch_5`/`1229504`, while its history curve
+currently ends at `1.2M`.
+
+Replacement, 2026-07-11. Confidence: high from W&B API verification. The
+earlier broad W&B scan missed sparse late training rows. A follow-up repair
+queried train metrics one-by-one and appended the late tail to
+`dfm8-xl-from-dfm6-dfm7-epoch5`.
+
+```text
+tail audit file: logs/dfm8/dfm8_xl_from_dfm6_dfm7_tail_train_rows.jsonl
+tail rows:       653
+tail step range: 1200045..1229485
+verified _step:  1229485
+```
+
+The repaired W&B run now shows training metrics through about `1,229.5K`, very
+close to the local `epoch_5` checkpoint sidecar step `1,229,504`. The final
+few checkpoint-save steps do not have ordinary train metric rows.
+
+Do not continue training into this run until the DFM8 pre-training gate above
+is complete.
+
+Superseded/failure note, 2026-07-11. Confidence: high from user report and
+follow-up W&B/API checks. The prepared run
+`dfm8-xl-from-dfm6-dfm7-epoch5` was deleted by the user and must be considered
+a failed backfill. The failure mode was misleading W&B history: the first
+clone missed sparse late training rows, and the incremental tail repair
+created a visually wrong line from about `1.2M` to the end. The approach is not
+acceptable for production run preparation.
+
+The helper `scripts/backfill_dfm8_xl_from_dfm6_dfm7_wandb.py` is now marked
+deprecated and refuses to run unless `--allow-deprecated` is provided for
+forensic reproduction. Do not use it for a new DFM8 run.
+
+Source-run check after deleting the failed DFM8 run:
+
+- `DFM5/dfm6-dfm7-xl-gas2` still exists and is `finished`.
+- The `3.312946907575793` eval point is still present in remote source history.
+  Sampled W&B API checks found this epoch for `eval/epoch`, `dfm_eval/epoch`,
+  and `euroeval/epoch` around W&B internal steps `800xxx`.
+- The local audit file also contains the complete 800K/epoch-3.312946 row with
+  484 metrics, including `eval/MATH/acc=0.39380364`,
+  `dfm_eval/dala/linguistic-acceptability/dfm_evals_macro_f1=0.7531413615`,
+  `headline_avg_v3/danish=0.5864574335`,
+  `headline_avg_v3/english=0.6516015330`, and
+  `headline_avg_v3/math_code=0.4414167715`.
+
+If a DFM8 W&B preparation run is still desired, use a safer design:
+
+1. Do not clone raw W&B sparse history directly.
+2. Build a deterministic local JSONL first from known-good scheduler merged
+   metrics plus selected train metrics.
+3. Log all eval rows at explicit `eval/train_step`/`*/epoch` axes and inspect
+   a local/offline run before syncing.
+4. Avoid incremental tail repairs that create artificial visual connections.
+
+Follow-up remote check, 2026-07-11. Confidence: high from W&B API
+`history(keys=..., samples=100000)` queries. Although the user reported that
+the workspace only displayed eval metrics through 800K, the remote source run
+does contain post-800K history rows for representative metrics, with metric,
+epoch, and train-step axes present in combined API rows:
+
+| Metric | Last checked post-800K points |
+| --- | --- |
+| `eval/MATH/acc` | 850K, 900K, 950K, 1000K, 1050K, 1100K, 1150K, 1200K, epoch_5 |
+| `dfm_eval/dala/linguistic-acceptability/dfm_evals_macro_f1` | 850K, 900K, 950K, 1000K, 1050K, 1100K, 1150K, 1200K, epoch_5 |
+| `headline_avg_v3/danish` | 850K, 900K, 950K, 1000K, 1050K, 1100K, 1150K, 1200K, epoch_5 |
+| `suite_avg_v3/standard` | 850K, 900K, 950K, 1000K, 1050K, 1100K, 1150K, 1200K, epoch_5 |
+
+Example: `eval/MATH/acc` is present with `eval/epoch=4.88737064657577` and
+`eval/train_step=1200000`, and with `eval/epoch=5` for the final epoch row.
+Therefore the missing display is likely a W&B workspace/panel/query/display
+issue, not source-run history deletion.
+
+Workspace average-panel check, 2026-07-11. Confidence: high from live W&B
+workspace API inspection via `wandb_workspaces.workspaces.internal.get_view_dict`.
+The DFM5 manual workspace `https://wandb.ai/peter-sk-sdu/DFM5?nw=760qd0evtsa`
+currently uses old v2 average keys in its visible average panels, despite the
+newer scripts and some saved specs defaulting to v3:
+
+- Headline panels use `headline_avg_v2/{overall,danish,english,math_code}` on
+  `headline_avg_v2/epoch`.
+- Per-section average panels in Danish/English/Math & Code also use
+  `headline_avg_v2/*`.
+- Suite panels use `suite_avg_v2/{standard,dfm,euroeval}` on
+  `suite_avg_v2/epoch`.
+
+For DFM6-DFM7 `dfm6-dfm7-xl-gas2`, the latest corrected averages are logged
+under `headline_avg_v3/*` and `suite_avg_v3/*`; v4 and generic `avg/*`
+average namespaces are not present. If averages look missing in this manual
+workspace, the likely cause is that its panels are still pointed at v2.
+
+Fix applied, 2026-07-11. Confidence: high from W&B upsert response and live
+view re-read. The manual workspace `nw=760qd0evtsa` was updated in place,
+preserving its layout and replacing only average panel namespaces:
+`headline_avg_v2/` -> `headline_avg_v3/` and `suite_avg_v2/` ->
+`suite_avg_v3/`. Verification found `0` remaining v2 average panel references
+and `10` v3 average panel references. Backups:
+
+- `logs/wandb_workspace_specs/dfm5_live_760qd0evtsa_before_v3_avg_fix_20260711T105452.json`
+- `logs/wandb_workspace_specs/dfm5_live_760qd0evtsa_after_v3_avg_fix_20260711T105603.json`
+- `logs/wandb_workspace_specs/dfm5_live_760qd0evtsa_verified_after_v3_avg_fix_20260711T105628.json`
+
+Clean DFM8-XL W&B backfill, 2026-07-11. Confidence: high from local payload
+validation and remote W&B API checks. A replacement clean continuation run was
+created without using the deprecated broad-history clone:
+
+```text
+project: DFM5
+run id:  dfm8-xl-from-dfm6-dfm7-epoch5-clean
+name:    DFM8-XL clean from DFM6-DFM7 epoch5
+url:     https://wandb.ai/peter-sk-sdu/DFM5/runs/dfm8-xl-from-dfm6-dfm7-epoch5-clean
+script:  scripts/backfill_dfm8_xl_clean_wandb.py
+```
+
+The script builds a deterministic payload from local audit files:
+
+- `logs/dfm8/dfm8_xl_from_dfm6_dfm7_backfill_rows.jsonl`
+- `logs/dfm8/dfm8_xl_from_dfm6_dfm7_tail_train_rows.jsonl`
+
+It filters to canonical `train/*`, `eval/*`, `dfm_eval/*`, `euroeval/*`,
+`headline_avg_v3/*`, and `suite_avg_v3/*` keys, dropping stale v2/v4/generic
+average namespaces and `*/epoch_5` summary-helper keys. The source `epoch_5`
+eval row, which had `train_step=0`, is remapped to the real resume step
+`1229504`.
+
+Validated payload:
+
+```text
+rows:                  200,652
+eval-like rows:        25
+v3 average rows:       25
+train metric rows:     200,640
+min/max payload step:  5 / 1,229,504
+train metric max step: 1,229,485
+missing eval steps:    none for 50K..1.2M
+missing avg steps:     none for 50K..1.2M
+non-v3 average keys:   none
+payload:               logs/dfm8/dfm8_xl_clean_backfill_payload.jsonl
+summary:               logs/dfm8/dfm8_xl_clean_backfill_summary.json
+```
+
+Remote checks after upload:
+
+- W&B summary `_step=1229504`.
+- Final `eval/MATH/acc=0.4178042`.
+- Final `headline_avg_v3/danish=0.5907344435459122`.
+- Final `suite_avg_v3/dfm=0.6061997587343233`.
+- `eval/epoch=5`, `eval/train_step=1229504`, and corresponding v3 average
+  epoch/train-step axes are present.
+- Sampled train history reaches the sparse late tail: `train/loss` and
+  `train/accuracy` through about `1.229M`, `bp_steps` through about `1.229M`.
+
+The run config points future training to `data/sampled_dfm8`, checkpoints to
+`checkpoints/dfm8/XL-from-dfm6-dfm7-epoch5`, and resumes from
+`checkpoints/dfm7/XL-gas2-from-dfm6-epoch3` with
+`resume_checkpoint_tag=epoch_5`, `resume_step=1229504`, `resume_epoch=5`.
+Do not start this training until the DFM8 pre-training gate is complete:
+accepted Danish OpenHermes rows must be generated/audited, integrated, and
+`data/sampled_dfm8` resampled.
+
+OpenHermes auto-start watcher, 2026-07-11. Confidence: high from local script
+creation and tmux/log inspection. The user wants Danish OpenHermes generation
+to start automatically only after the current DFM8 targeted synthetic
+generation+audit finishes. A watcher was created and launched:
+
+```text
+script: scripts/watch_dfm8_synthetic_then_openhermes_da.sh
+tmux:   hrm-0 window 5, openhermes-wait
+log:    logs/dfm8_openhermes_after_targeted_synthetic_20260711T114345.log
+```
+
+The watcher waits for `data/dfm8_targeted_synthetic/generated` and
+`data/dfm8_targeted_synthetic/audits` to both reach `512` shard files, requires
+zero failed generate/audit queue jobs, then waits for the targeted synthetic
+runner and ports `8500-8507` vLLM processes to exit before running:
+
+```bash
+CONCURRENCY=128 \
+GPU_MEMORY_UTILIZATION=0.7 \
+MAX_NUM_SEQS=128 \
+bash dfm8_openhermes_da/scripts/run_openhermes_da_8gpu.sh
+```
+
+Initial watcher state at launch was `generated=422/512`, `audits=414/512`,
+`generate_pending=90`, `generate_running=8`, and no failures.
 
 ## 2026-06-18 Clean DFM5-L 650K/700K vLLM Eval Scheduler
 
@@ -9371,3 +9654,405 @@ Plan metadata verification showed `standard_engine_backend=vllm`,
 `vllm_max_model_len=4096`, `vllm_attention_backend=FLASH_ATTN`,
 `vllm_gpu_memory_utilization=0.35`, `euroeval_max_concurrent_calls=32`, and
 the HRM direct chat template in `vllm_extra_args`.
+
+## DFM8-XL 1250K-1450K Eval Scheduler, 2026-07-14
+
+Confidence: high from local plan creation and tmux/process inspection.
+
+A five-checkpoint DFM8-XL eval plan was created and launched for:
+
+```text
+step_1250000, step_1300000, step_1350000, step_1400000, step_1450000
+```
+
+Plan directory:
+
+```text
+logs/scheduler/dfm8_XL_steps1250k_1450k_vllm_hrmenv_20260714_094255
+```
+
+The plan targets W&B project/run:
+
+```text
+project: DFM5
+run_id:  dfm8-xl-from-dfm6-dfm7-epoch5-clean-full
+run:     DFM8-XL clean full from DFM6-DFM7 epoch5
+```
+
+Checkpoint path:
+
+```text
+checkpoints/dfm8/XL-from-dfm6-dfm7-epoch5
+```
+
+The eval epoch values use the DFM8 continuation axis, with epoch `5.0` at
+training step `1,229,504` and DFM8 epoch length
+`70,479,308,606 / 262,144 = 268,857.2258` optimizer steps:
+
+| Checkpoint | eval epoch |
+| --- | ---: |
+| `step_1250000` | `5.076233770311739` |
+| `step_1300000` | `5.262206082742797` |
+| `step_1350000` | `5.448178395173856` |
+| `step_1400000` | `5.634150707604914` |
+| `step_1450000` | `5.820123020035972` |
+
+Operational settings:
+
+- `vllm_gpu_memory_utilization=0.25`
+- `standard_engine_backend=vllm`
+- `hrm_server_backend=vllm`
+- `hrm_vllm_native_proxy=True`
+- `hrm_vllm_gemma_bfcl_tools=True`
+- Gemma4 native chat template:
+  `evaluation/chat_templates/gemma4_native_chat.jinja`
+- EuroEval first queue order
+- `max_retries=5`
+- DFM IFEval-DA shards: `32`
+- standard batch `64`, DFM batch `32`, IFEval batch `32`, EuroEval batch `32`
+- judged DFM tasks use local `unsloth/gemma-4-E4B-it` judge server with
+  `judged_batch=16`, `judged_max_connections=16`, and judge vLLM utilization
+  `0.25`.
+
+The scheduler was launched in tmux session `hrm-1` window `5`, and the Rich
+monitor in window `6`:
+
+```bash
+python -m eval_scheduler run \
+  --plan-dir logs/scheduler/dfm8_XL_steps1250k_1450k_vllm_hrmenv_20260714_094255 \
+  --gpus 0,1,2,3,4,5,6,7
+
+python -m eval_scheduler monitor \
+  --plan-dir logs/scheduler/dfm8_XL_steps1250k_1450k_vllm_hrmenv_20260714_094255 \
+  --gpus 0,1,2,3,4,5,6,7 \
+  --interval 30 \
+  --rich
+```
+
+Initial plain status reported all five checkpoint waits active:
+
+```text
+pending=1075 running=5 done=0 failed=0 skipped=5
+```
+
+Update, 2026-07-14. Confidence: high from scheduler status and
+`judge-server.log` inspection.
+
+The first `step_1250000` eval pass failed only for
+`dfm:generative_talemaader`: all 8 shards hit managed judge-server OOM during
+startup. The failure mode was co-located memory pressure on the same GPU:
+
+```text
+training process: roughly 122-130 GiB
+HRM checkpoint vLLM eval server: roughly 45.9 GiB
+Gemma E4B judge: OOM while loading
+```
+
+The live plan was patched under the scheduler lock:
+
+- reset failed `step_1250000` `generative_talemaader` shards
+  `eval-00174` through `eval-00181` to pending;
+- set their HRM checkpoint vLLM server `vllm_gpu_memory_utilization` from
+  `0.25` to `0.18`;
+- applied the same `0.18` setting to the queued `generative_talemaader` shards
+  for `step_1300000`, `step_1350000`, `step_1400000`, and `step_1450000`.
+
+The judge settings remained unchanged:
+
+```text
+judge_server_model=unsloth/gemma-4-E4B-it
+judged_batch=16
+judged_max_connections=16
+judged_vllm_gpu_memory_utilization=0.25
+```
+
+Future eval planning rule: when running training + an HRM vLLM eval server + a
+same-GPU Gemma E4B judge on 180GB GPUs, use
+`vllm_gpu_memory_utilization=0.18` for the HRM checkpoint server on judged
+tasks such as `generative_talemaader`. The global `0.25` setting is too high in
+this memory allocation situation because it can leave insufficient room for
+judge startup after the training process and HRM server are resident.
+
+## DFM8 XL Step 1350K Qualitative Smoke
+
+Update, 2026-07-16. Confidence: high for local command/output paths; medium for
+manual qualitative scoring.
+
+The extended DFM6-DFM7 epoch_5 smoke prompt suite was rerun on the DFM8 XL
+`step_1350000` EMA HF export:
+
+```bash
+CUDA_VISIBLE_DEVICES=2 python scripts/smoke_dfm6_dfm7_epoch5_qualitative.py \
+  --model exports/dfm8_XL_step1350000_ema_hf \
+  --output-jsonl logs/analysis/dfm8_XL_step1350000_smoke/generations.jsonl \
+  --output-md docs/dfm8-xl-step1350000-smoke-raw.md \
+  --gpu-memory-utilization 0.20 \
+  --batch-size 1
+
+python scripts/build_smoke_comparison_report.py \
+  --previous-jsonl logs/analysis/dfm6_dfm7_epoch5_extended_smoke/generations.jsonl \
+  --current-jsonl logs/analysis/dfm8_XL_step1350000_smoke/generations.jsonl \
+  --output-md docs/dfm8-xl-step1350000-smoke.md
+```
+
+The comparison report is in `docs/dfm8-xl-step1350000-smoke.md`; raw generations
+are in `logs/analysis/dfm8_XL_step1350000_smoke/generations.jsonl`.
+
+Manual qualitative result:
+
+- DFM8 XL `step_1350000` EMA: 27 pass, 11 weak, 2 bad over 40 prompts.
+- Previous DFM6-DFM7 `epoch_5` EMA under the same stricter manual pass:
+  27 pass, 10 weak, 3 bad.
+- Relative movement: 7 improved, 29 unchanged, 4 regressed.
+
+Main interpretation: `step_1350000` improves explicit boxed-answer and simple
+format following, fixes several simple refusal/tool-confusion cases, and keeps
+basic chat/code/summarization usable. Remaining weaknesses are native tool-call
+termination, one serious Danish algebra miss (`\boxed{5}` instead of `7`), and
+regressed repetition in creative generation.
+
+## DFM8 Seventh Epoch Sampling
+
+Update, 2026-07-17. Confidence: high from local commands and file validation.
+
+The live full DFM8 sample directory was extended from 6 to 7 sampled epochs by
+staging a fresh 7-epoch sample with token reuse, then moving only the new
+`epoch_6` index directory and staged metadata into the live path:
+
+```bash
+mkdir -p data/sampled_dfm8_7epochs_stage
+ln -sfn ../sampled_dfm8/tokens.npy data/sampled_dfm8_7epochs_stage/tokens.npy
+
+(
+  cd data_io &&
+  python sample_tokenized.py \
+    tokenized_path=../data/tokenized_dfm8 \
+    output_path=../data/sampled_dfm8_7epochs_stage \
+    epochs=7 \
+    concat_workers=4 \
+    prefix_config_path=prefix_config_dfm8.yaml \
+    reuse_tokens=true \
+    > ../data/show_analytics_dfm8_7epochs_stage.md
+)
+
+mv data/sampled_dfm8_7epochs_stage/epoch_6 data/sampled_dfm8/epoch_6
+cp data/sampled_dfm8_7epochs_stage/metadata.json data/sampled_dfm8/metadata.json
+```
+
+Validation before moving showed `epoch_6` contains the four expected arrays,
+each with shape `(218313891,)`, dtype `int64`, and size `1746511256` bytes:
+`inst_start.npy`, `inst_len.npy`, `resp_start.npy`, and `resp_len.npy`.
+
+The updated live `data/sampled_dfm8/metadata.json` has
+`total_length=70479433697`. The staged token file was only a symlink to the live
+`tokens.npy`; no token concatenation was rerun.
+
+## DFM8 XL Future Eval Plan Extension
+
+Update, 2026-07-17. Confidence: high from local scheduler commands and
+`plan.tsv` validation.
+
+The active DFM8 XL eval scheduler plan was extended in place:
+
+```text
+logs/scheduler/dfm8_XL_steps1250k_1450k_vllm_hrmenv_20260714_094255/plan.tsv
+```
+
+The following future checkpoint subgraphs were appended with
+`python -m eval_scheduler plan create --append`:
+
+| checkpoint | eval epoch |
+|---|---:|
+| `step_1500000` | `6.006095332467029` |
+| `step_1550000` | `6.192067644898087` |
+| `step_1600000` | `6.378039957329145` |
+| `step_1650000` | `6.564012269760203` |
+| `step_1700000` | `6.749984582191261` |
+| `step_1750000` | `6.935956894622319` |
+
+The appended rows use the same DFM8 settings as the `1250K`-`1450K` campaign:
+standard evals through vLLM, EuroEval first, `max_retries=5`, W&B run
+`dfm8-xl-from-dfm6-dfm7-epoch5-clean-full`, and
+`unsloth/gemma-4-E4B-it` for judged DFM tasks. Spot-check validation confirmed
+`generative_talemaader` keeps `initial_batch=16`,
+`max_connections=16`, and per-task HRM checkpoint
+`vllm_gpu_memory_utilization=0.18`.
+
+After appending, scheduler status was:
+
+```text
+pending=1296 running=0 done=1080 failed=0 skipped=11
+```
+
+## DFM8 XL Latest Resume Point
+
+Update, 2026-07-20. Confidence: high from local checkpoint inspection.
+
+After the interrupted DFM8 seventh-epoch run, the newest complete ephemeral
+checkpoint under `checkpoints/dfm8/XL-from-dfm6-dfm7-epoch5` is:
+
+```text
+ephemeral_step_1569000
+```
+
+Validation found `fsdp2_ephemeral_step_1569000/.metadata`, all 8 FSDP
+`*.distcp` shard files, all 8 `carry_ephemeral_step_1569000.<rank>.pt` files,
+and `checkpoint_state_ephemeral_step_1569000.json`.
+
+The checkpoint sidecar records:
+
+```json
+{
+  "step": 1569000,
+  "epoch": 7,
+  "batch_in_epoch": 140428,
+  "batch_in_epoch_exact": true,
+  "data_path": "data/sampled_dfm8",
+  "global_batch_size": 262144,
+  "gradient_accumulation_steps": 2
+}
+```
+
+Resume this run with `epochs=7`, `resume_checkpoint_tag=ephemeral_step_1569000`,
+`resume_step=1569000`, and `resume_epoch=7`.
+
+Rechecked later on 2026-07-20. Confidence: high. No newer checkpoint was present:
+the latest regular checkpoint was `step_1560000`, and the latest complete
+checkpoint overall remained `ephemeral_step_1569000`.
+
+## DFM8 XL 1600K+ Eval Scheduler Restart
+
+Update, 2026-07-20. Confidence: high from local scheduler/tmux status.
+
+The existing DFM8 XL scheduler plan already contained the next checkpoint
+subgraphs for `step_1600000`, `step_1650000`, `step_1700000`, and
+`step_1750000`, with the judged-task best-practice exception preserved:
+`generative_talemaader` uses batch `16`, `max_connections=16`,
+`unsloth/gemma-4-E4B-it`, and HRM checkpoint
+`vllm_gpu_memory_utilization=0.18`.
+
+The run had no live scheduler process and four stale `running` wait rows. It
+was restarted from the `hrm` conda env after:
+
+```bash
+python -m eval_scheduler clear-stop \
+  --plan-dir logs/scheduler/dfm8_XL_steps1250k_1450k_vllm_hrmenv_20260714_094255
+
+python -m eval_scheduler plan reset-running \
+  --plan-dir logs/scheduler/dfm8_XL_steps1250k_1450k_vllm_hrmenv_20260714_094255
+```
+
+The active tmux windows in session `hrm-0` are:
+
+```text
+5: dfm8eval  # scheduler runner
+6: dfm8mon   # rich monitor, 30s refresh
+```
+
+After restart, status was:
+
+```text
+pending=860 running=4 done=1512 failed=0 skipped=11
+```
+
+The four active jobs are checkpoint waits for `1600K`, `1650K`, `1700K`, and
+`1750K`. At restart time, training had only reached
+`ephemeral_step_1579500`, so the regular `step_1600000` checkpoint did not yet
+exist.
+
+## DFM8 XL 1600K Eval Failures
+
+Update, 2026-07-21. Confidence: high from local scheduler status, plan
+inspection, environment checks, and failed vLLM logs.
+
+The active plan
+`logs/scheduler/dfm8_XL_steps1250k_1450k_vllm_hrmenv_20260714_094255`
+currently has `187` failed rows, all for `ckpt_tag=step_1600000`.
+The later `1650K`, `1700K`, and `1750K` rows are not failed; their
+`wait_checkpoint` rows are still running/blocked pending.
+
+Failure counts by action:
+
+```text
+eval_standard: 85
+eval_dfm: 51
+eval_dfm_ifeval: 32
+eval_euroeval: 17
+eval_euroeval_batched_ifeval: 2
+```
+
+This is an infrastructure/startup failure, not an eval-quality failure, not
+checkpoint corruption, and not a GPU OOM. The representative standard MATH log
+shows vLLM loading the exported checkpoint and then failing while FlashInfer's
+top-k/top-p sampler tries to JIT-build CUDA code:
+
+```text
+RuntimeError: Could not find nvcc and default cuda_home='/usr/local/cuda' doesn't exist
+RuntimeError: Engine core initialization failed. See root cause above.
+```
+
+The current scheduler environment has no `nvcc`, no `ptxas`, `CUDA_HOME` and
+`CUDA_PATH` are unset, and `/usr/local/cuda` does not exist. `ninja` is present
+in the `hrm` conda env.
+
+This is separate from FlashAttention 4 attention. The plan intentionally sets
+`--attention-backend FLASH_ATTN`, and earlier successful logs show
+`Using FlashAttention version 4`; the failing component is vLLM selecting
+FlashInfer for sampling. The least disruptive next attempt is to stop the
+scheduler, reset only the failed `step_1600000` rows, and restart the runner
+from the `hrm` conda env with:
+
+```bash
+export VLLM_USE_FLASHINFER_SAMPLER=0
+python -m eval_scheduler run \
+  --plan-dir logs/scheduler/dfm8_XL_steps1250k_1450k_vllm_hrmenv_20260714_094255 \
+  --gpus 0,1,2,3,4,5,6,7
+```
+
+That should preserve FA4 attention while avoiding FlashInfer sampler JIT. The
+alternative is to install/configure a full CUDA toolkit so `nvcc` is visible to
+the scheduler/vLLM process.
+
+Follow-up, 2026-07-21. Confidence: high from local plan edit and active
+scheduler status. After the NVIDIA toolkit was installed in the background,
+`/usr/local/cuda` points to `/usr/local/cuda-13.2`, and
+`/usr/local/cuda/bin/nvcc --version` reports CUDA `13.2`.
+
+The `187` failed `step_1600000` rows were reset under `PlanLock` to
+`status=pending` and `attempt=0`; no other failed rows remained. Backup:
+
+```text
+logs/scheduler/dfm8_XL_steps1250k_1450k_vllm_hrmenv_20260714_094255/plan.before_reset_step1600000_failed_20260721_083319.tsv
+```
+
+The active scheduler picked the rows up again immediately. Eight EuroEval
+`step_1600000` shards started on GPUs 0-7, and a current vLLM log showed
+`Application startup complete` while still using FA4 attention. Old nested
+`step_1600000` logs may still contain the earlier startup failure traces; use
+fresh process timestamps/status rather than those stale traces when diagnosing
+the reset run.
+
+## Current GSM8k Eval Prompt Contract
+
+Update, 2026-07-23. Confidence: high from local inspection of
+`evaluation/benchmarks.py`, `evaluation/config/dfm6_vllm_benchmarking.yaml`,
+`evaluation/config/hrm_vllm_benchmarking.yaml`, and `evaluation/engines.py`.
+
+Current standard GSM8k evals are zero-shot: `GSM8k.__init__()` loads
+`gsm8k/main` test questions and sets `self.prompts = dataset["question"]`
+without adding examples. The current standard vLLM configs override GSM8k to:
+
+```yaml
+generation_config:
+  condition: "direct"
+  max_tokens: 512
+```
+
+For the current DFM6/DFM7/DFM8 vLLM path, `prompt_mode: gemma_chat` renders the
+raw question as a single Gemma user turn with `enable_thinking=False`; the
+`condition` value is not inserted into the Gemma prompt. For the older HRM
+prompt modes, `condition=direct` maps to the HRM direct condition token.
+
+This supersedes older local notes that described GSM8k as using the global
+`synth,cot` setting. Those notes describe an earlier/original-code comparison
+or stale config state, not the current scheduler config.

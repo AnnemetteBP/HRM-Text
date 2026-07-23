@@ -1,0 +1,89 @@
+sets:
+  dfm7_multi_ifeval_da:
+    description: "DFM7 novel eval: MultiIFEval Danish slice."
+    tasks:
+      - name: dfm_evals/multi-ifeval
+    args:
+      language: da
+      split: test
+      num_shards: 1
+      shard_index: 0
+
+  dfm7_global_piqa_da:
+    description: "DFM7 novel eval: Danish Global PIQA accepted rows."
+    tasks:
+      - name: dfm_evals/global-piqa-da
+    args:
+      split: train
+      max_gen_toks: 8
+
+  dfm7_gsm8k_da:
+    description: "DFM7 novel eval: Danish GSM8K."
+    tasks:
+      - name: dfm_evals/gsm8k-da
+    args:
+      split: test
+      max_gen_toks: 512
+
+  dfm7_gsm_symbolic_da_original:
+    description: "DFM7 novel eval: Danish GSM-Symbolic original perturbations."
+    tasks:
+      - name: dfm_evals/gsm-symbolic
+    args:
+      language: dan
+      split: test_original
+      max_gen_toks: 512
+
+  dfm7_gsm_symbolic_da_synthetic:
+    description: "DFM7 novel eval: Danish GSM-Symbolic synthetic perturbations."
+    tasks:
+      - name: dfm_evals/gsm-symbolic
+    args:
+      language: dan
+      split: test_synthetic
+      max_gen_toks: 512
+
+  dfm7_kaenguruen:
+    description: "DFM7 novel eval: Kænguruen Danish math competition MCQ."
+    tasks:
+      - name: dfm_evals/kaenguruen
+    args:
+      split: test
+      max_gen_toks: 16
+
+  dfm7_linguistic_quality_da:
+    description: "DFM7 novel eval: Danish linguistic quality."
+    tasks:
+      - name: dfm_evals/linguistic-quality-da
+    args:
+      split: train
+      max_gen_toks: 16
+
+  dfm7_sdu_daisy:
+    description: "DFM7 novel eval: SDU Daisy Danish QA."
+    tasks:
+      - name: dfm_evals/sdu-daisy
+    args:
+      split: train
+      max_gen_toks: 64
+
+  dfm7_da_bird:
+    description: "DFM7 novel eval: Danish BIRD text-to-SQL exact SQL string check."
+    tasks:
+      - name: dfm_evals/da-bird
+    args:
+      max_gen_toks: 512
+
+  dfm7_tool_calling_da:
+    description: "DFM7 novel eval: Danish tool-calling benchmark."
+    tasks:
+      - name: dfm_evals/danish-tool-calling-benchmark
+    args:
+      split: danish
+
+  dfm7_tool_calling_en:
+    description: "DFM7 novel eval: English tool-calling benchmark."
+    tasks:
+      - name: dfm_evals/danish-tool-calling-benchmark
+    args:
+      split: english

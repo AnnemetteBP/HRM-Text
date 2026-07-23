@@ -1,0 +1,10 @@
+path: data/sampled_dfm8
+target_only: true
+
+# DFM8 is a separate Gemma-template data build. Keep it independent:
+#   data/dfm8_chat_sources
+#   data/tokenized_dfm8_jinja
+#   data/tokenized_dfm8
+#   data/sampled_dfm8
+#
+# The supported preparation path is scripts/prepare_dfm8_data.sh.

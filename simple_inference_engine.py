@@ -25,9 +25,40 @@ class InferenceCheckpoint:
     tokenizer_info: dict[str, Any]
 
     def tokenize_prompt(self, condition: str, prompt: str) -> np.ndarray:
+        if self.tokenizer_info.get("template_mode") == "jinja_chat_template":
+            token_ids = self.tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt}],
+                tokenize=True,
+                add_generation_prompt=True,
+                enable_thinking=self.tokenizer_info.get("enable_thinking", False),
+            )
+            if hasattr(token_ids, "keys"):
+                token_ids = token_ids["input_ids"]
+            token_array = np.asarray(token_ids, dtype=np.int64)
+            return token_array[0] if token_array.ndim == 2 else token_array
+
         condition_tokens = "".join(self.tokenizer_info["condition_mapping"][c] for c in condition.split(","))
-        return self.tokenizer(f'{self.tokenizer_info["boq"]}{condition_tokens}{prompt}{self.tokenizer_info["eoq"]}',
+        if "boq" in self.tokenizer_info and "eoq" in self.tokenizer_info:
+            text = f'{self.tokenizer_info["boq"]}{condition_tokens}{prompt}{self.tokenizer_info["eoq"]}'
+        else:
+            bos = self.tokenizer_info.get("bos", "[BOS]")
+            sep = self.tokenizer_info.get("sep", "[SEP]")
+            text = f"{bos}{condition_tokens}{prompt}{sep}"
+        return self.tokenizer(text,
                               return_tensors="np", return_attention_mask=False, add_special_tokens=False)["input_ids"][0]  # pyright: ignore[reportIndexIssue]
+
+    def stop_token_id(self) -> int:
+        if "eoa" in self.tokenizer_info:
+            token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer_info["eoa"])
+        elif "eos" in self.tokenizer_info:
+            token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer_info["eos"])
+        else:
+            token_id = self.tokenizer.eos_token_id
+            if token_id is None:
+                token_id = self.tokenizer.convert_tokens_to_ids("<turn|>")
+        if token_id is None or token_id == self.tokenizer.unk_token_id:
+            raise ValueError("Could not resolve generation stop token from tokenizer metadata")
+        return int(token_id)
     
     def decode_generation(self, tokens: np.ndarray, eos_id: int) -> str:
         if tokens.size > 0 and tokens[-1] == eos_id:
@@ -90,14 +121,40 @@ def resolve_checkpoint_tag(ckpt_path: str, ckpt_epoch: Optional[int], ckpt_tag: 
 
 
 def load_sharded_checkpoint(ckpt_path: str, tag: str, model: nn.Module, optim: Optional[AdamATan2] = None):
-    state = {"model": model.state_dict()}
+    model_state = model.state_dict()
     if optim is not None:
-        state["optim"] = get_optimizer_state_dict(model, optim)  # pyright: ignore[reportPrivateImportUsage]
+        state = {"model": model_state, "optim": get_optimizer_state_dict(model, optim)}  # pyright: ignore[reportPrivateImportUsage]
+        dcp.load(state,
+            checkpoint_id=os.path.join(ckpt_path, f"fsdp2_{tag}"),
+            planner=DefaultLoadPlanner(allow_partial_load=True),
+            no_dist=True  # <--- Critical for single rank loading
+        )
+        return
 
-    dcp.load(state,
-        checkpoint_id=os.path.join(ckpt_path, f"fsdp2_{tag}"),
+    checkpoint_id = os.path.join(ckpt_path, f"fsdp2_{tag}")
+    for prefix in ("", "module."):
+        probe_keys = list(model_state)[:16]
+        before = {key: model_state[key].detach().clone() for key in probe_keys}
+        candidate = {prefix + key: value.detach().clone() for key, value in model_state.items()}
+        dcp.load(
+            {"model": candidate},
+            checkpoint_id=checkpoint_id,
+            planner=DefaultLoadPlanner(allow_partial_load=True),
+            no_dist=True,  # <--- Critical for single rank loading
+        )
+        if any(not torch.equal(before[key], candidate[prefix + key]) for key in probe_keys):
+            model.load_state_dict({key: candidate[prefix + key] for key in model_state}, strict=False)
+            return
+
+    # Fall back to the original direct load path. This preserves the historical
+    # behavior for unusual checkpoints where the first tensor happens not to be
+    # a useful load probe.
+    state = {"model": model.state_dict()}
+    dcp.load(
+        state,
+        checkpoint_id=checkpoint_id,
         planner=DefaultLoadPlanner(allow_partial_load=True),
-        no_dist=True  # <--- Critical for single rank loading
+        no_dist=True,
     )
 
 
@@ -146,7 +203,8 @@ def inference_load_checkpoint(
     # Create model
     model_cls = load_model_class(model_cfg.arch.name)
     head_cls = load_model_class(model_cfg.arch.head)
-    with torch.device("cuda"):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    with torch.device(device):
         combined_cfg = model_cfg.arch.model_dump() | train_metadata.model_dump() | model_cfg.data.model_dump()
 
         model: nn.Module = model_cls(combined_cfg)
@@ -156,7 +214,7 @@ def inference_load_checkpoint(
         # Unsharded checkpoints store CPU optimizer state keyed by parameter
         # name, so EMA can be applied directly to the model state.
         optim = None
-        if ckpt_use_ema and checkpoint_format == "sharded":
+        if ckpt_use_ema and checkpoint_format == "sharded" and model_cfg.ema is not None:
             optim = AdamATan2(model.parameters(),
                             lr=torch.tensor(0.0, dtype=torch.get_default_dtype(), device="cpu"),
                             betas=(model_cfg.beta1, model_cfg.beta2),
@@ -167,10 +225,10 @@ def inference_load_checkpoint(
     if checkpoint_format == "sharded":
         load_sharded_checkpoint(ckpt_path, resolved_tag, model, optim)
     elif checkpoint_format == "unsharded":
-        load_unsharded_checkpoint(ckpt_path, resolved_tag, model, optim, use_ema=ckpt_use_ema)
+        load_unsharded_checkpoint(ckpt_path, resolved_tag, model, optim, use_ema=ckpt_use_ema and model_cfg.ema is not None)
     else:
         raise ValueError(f"Unsupported checkpoint format: {checkpoint_format}")
-    carry = torch.load(os.path.join(ckpt_path, f"carry_{resolved_tag}.0.pt"), map_location="cuda")
+    carry = torch.load(os.path.join(ckpt_path, f"carry_{resolved_tag}.0.pt"), map_location=device)
 
     # Use EMA weights
     if ckpt_use_ema and optim is not None:
@@ -184,6 +242,33 @@ def inference_load_checkpoint(
         tokenizer = PreTrainedTokenizerFast(tokenizer_file=tokenizer_path)
     else:
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, use_fast=True)
+    if train_metadata.tokenizer_info.get("template_mode") == "jinja_chat_template":
+        chat_template_path = train_metadata.tokenizer_info.get("chat_template_path")
+        if chat_template_path and os.path.isfile(chat_template_path):
+            tokenizer.chat_template = Path(chat_template_path).read_text()
+        if tokenizer.convert_tokens_to_ids("<pad>") != tokenizer.unk_token_id:
+            tokenizer.pad_token = "<pad>"
+        if tokenizer.convert_tokens_to_ids("<bos>") != tokenizer.unk_token_id:
+            tokenizer.bos_token = "<bos>"
+        if tokenizer.convert_tokens_to_ids("<turn|>") != tokenizer.unk_token_id:
+            tokenizer.eos_token = "<turn|>"
+    else:
+        if "boq" in train_metadata.tokenizer_info:
+            tokenizer.bos_token = train_metadata.tokenizer_info["boq"]
+        elif "bos" in train_metadata.tokenizer_info:
+            token_id = tokenizer.convert_tokens_to_ids(train_metadata.tokenizer_info["bos"])
+            if token_id is not None and token_id != tokenizer.unk_token_id:
+                tokenizer.bos_token = train_metadata.tokenizer_info["bos"]
+        if "eoa" in train_metadata.tokenizer_info:
+            tokenizer.eos_token = train_metadata.tokenizer_info["eoa"]
+        elif "eos" in train_metadata.tokenizer_info:
+            token_id = tokenizer.convert_tokens_to_ids(train_metadata.tokenizer_info["eos"])
+            if token_id is not None and token_id != tokenizer.unk_token_id:
+                tokenizer.eos_token = train_metadata.tokenizer_info["eos"]
+        if "pad" in train_metadata.tokenizer_info:
+            token_id = tokenizer.convert_tokens_to_ids(train_metadata.tokenizer_info["pad"])
+            if token_id is not None and token_id != tokenizer.unk_token_id:
+                tokenizer.pad_token = train_metadata.tokenizer_info["pad"]
     return InferenceCheckpoint(
         model=model,
         carry=carry,
@@ -201,7 +286,7 @@ def _sample_gumbel(logits: Tensor, temp: Tensor):
 def _sample(logits: Tensor, temp: float) -> Tensor:
     if temp < 1e-5:
         return logits.argmax(-1)
-    return _sample_gumbel(logits, torch.tensor(temp, dtype=torch.float32))
+    return _sample_gumbel(logits, torch.tensor(temp, dtype=torch.float32, device=logits.device))
 
 
 @torch.compiler.disable
@@ -232,12 +317,18 @@ def inference_generate(ckpt: InferenceCheckpoint, iterator: Iterator[tuple[int, 
         return -1, None
 
     # Stop condition
-    stop_token: int = ckpt.tokenizer.convert_tokens_to_ids(ckpt.tokenizer_info["eoa"])  # pyright: ignore[reportAssignmentType]
+    stop_token = ckpt.stop_token_id()
+    try:
+        device = next(ckpt.model.parameters()).device
+        dtype = next(ckpt.model.parameters()).dtype
+    except StopIteration:
+        device = next(ckpt.model.buffers()).device
+        dtype = torch.bfloat16
 
-    # Create GPU tensors: KV-cache
-    gpu_cache = ckpt.model.create_cache(max_batch_size=batch_size, max_seq_len=max_tokens, dtype=torch.bfloat16, device="cuda")  # FIXME: hardcoded dtype # pyright: ignore[reportCallIssue]
-    gpu_cache_lengths = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
-    gpu_last_tokens = torch.zeros((batch_size, ), dtype=torch.long, device="cuda")
+    # Create tensors on the model device.
+    gpu_cache = ckpt.model.create_cache(max_batch_size=batch_size, max_seq_len=max_tokens, dtype=dtype, device=device)  # pyright: ignore[reportCallIssue]
+    gpu_cache_lengths = torch.zeros(batch_size, dtype=torch.int32, device=device)
+    gpu_last_tokens = torch.zeros((batch_size, ), dtype=torch.long, device=device)
 
     generated = np.zeros((batch_size, max_tokens), dtype=np.int64)
     generated_starts = np.zeros(batch_size, dtype=np.int64)
@@ -256,7 +347,7 @@ def inference_generate(ckpt: InferenceCheckpoint, iterator: Iterator[tuple[int, 
             launched_prefill = False
             if tokenized_prompt is not None:
                 length = tokenized_prompt.size  # pyright: ignore[reportOptionalMemberAccess]
-                inputs = torch.from_numpy(tokenized_prompt).cuda()  # <--- NOTE CPU to GPU (async)
+                inputs = torch.from_numpy(tokenized_prompt).to(device)
 
                 torch._dynamo.mark_dynamic(inputs, 0, min=1, max=max_tokens)
                 gpu_last_tokens[i] = _sample(_prefill(ckpt.model, ckpt.carry, inputs, pytree.tree_map(lambda x: x[i: i+1], gpu_cache)), temp)[0]

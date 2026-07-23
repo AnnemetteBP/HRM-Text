@@ -16,6 +16,7 @@ from torch.distributed.checkpoint.state_dict import (
     StateDictOptions,
     get_model_state_dict,
     get_optimizer_state_dict,
+    set_optimizer_state_dict,
     set_state_dict,
 )
 from torch.nn.parallel import DistributedDataParallel
@@ -57,6 +58,7 @@ class DataConfig(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='allow')
 
     path: str
+    validation_path: Optional[str] = None
     target_only: bool = True  # Only supervise Answer.
 
 
@@ -112,6 +114,8 @@ class PretrainConfig(pydantic.BaseModel):
     max_steps: Optional[int] = None  # Optional early stop after this many optimizer steps (benchmarking/debugging).
     dataloader_prefetch_factor: int = pydantic.Field(default=8, ge=1)  # Batches prefetched by the (single) dataloader worker.
     log_interval: int = 5
+    validation_interval: int = 0
+    validation_batches: int = 0
 
     @pydantic.model_validator(mode='after')
     def check_intervals(self):
@@ -123,6 +127,10 @@ class PretrainConfig(pydantic.BaseModel):
             raise ValueError("ephemeral_checkpoint_step_interval must be >= 1 when set")
         if self.log_interval < 1:
             raise ValueError("log_interval must be >= 1")
+        if self.validation_interval < 0:
+            raise ValueError("validation_interval must be >= 0")
+        if self.validation_batches < 0:
+            raise ValueError("validation_batches must be >= 0")
         return self
 
 
@@ -154,11 +162,18 @@ def trace_print(config: PretrainConfig, rank: int, message: str):
         print(f"[resume_trace rank={rank}] {message}", flush=True)
 
 
-def create_dataloader(config: PretrainConfig, local_batch_size: int, drop_last_batch: bool, rank: int, world_size: int):
+def create_dataloader(
+    config: PretrainConfig,
+    local_batch_size: int,
+    drop_last_batch: bool,
+    rank: int,
+    world_size: int,
+    dataset_path: Optional[str] = None,
+):
     dataset = V1Dataset(V1DatasetConfig(
         seed=config.seed,
 
-        dataset_path=config.data.path,
+        dataset_path=dataset_path or config.data.path,
         drop_last_batch=drop_last_batch,
 
         target_only=config.data.target_only,
@@ -208,6 +223,15 @@ def unwrap_model(model: nn.Module) -> nn.Module:
 
 def compute_train_extra_args(model: nn.Module, train_state: TrainState) -> dict:
     return unwrap_model(model).compute_train_extra_args(train_state)  # pyright: ignore[reportCallIssue, reportAttributeAccessIssue]
+
+
+def initial_model_carry(model: nn.Module, local_batch_size: int, dtype: torch.dtype) -> Optional[Carry]:
+    module = unwrap_model(model)
+    if hasattr(module, "initial_carry"):
+        return module.initial_carry(local_batch_size, dtype=dtype)  # pyright: ignore[reportAttributeAccessIssue]
+    if hasattr(module, "model") and hasattr(module.model, "initial_carry"):
+        return module.model.initial_carry(local_batch_size, dtype=dtype)  # pyright: ignore[reportAttributeAccessIssue]
+    raise AttributeError(f"{type(module).__name__} does not expose initial_carry")
 
 
 def fsdp_model_dtype(config: PretrainConfig) -> torch.dtype:
@@ -499,6 +523,10 @@ def load_sharded_train_state(config: PretrainConfig, train_state: TrainState, ta
     model_state = train_state.model.state_dict()
     optim_state = get_optimizer_state_dict(train_state.model, train_state.optim)  # pyright: ignore[reportPrivateImportUsage]
     dcp.load({"model": model_state, "optim": optim_state}, checkpoint_id=checkpoint_id)
+    if config.distributed_strategy == "ddp":
+        train_state.model.load_state_dict(model_state)
+        set_optimizer_state_dict(train_state.model, train_state.optim, optim_state)
+        return
     set_state_dict(
         train_state.model,
         train_state.optim,
@@ -661,6 +689,50 @@ def train_accumulated_batches(
         trace_print(config, rank, f"zero_grad_after_step_end step={train_state.step}")
     assert metrics is not None
     trace_print(config, rank, f"train_accumulated_end step={train_state.step}")
+    return metrics
+
+
+@torch.inference_mode()
+def validate_batches(
+    config: PretrainConfig,
+    rank: int,
+    train_state: TrainState,
+    val_iter,
+    num_batches: int,
+    device: torch.device,
+    local_batch_size: int,
+    **kwargs,
+) -> Optional[dict[str, tuple[Tensor, Tensor]]]:
+    if num_batches <= 0:
+        return None
+
+    was_training = train_state.model.training
+    train_state.model.eval()
+    old_carry = train_state.carry
+    with torch.device(device):
+        train_state.carry = initial_model_carry(train_state.model, local_batch_size, dtype=train_state.fwd_bwd_dtype)
+
+    metrics = None
+    for _ in range(num_batches):
+        try:
+            batch, batch_info = next(val_iter)
+        except StopIteration:
+            break
+        batch = move_batch_to_device(batch, device)
+        batch_info.pop("resume_info", None)
+        batch = batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()}
+        device_type = batch["inputs"].device.type
+        use_autocast = (
+            (device_type in ("mps", "cpu") and train_state.fwd_bwd_dtype != torch.float32)
+            or (device_type == "cuda" and train_state.use_cuda_autocast)
+        )
+        with torch.autocast(device_type=device_type, dtype=train_state.fwd_bwd_dtype, enabled=use_autocast, cache_enabled=False):
+            train_state.carry, _, batch_metrics = train_state.model(batch=batch, carry=train_state.carry, **kwargs)
+        metrics = _add_metrics(metrics, batch_metrics)
+
+    train_state.carry = old_carry
+    if was_training:
+        train_state.model.train()
     return metrics
 
 
@@ -908,6 +980,18 @@ def launch(hydra_config: DictConfig):
     trace_print(config, RANK, "init_train_begin")
     train_state, train_loader, train_metadata = init_train(config, rank=RANK, world_size=WORLD_SIZE, device=device)
     trace_print(config, RANK, "init_train_end")
+    val_loader = None
+    val_iter = None
+    if config.data.validation_path is not None and config.validation_interval > 0 and config.validation_batches > 0:
+        val_loader, _ = create_dataloader(
+            config,
+            local_batch_size,
+            drop_last_batch=False,
+            rank=RANK,
+            world_size=WORLD_SIZE,
+            dataset_path=config.data.validation_path,
+        )
+        val_iter = iter(val_loader)
     resume_state = load_train_checkpoint(config, train_state, rank=RANK, local_batch_size=local_batch_size)
     start_epoch = 1
     skip_batches = 0
@@ -1021,6 +1105,38 @@ def launch(hydra_config: DictConfig):
                     trace_print(config, RANK, f"wandb_log_begin step={train_state.step}")
                     wandb.log(metrics | train_extra_args | {"train/lr": lr}, step=train_state.step)
                     trace_print(config, RANK, f"wandb_log_end step={train_state.step}")
+
+            if (
+                val_loader is not None
+                and val_iter is not None
+                and train_state.step % config.validation_interval == 0
+            ):
+                val_metrics = validate_batches(
+                    config,
+                    RANK,
+                    train_state,
+                    val_iter,
+                    config.validation_batches,
+                    device,
+                    local_batch_size,
+                    **train_extra_args,
+                )
+                if val_metrics is None:
+                    val_iter = iter(val_loader)
+                    val_metrics = validate_batches(
+                        config,
+                        RANK,
+                        train_state,
+                        val_iter,
+                        config.validation_batches,
+                        device,
+                        local_batch_size,
+                        **train_extra_args,
+                    )
+                if val_metrics is not None:
+                    val_metrics = reduce_metrics(val_metrics, prefix="val/")
+                    if RANK == 0:
+                        wandb.log(val_metrics, step=train_state.step)
 
             del metrics
 

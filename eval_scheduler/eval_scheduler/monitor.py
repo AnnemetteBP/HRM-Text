@@ -4,12 +4,14 @@ import math
 import os
 import json
 import re
+import shutil
 import subprocess
 import time
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from .locking import PlanLock
 from .model import Action, Job, JobStatus, read_plan
@@ -50,6 +52,19 @@ class GpuInfo:
 class Progress:
     fraction: float | None
     text: str
+
+
+@dataclass(frozen=True)
+class MonitorSnapshot:
+    now: datetime
+    jobs: list[Job]
+    counts: dict[JobStatus, int]
+    gpus: list[int]
+    infos: dict[int, GpuInfo]
+    active_by_gpu: dict[int, tuple[Job, RunningEvent]]
+    active_non_gpu: list[tuple[Job, RunningEvent]]
+    ready: list[Job]
+    blocked: list[tuple[Job, list[str]]]
 
 
 def fmt_seconds(seconds: float | None) -> str:
@@ -554,7 +569,16 @@ def pending_job_line(job: Job, *, extra: str | None = None) -> str:
     return text
 
 
-def status_text(plan_dir: Path, *, gpus: list[int] | None = None) -> str:
+def clipped(text: str, width: int) -> str:
+    if width <= 1:
+        return ""
+    text = text.replace("\n", " ")
+    if len(text) <= width:
+        return text
+    return text[: max(0, width - 1)] + "…"
+
+
+def collect_status(plan_dir: Path, *, gpus: list[int] | None = None) -> MonitorSnapshot:
     with PlanLock(plan_dir, exclusive=False):
         jobs = read_plan(plan_path(plan_dir))
 
@@ -574,41 +598,59 @@ def status_text(plan_dir: Path, *, gpus: list[int] | None = None) -> str:
         gpus = list(range(max(active_gpu_ids, default=7) + 1))
 
     active_by_gpu = {event.gpu: (job, event) for job, event in active_pairs if event.gpu is not None}
+    active_non_gpu = [(job, event) for job, event in active_pairs if event.gpu is None]
     infos = gpu_infos(gpus)
     ready = runnable_pending(jobs)
     blocked = blocked_pending_jobs(jobs)
     now = datetime.now().astimezone()
 
+    return MonitorSnapshot(
+        now=now,
+        jobs=jobs,
+        counts=counts,
+        gpus=gpus,
+        infos=infos,
+        active_by_gpu=active_by_gpu,
+        active_non_gpu=active_non_gpu,
+        ready=ready,
+        blocked=blocked,
+    )
+
+
+def status_text(plan_dir: Path, *, gpus: list[int] | None = None) -> str:
+    snapshot = collect_status(plan_dir, gpus=gpus)
+    counts = snapshot.counts
+
     lines = [
-        now.isoformat(timespec="seconds"),
+        snapshot.now.isoformat(timespec="seconds"),
         (
             "jobs "
             f"done={counts[JobStatus.DONE]} running={counts[JobStatus.RUNNING]} "
-            f"ready={len(ready)} blocked_pending={len(blocked)} "
+            f"ready={len(snapshot.ready)} blocked_pending={len(snapshot.blocked)} "
             f"failed={counts[JobStatus.FAILED]} skipped={counts[JobStatus.SKIPPED]} "
-            f"total={len(jobs)}"
+            f"total={len(snapshot.jobs)}"
         ),
     ]
     lines.append("per-gpu:")
-    for gpu in sorted(gpus):
-        job_event = active_by_gpu.get(gpu)
+    for gpu in sorted(snapshot.gpus):
+        job_event = snapshot.active_by_gpu.get(gpu)
         job = job_event[0] if job_event else None
         event = job_event[1] if job_event else None
-        lines.append("  " + gpu_line(gpu, infos[gpu], job, event, now))
+        lines.append("  " + gpu_line(gpu, snapshot.infos[gpu], job, event, snapshot.now))
     lines.append("next ready:")
-    for job in ready[:12]:
+    for job in snapshot.ready[:12]:
         lines.append("  " + pending_job_line(job))
-    if len(ready) > 12:
-        lines.append(f"  ... {len(ready) - 12} more ready")
-    if blocked:
+    if len(snapshot.ready) > 12:
+        lines.append(f"  ... {len(snapshot.ready) - 12} more ready")
+    if snapshot.blocked:
         lines.append("blocked pending:")
-        for job, unmet in blocked[:12]:
+        for job, unmet in snapshot.blocked[:12]:
             deps = ", ".join(unmet[:6])
             if len(unmet) > 6:
                 deps += f", ... {len(unmet) - 6} more"
             lines.append("  " + pending_job_line(job, extra=f"blocked_by [{deps}]"))
-        if len(blocked) > 12:
-            lines.append(f"  ... {len(blocked) - 12} more blocked")
+        if len(snapshot.blocked) > 12:
+            lines.append(f"  ... {len(snapshot.blocked) - 12} more blocked")
     return "\n".join(lines)
 
 
@@ -617,3 +659,188 @@ def watch(plan_dir: Path, *, gpus: list[int] | None, interval: float) -> None:
         os.system("clear")
         print(status_text(plan_dir, gpus=gpus), flush=True)
         time.sleep(interval)
+
+
+def rich_status_renderable(plan_dir: Path, *, gpus: list[int] | None = None) -> Any:
+    from rich.console import Group
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+
+    snapshot = collect_status(plan_dir, gpus=gpus)
+    counts = snapshot.counts
+    terminal = shutil.get_terminal_size(fallback=(120, 40))
+    columns = max(80, terminal.columns)
+    rows = max(20, terminal.lines)
+
+    summary = Text.assemble(
+        (snapshot.now.isoformat(timespec="seconds"), "bold"),
+        "  jobs ",
+        ("done=", "dim"),
+        (str(counts[JobStatus.DONE]), "green"),
+        (" running=", "dim"),
+        (str(counts[JobStatus.RUNNING]), "cyan"),
+        (" ready=", "dim"),
+        (str(len(snapshot.ready)), "yellow"),
+        (" blocked=", "dim"),
+        (str(len(snapshot.blocked)), "magenta"),
+        (" failed=", "dim"),
+        (str(counts[JobStatus.FAILED]), "red"),
+        (" skipped=", "dim"),
+        str(counts[JobStatus.SKIPPED]),
+        (" total=", "dim"),
+        str(len(snapshot.jobs)),
+    )
+
+    active_non_gpu = snapshot.active_non_gpu
+    cpu_limit = len(active_non_gpu) if len(active_non_gpu) <= 4 else 3
+    cpu_display_rows = len(active_non_gpu) if len(active_non_gpu) <= 4 else 4
+
+    running_table = Table(title="Running jobs", expand=True, show_lines=False, padding=(0, 1))
+    running_table.add_column("Lane", no_wrap=True)
+    running_table.add_column("Mem", no_wrap=True)
+    running_table.add_column("Util", justify="right", no_wrap=True)
+    running_table.add_column("Task", ratio=4, no_wrap=True, overflow="ellipsis")
+    running_table.add_column("Progress", ratio=2, no_wrap=True, overflow="ellipsis")
+    running_table.add_column("ETA", no_wrap=True)
+
+    for gpu in sorted(snapshot.gpus):
+        info = snapshot.infos[gpu]
+        job_event = snapshot.active_by_gpu.get(gpu)
+        mem = "unknown"
+        util = "?"
+        if info.free_mib is not None and info.used_mib is not None and info.total_mib is not None:
+            used_gib = info.used_mib / 1024
+            total_gib = info.total_mib / 1024
+            mem = f"{used_gib:.1f}/{total_gib:.1f} GiB"
+        if info.utilization is not None:
+            util = f"{info.utilization}%"
+        if job_event is None:
+            running_table.add_row(f"GPU{gpu}", mem, util, Text("idle", style="dim"), "", "")
+            continue
+
+        job, event = job_event
+        elapsed = (snapshot.now - event.started_at).total_seconds()
+        progress = job_progress(job)
+        eta = "unknown"
+        if progress.fraction is not None and progress.fraction > 0:
+            eta = fmt_seconds(elapsed * (1.0 / progress.fraction - 1.0))
+        shard = "-" if job.shard is None else str(job.shard)
+        shards = "-" if job.shards is None else str(job.shards)
+        task_width = max(24, columns // 2)
+        label = clipped(
+            f"{job.job_id} {job_model_label(job)} {job.family}:{job.name} "
+            f"shard {shard}/{shards} batch {event.batch} attempt {event.attempt} elapsed {fmt_seconds(elapsed)}",
+            task_width,
+        )
+        if progress.fraction is None:
+            progress_cell: Any = clipped(progress.text, max(16, columns // 4))
+        else:
+            progress_cell = clipped(f"{progress.fraction * 100:.1f}% {progress.text}", max(16, columns // 4))
+        running_table.add_row(f"GPU{gpu}", mem, util, label, progress_cell, eta)
+
+    for job, event in active_non_gpu[:cpu_limit]:
+        elapsed = (snapshot.now - event.started_at).total_seconds()
+        running_table.add_row(
+            "CPU",
+            "-",
+            "-",
+            clipped(f"{job.job_id} {job.family}:{job.name}", max(24, columns // 2)),
+            f"{job.action.value} attempt {event.attempt}",
+            fmt_seconds(elapsed),
+        )
+    if len(active_non_gpu) > cpu_limit:
+        running_table.add_row("CPU", "-", "-", f"... {len(active_non_gpu) - cpu_limit} more", "", "")
+
+    # Height budget for Rich's actual rendered tables:
+    #   summary panel: 3 lines
+    #   running table: title + top + header + sep + rows + bottom ~= rows + 5
+    #   each queue table: title + top + header + sep + rows + bottom ~= rows + 5
+    # Keep two spare lines for tmux/status/prompt edge cases; otherwise the
+    # bottom border or final sentinel row can be cut off in live panes.
+    running_rows = len(snapshot.gpus) + cpu_display_rows
+    fixed_lines = 3 + (running_rows + 5) + 5 + 5 + 2
+    row_budget = max(2, rows - fixed_lines)
+    ready_rows_needed = len(snapshot.ready) if snapshot.ready else 1
+    blocked_rows_needed = len(snapshot.blocked) if snapshot.blocked else 1
+
+    if ready_rows_needed + blocked_rows_needed <= row_budget:
+        ready_limit = len(snapshot.ready)
+        blocked_limit = len(snapshot.blocked)
+    else:
+        # Start with a modest fair split, then hand unused capacity to the
+        # section with more rows. Reserve one displayed row for the "... N more"
+        # sentinel when truncating.
+        ready_capacity = min(ready_rows_needed, max(1, row_budget // 3))
+        blocked_capacity = min(blocked_rows_needed, max(1, row_budget - ready_capacity))
+        unused = row_budget - ready_capacity - blocked_capacity
+        if unused > 0 and blocked_capacity < blocked_rows_needed:
+            take = min(unused, blocked_rows_needed - blocked_capacity)
+            blocked_capacity += take
+            unused -= take
+        if unused > 0 and ready_capacity < ready_rows_needed:
+            ready_capacity += min(unused, ready_rows_needed - ready_capacity)
+
+        ready_limit = len(snapshot.ready) if len(snapshot.ready) <= ready_capacity else max(0, ready_capacity - 1)
+        blocked_limit = (
+            len(snapshot.blocked)
+            if len(snapshot.blocked) <= blocked_capacity
+            else max(0, blocked_capacity - 1)
+        )
+
+    ready_table = Table(title="Next ready", expand=True, show_lines=False, padding=(0, 1))
+    ready_table.add_column("Job", no_wrap=True)
+    ready_table.add_column("Action", no_wrap=True)
+    ready_table.add_column("Task", no_wrap=True, overflow="ellipsis")
+    ready_table.add_column("Shard", no_wrap=True)
+    ready_table.add_column("Batch", no_wrap=True)
+    for job in snapshot.ready[:ready_limit]:
+        shard = "-" if job.shard is None else str(job.shard)
+        shards = "-" if job.shards is None else str(job.shards)
+        ready_table.add_row(
+            job.job_id,
+            job.action.value,
+            f"{job_model_label(job)} {job.family}:{job.name}",
+            f"{shard}/{shards}",
+            str(job.retry_batch()),
+        )
+    if len(snapshot.ready) > ready_limit:
+        ready_table.add_row(f"... {len(snapshot.ready) - ready_limit} more", "", "", "", "")
+    if not snapshot.ready:
+        ready_table.add_row("none", "", "", "", "")
+
+    blocked_table = Table(title="Blocked pending", expand=True, show_lines=False, padding=(0, 1))
+    blocked_table.add_column("Job", no_wrap=True)
+    blocked_table.add_column("Task", no_wrap=True, overflow="ellipsis")
+    blocked_table.add_column("Blocked by", no_wrap=True, overflow="ellipsis")
+    for job, unmet in snapshot.blocked[:blocked_limit]:
+        blocked_table.add_row(
+            job.job_id,
+            f"{job.family}:{job.name}",
+            ", ".join(unmet[:6]) + (f", ... {len(unmet) - 6} more" if len(unmet) > 6 else ""),
+        )
+    if len(snapshot.blocked) > blocked_limit:
+        blocked_table.add_row(f"... {len(snapshot.blocked) - blocked_limit} more", "", "")
+    if not snapshot.blocked:
+        blocked_table.add_row("none", "", "")
+
+    renderables: list[Any] = [Panel(summary, title="Eval scheduler", expand=True, height=3), running_table]
+    renderables.extend([ready_table, blocked_table])
+
+    return Group(*renderables)
+
+
+def rich_watch(plan_dir: Path, *, gpus: list[int] | None, interval: float) -> None:
+    from rich.console import Console
+    from rich.live import Live
+
+    console = Console()
+    with Live(
+        rich_status_renderable(plan_dir, gpus=gpus),
+        console=console,
+        refresh_per_second=max(1.0 / max(interval, 0.1), 0.05),
+        screen=False,
+    ) as live:
+        while True:
+            time.sleep(interval)
+            live.update(rich_status_renderable(plan_dir, gpus=gpus))

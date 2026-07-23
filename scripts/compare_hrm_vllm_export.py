@@ -20,6 +20,7 @@ from simple_inference_engine import (
     _sample,
     inference_load_checkpoint,
 )
+from pretrain import initial_model_carry
 
 
 def parse_bool(value: str) -> bool:
@@ -48,7 +49,8 @@ def simple_generate_token_ids(
     if len(prompt_ids) >= max_context:
         raise ValueError(f"Prompt has {len(prompt_ids)} tokens, max_context is {max_context}")
 
-    stop_token = int(ckpt.tokenizer.convert_tokens_to_ids(ckpt.tokenizer_info["eoa"]))
+    stop_token = ckpt.stop_token_id()
+    carry = initial_model_carry(ckpt.model, 1, dtype=torch.bfloat16)
     cache = ckpt.model.create_cache(
         max_batch_size=1,
         max_seq_len=max_context,
@@ -58,12 +60,12 @@ def simple_generate_token_ids(
     cache_lengths = torch.zeros(1, dtype=torch.int32, device="cuda")
     inputs = torch.tensor(prompt_ids, dtype=torch.long, device="cuda")
 
-    token = _sample(_prefill(ckpt.model, ckpt.carry, inputs, cache), 0.0)
+    token = _sample(_prefill(ckpt.model, carry, inputs, cache), 0.0)
     cache_lengths[0] = len(prompt_ids)
     generated = [int(token.item())]
 
     while generated[-1] != stop_token and len(generated) < max_new_tokens:
-        token = _sample(_batched_decode(ckpt.model, ckpt.carry, token, cache, cache_lengths), 0.0)
+        token = _sample(_batched_decode(ckpt.model, carry, token, cache, cache_lengths), 0.0)
         cache_lengths.add_(1).clamp_max_(max_context - 1)
         generated.append(int(token.item()))
 

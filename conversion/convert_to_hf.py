@@ -1,13 +1,14 @@
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
 import torch
 import yaml
 from safetensors.torch import save_file
-from transformers import AutoTokenizer, PreTrainedTokenizerFast
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerFast
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -24,25 +25,117 @@ SKIP_PREFIXES = (
 )
 DROP_KEYS = {"model.zH_init"}
 
+ATTN_PACKED_RE = re.compile(r"^(model\.[HL]_module\.layers\.\d+)\.attn\.gqkv_proj\.weight$")
+ATTN_OUT_RE = re.compile(r"^(model\.[HL]_module\.layers\.\d+)\.attn\.o_proj\.weight$")
+MLP_PACKED_RE = re.compile(r"^(model\.[HL]_module\.layers\.\d+)\.mlp\.gate_up_proj\.weight$")
 
-def remap_key(key: str) -> str | None:
+
+def remap_key(key: str, *, weight_layout: str) -> str | None:
     if key in DROP_KEYS or key.startswith(SKIP_PREFIXES):
         return None
     key = key.replace("model.H_level.core.layers.", "model.H_module.layers.")
     key = key.replace("model.L_level.core.layers.", "model.L_module.layers.")
+    if weight_layout == "hf_split":
+        key = key.replace(".attn.o_proj.", ".self_attn.o_proj.")
     key = key.replace("model.zL_init", "model.z_L_init")
     return "model.embed_tokens.weight" if key == "embed_tokens.embedding_weight" else key
 
 
-def convert_state_dict(state_dict: dict[str, torch.Tensor]) -> tuple[dict[str, torch.Tensor], list[str]]:
+def _token_id(tokenizer, token: str | None) -> int | None:
+    if token is None:
+        return None
+    token_id = tokenizer.convert_tokens_to_ids(token)
+    if token_id is None or token_id == getattr(tokenizer, "unk_token_id", None):
+        return None
+    return int(token_id)
+
+
+def _split_attention_projection(cfg: dict, key: str, value: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    num_heads = int(cfg["num_heads"])
+    num_key_value_heads = int(cfg.get("num_key_value_heads", num_heads))
+    if num_key_value_heads != num_heads:
+        raise ValueError(
+            f"{key}: HF HRM-Text export currently supports MHA checkpoints only "
+            f"(num_heads={num_heads}, num_key_value_heads={num_key_value_heads})"
+        )
+    head_dim = int(cfg["hidden_size"]) // num_heads
+    split_sizes = [num_heads * head_dim, num_heads * head_dim, num_key_value_heads * head_dim, num_key_value_heads * head_dim]
+    if value.shape[0] != sum(split_sizes):
+        raise ValueError(f"{key}: expected packed attention rows {sum(split_sizes)}, got {value.shape[0]}")
+    return value.split(split_sizes, dim=0)
+
+
+def convert_state_dict(
+    state_dict: dict[str, torch.Tensor],
+    cfg: dict,
+    *,
+    weight_layout: str = "vllm_packed",
+) -> tuple[dict[str, torch.Tensor], list[str]]:
     out, skipped = {}, []
     for key, value in state_dict.items():
-        new_key = remap_key(key)
+        new_key = remap_key(key, weight_layout=weight_layout)
         if new_key is None:
             skipped.append(key)
+        elif weight_layout == "hf_split" and (match := ATTN_PACKED_RE.match(new_key)):
+            prefix = match.group(1)
+            gate, query, key_tensor, val = _split_attention_projection(cfg, new_key, value)
+            out[f"{prefix}.self_attn.gate_proj.weight"] = gate.contiguous()
+            out[f"{prefix}.self_attn.q_proj.weight"] = query.contiguous()
+            out[f"{prefix}.self_attn.k_proj.weight"] = key_tensor.contiguous()
+            out[f"{prefix}.self_attn.v_proj.weight"] = val.contiguous()
+        elif weight_layout == "hf_split" and (match := MLP_PACKED_RE.match(new_key)):
+            prefix = match.group(1)
+            gate, up = value.chunk(2, dim=0)
+            out[f"{prefix}.mlp.gate_proj.weight"] = gate.contiguous()
+            out[f"{prefix}.mlp.up_proj.weight"] = up.contiguous()
+        elif weight_layout == "hf_split" and (match := ATTN_OUT_RE.match(new_key)):
+            prefix = match.group(1)
+            out[f"{prefix}.self_attn.o_proj.weight"] = value.contiguous()
         else:
             out[new_key] = value.contiguous()
     return out, skipped
+
+
+def validate_hf_state(out_dir: Path, hf_state: dict[str, torch.Tensor]) -> None:
+    config = AutoConfig.from_pretrained(out_dir, trust_remote_code=True)
+    with torch.device("meta"):
+        model = AutoModelForCausalLM.from_config(config, trust_remote_code=True)
+    expected = model.state_dict()
+    missing = sorted(set(expected) - set(hf_state))
+    unexpected = sorted(set(hf_state) - set(expected))
+    shape_mismatches = sorted(
+        (key, tuple(hf_state[key].shape), tuple(expected[key].shape))
+        for key in set(expected) & set(hf_state)
+        if tuple(hf_state[key].shape) != tuple(expected[key].shape)
+    )
+    if missing or unexpected or shape_mismatches:
+        details = []
+        if missing:
+            details.append("missing HF tensors:\n" + "\n".join(f"  - {key}" for key in missing))
+        if unexpected:
+            details.append("unexpected HF tensors:\n" + "\n".join(f"  - {key}" for key in unexpected))
+        if shape_mismatches:
+            details.append(
+                "shape mismatches:\n"
+                + "\n".join(f"  - {key}: got {got}, expected {expected_shape}" for key, got, expected_shape in shape_mismatches)
+            )
+        raise RuntimeError("converted checkpoint does not match HF architecture:\n" + "\n".join(details))
+
+
+def validate_vllm_packed_state(hf_state: dict[str, torch.Tensor]) -> None:
+    split_markers = (".self_attn.q_proj.", ".self_attn.k_proj.", ".self_attn.v_proj.", ".self_attn.gate_proj.", ".mlp.gate_proj.", ".mlp.up_proj.")
+    split_keys = [key for key in hf_state if any(marker in key for marker in split_markers)]
+    packed_attention = [key for key in hf_state if ATTN_PACKED_RE.match(key)]
+    packed_mlp = [key for key in hf_state if MLP_PACKED_RE.match(key)]
+    if split_keys or not packed_attention or not packed_mlp:
+        details = []
+        if split_keys:
+            details.append("split HF tensors are not vLLM-compatible:\n" + "\n".join(f"  - {key}" for key in split_keys[:20]))
+        if not packed_attention:
+            details.append("no packed attention gqkv tensors found")
+        if not packed_mlp:
+            details.append("no packed MLP gate_up tensors found")
+        raise RuntimeError("converted checkpoint does not match vLLM packed HRM layout:\n" + "\n".join(details))
 
 
 def _compute_intermediate_size(hidden_size: int, expansion: float) -> int:
@@ -114,15 +207,20 @@ def build_hf_config(cfg: dict, tokenizer) -> dict:
     }
     for key, token_name in (("bos_token_id", "boq"), ("eos_token_id", "eoa")):
         if token_name in cfg:
-            hf_cfg[key] = tokenizer.convert_tokens_to_ids(cfg[token_name])
+            if (token_id := _token_id(tokenizer, cfg[token_name])) is not None:
+                hf_cfg[key] = token_id
+    for key, token_name in (("bos_token_id", "bos"), ("eos_token_id", "eos"), ("pad_token_id", "pad")):
+        if token_name in cfg:
+            if (token_id := _token_id(tokenizer, cfg[token_name])) is not None:
+                hf_cfg[key] = token_id
     if cfg.get("template_mode") == "jinja_chat_template":
         for key, token_name in (
             ("bos_token_id", "<bos>"),
             ("eos_token_id", "<turn|>"),
             ("pad_token_id", "<pad>"),
         ):
-            token_id = tokenizer.convert_tokens_to_ids(token_name)
-            if token_id is not None and token_id != getattr(tokenizer, "unk_token_id", None):
+            token_id = _token_id(tokenizer, token_name)
+            if token_id is not None:
                 hf_cfg[key] = token_id
     return {k: v for k, v in hf_cfg.items() if v is not None}
 
@@ -152,10 +250,17 @@ def set_tokenizer_special_tokens(tokenizer, cfg: dict):
         endoftext_id = tokenizer.convert_tokens_to_ids("<|endoftext|>")
         if endoftext_id != tokenizer.unk_token_id:
             tokenizer.pad_token = "<|endoftext|>"
-    if "boq" in cfg:
-        tokenizer.bos_token = cfg["boq"]
-    if "eoa" in cfg:
-        tokenizer.eos_token = cfg["eoa"]
+    if cfg.get("template_mode") != "jinja_chat_template":
+        if "pad" in cfg and _token_id(tokenizer, cfg["pad"]) is not None:
+            tokenizer.pad_token = cfg["pad"]
+        if "boq" in cfg:
+            tokenizer.bos_token = cfg["boq"]
+        elif "bos" in cfg and _token_id(tokenizer, cfg["bos"]) is not None:
+            tokenizer.bos_token = cfg["bos"]
+        if "eoa" in cfg:
+            tokenizer.eos_token = cfg["eoa"]
+        elif "eos" in cfg and _token_id(tokenizer, cfg["eos"]) is not None:
+            tokenizer.eos_token = cfg["eos"]
     return tokenizer
 
 
@@ -178,6 +283,16 @@ def main():
     parser.add_argument("--ckpt_use_ema", type=parse_bool, default=True)
     parser.add_argument("--out_dir", type=Path, required=True)
     parser.add_argument("--tokenizer_path", type=Path, default=None)
+    parser.add_argument(
+        "--weight-layout",
+        choices=("vllm_packed", "hf_split"),
+        default="vllm_packed",
+        help=(
+            "Weight layout to write. vllm_packed is the production default "
+            "for vLLM HRM evals; hf_split writes explicit Transformers "
+            "q/k/v/gate and MLP gate/up tensors."
+        ),
+    )
     parser.add_argument("--config-only", action="store_true", help="Write config/tokenizer only; do not load or save model weights.")
     args = parser.parse_args()
     if args.ckpt_epoch is not None and args.ckpt_tag is not None:
@@ -203,15 +318,19 @@ def main():
         return
 
     ckpt = inference_load_checkpoint(str(args.ckpt_path), args.ckpt_epoch, args.ckpt_use_ema, ckpt_tag=args.ckpt_tag)
-    hf_state, dropped = convert_state_dict(ckpt.model.state_dict())
+    hf_state, dropped = convert_state_dict(ckpt.model.state_dict(), cfg, weight_layout=args.weight_layout)
     print(f"[convert] mapped {len(hf_state)} tensors; dropped {len(dropped)}")
     if dropped:
         print("[convert] dropped tensors:")
         for key in dropped:
             print(f"  - {key}")
 
+    if args.weight_layout == "hf_split":
+        validate_hf_state(args.out_dir, hf_state)
+    else:
+        validate_vllm_packed_state(hf_state)
     save_file(hf_state, args.out_dir / "model.safetensors")
-    print(f"[convert] wrote checkpoint to {args.out_dir}")
+    print(f"[convert] wrote {args.weight_layout} checkpoint to {args.out_dir}")
 
 
 if __name__ == "__main__":

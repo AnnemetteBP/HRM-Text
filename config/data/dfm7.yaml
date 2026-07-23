@@ -1,0 +1,11 @@
+path: data/sampled_dfm7
+target_only: true
+
+# DFM7 is a separate Gemma-template data build. Keep it independent from DFM6:
+#   data/dfm7_chat_sources
+#   data/tokenized_dfm7_jinja
+#   data/tokenized_dfm7
+#   data/sampled_dfm7
+#
+# The supported preparation path is scripts/prepare_dfm7_data.sh, which enforces
+# data_io/chat_templates/gemma4_native_chat.jinja for all DFM7 tokenization.
