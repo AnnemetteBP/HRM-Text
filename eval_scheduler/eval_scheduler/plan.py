@@ -65,6 +65,7 @@ class PlanConfig:
     vllm_dtype: str = "bfloat16"
     vllm_max_model_len: int = 4096
     vllm_gpu_memory_utilization: float = 0.9
+    min_gpu_free_mib: int = 0
     vllm_attention_backend: str = "FLASH_ATTN"
     vllm_trust_remote_code: bool = False
     vllm_extra_args: str = ""
@@ -81,6 +82,7 @@ class PlanConfig:
     judged_max_connections: int | None = None
     judged_batch: int | None = 16
     judged_vllm_gpu_memory_utilization: float | None = 0.18
+    judged_min_gpu_free_mib: int | None = None
     govreport_max_report_chars: int | None = 9000
 
 
@@ -123,7 +125,8 @@ def common_metadata(config: PlanConfig) -> dict[str, object]:
             {
                 "vllm_dtype": config.vllm_dtype,
                 "vllm_max_model_len": config.vllm_max_model_len,
-                "vllm_gpu_memory_utilization": config.vllm_gpu_memory_utilization,
+        "vllm_gpu_memory_utilization": config.vllm_gpu_memory_utilization,
+        "min_gpu_free_mib": config.min_gpu_free_mib,
                 "vllm_attention_backend": config.vllm_attention_backend,
                 "vllm_trust_remote_code": config.vllm_trust_remote_code,
             }
@@ -389,6 +392,8 @@ def make_plan(config: PlanConfig) -> list[Job]:
                     and (config.hrm_server_backend == "vllm" or config.external_model)
                 ):
                     extra["vllm_gpu_memory_utilization"] = config.judged_vllm_gpu_memory_utilization
+                if config.judged_min_gpu_free_mib is not None:
+                    extra["min_gpu_free_mib"] = config.judged_min_gpu_free_mib
                 if extra:
                     job_metadata = metadata | extra
                 if config.judged_batch is not None:

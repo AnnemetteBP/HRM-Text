@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-11
+Last updated: 2026-07-25
 Confidence: high
 Scope: Local repo state and verified commands from this session.
 
@@ -10056,3 +10056,431 @@ prompt modes, `condition=direct` maps to the HRM direct condition token.
 This supersedes older local notes that described GSM8k as using the global
 `synth,cot` setting. Those notes describe an earlier/original-code comparison
 or stale config state, not the current scheduler config.
+
+## DFM8 XL Resume Point, 2026-07-24
+
+Confidence: high from local checkpoint sidecar and shard inspection.
+
+The DFM8 XL epoch-7 process stopped on 2026-07-24 after rank 1 received
+`SIGKILL` and the remaining ranks were terminated. The newest fully written
+checkpoint is:
+
+```text
+checkpoints/dfm8/XL-from-dfm6-dfm7-epoch5/fsdp2_ephemeral_step_1766500
+```
+
+It has its DCP `.metadata`, all 8 `*.distcp` shards, all 8
+`carry_ephemeral_step_1766500.<rank>.pt` files, and
+`checkpoint_state_ephemeral_step_1766500.json`. The sidecar records
+`step=1766500`, `epoch=7`, `batch_in_epoch=535428`, and
+`batch_in_epoch_exact=true`.
+
+This supersedes the earlier recorded `ephemeral_step_1569000` resume point.
+Resume with the original DFM8 XL settings and:
+
+```text
+resume_checkpoint_tag=ephemeral_step_1766500
+resume_step=1766500
+resume_epoch=7
+```
+
+## DFM8 L Resume Point, 2026-07-24
+
+Confidence: high from local checkpoint sidecar/shard inspection and W&B API
+configuration readback.
+
+Despite the run name and checkpoint directory containing `gbs131072`, the
+actual DFM8 L run used:
+
+```text
+global_batch_size=262144
+gradient_accumulation_steps=1
+lr=3e-4
+epochs=1
+```
+
+The W&B target is project `DFM5`, run ID `g2oaotmc`, display name
+`DFM8-L-gbs131072`. The newest complete checkpoint is
+`ephemeral_step_43000` under `checkpoints/dfm8/L-gbs131072`; it has DCP
+metadata, all 8 model shards, all 8 carry files, and an exact epoch-1 batch
+cursor. Resume must preserve the actual 262144-token global batch despite the
+legacy name.
+
+## DFM8 L 50K/100K Evaluation Plan, 2026-07-25
+
+Confidence: high from local plan generation, process inspection, and tmux
+launch verification.
+
+A full standard + DFM + EuroEval plan for DFM8 L checkpoints `step_50000` and
+`step_100000` is stored at:
+
+```text
+logs/scheduler/dfm8_L_steps50k_100k_vllm_hrmenv_20260725
+```
+
+It targets W&B project `DFM5`, run ID `g2oaotmc`, and logs the checkpoints at
+DFM8 epoch coordinates `0.1859719823565767` and `0.3719439647131534`.
+The plan contains checkpoint waits, EMA HF exports, 170 standard-eval shards,
+102 DFM shards, 64 DFM IFEval-DA shards, 40 EuroEval jobs, per-task merges and
+W&B syncs, and headline/suite averages.
+
+The plan uses the established DFM8 Gemma settings: FA4/vLLM, Gemma native chat
+template and BFCL tool conversion, EuroEval-first ordering, 5 retries,
+standard batch 64, DFM/IFEval/EuroEval batch 32, and the local
+`unsloth/gemma-4-E4B-it` judge with judged target-server utilization 0.18.
+
+The active L training process currently leaves only about 5-19 GiB free per
+GPU. To avoid disrupting training, tmux window `hrm-0:6` waits until no
+`pretrain.py data=dfm8 arch/size@arch=L` process remains before starting the
+scheduler on GPUs 0-7. The Rich monitor is in `hrm-0:7`.
+
+Update, 2026-07-25. Confidence: high from atomic plan inspection, scheduler
+status, and GPU/process inspection.
+
+The conservative batch/utilization settings and training guard above are
+superseded for this campaign. After the DFM8 L training workers were stopped
+and all eight GPUs had about 173 GiB free, the plan was updated to use:
+
+```text
+general vLLM GPU memory utilization: 0.90
+standard eval batch:                 128
+DFM eval batch:                       64
+DFM IFEval-DA batch:                  64
+EuroEval batch/concurrency:           64
+generative_talemaader batch:          32
+generative_talemaader utilization:  0.65
+```
+
+The judged `generative_talemaader` task retains lower target-server
+utilization so the Gemma judge can coexist on the same GPU. Eval jobs retain
+adaptive retry behavior (`fixed_retry_batch=false`) and up to five retries,
+halving the batch after resource failures. The pre-edit plan is backed up as
+`plan.before_highmem_20260725.tsv` in the plan directory.
+
+The scheduler now runs directly in `hrm-0:6` and the 30-second Rich monitor in
+`hrm-0:7`. Both EMA HF exports completed successfully, after which all eight
+GPUs began EuroEval jobs at batch 64. Initial scheduler state had no failures.
+
+## Demand-Driven Persistent vLLM Comparison, 2026-07-25
+
+Confidence: high for implementation, unit tests, and measured baseline timing;
+comparison results remain pending until the old 100K campaign and the
+persistent rerun finish.
+
+Completed EuroEval jobs in the fresh-server campaign showed material startup
+overhead. Across 24 measured jobs, mean total duration was 134 seconds:
+40 seconds (29.8%) in vLLM startup, 24 seconds (18.2%) in client/dataset
+setup, and 70 seconds (52.0%) in evaluation. A representative MATH shard spent
+roughly 20-25 seconds starting vLLM and 80 seconds generating.
+
+The new scheduler option:
+
+```bash
+python -m eval_scheduler run \
+  --plan-dir <plan-dir> \
+  --gpus 0,1,2,3,4,5,6,7 \
+  --persistent-vllm
+```
+
+enables demand-driven server reuse across standard, DFM, DFM-IFEval,
+EuroEval, and batched EuroEval IFEval jobs. It is opt-in; the default
+fresh-server path is unchanged. One lease is owned per GPU. A lease is reused
+only when model/export path, checkpoint, EMA mode, Python, host, dtype, context
+limit, GPU-memory utilization, attention backend, trust setting, complete
+extra-argument set, CUDA root, and GPU all match. Mismatch or failed health
+checks replace it. Server/client failures, OOMs, and callback exceptions
+invalidate it before scheduler retry. Remaining leases are terminated when the
+scheduler exits.
+
+Lifecycle coverage is in `eval_scheduler/tests/test_server_pool.py`; static
+compilation and five focused tests pass. The isolated no-W&B comparison plan is:
+
+```text
+logs/scheduler/dfm8_L_step100k_persistent_vllm_compare_20260725
+```
+
+It contains the same 216 `step_100000` workflow rows as the baseline. Tmux
+window `hrm-0:8` waits for the existing fresh-server campaign to finish, then
+runs this plan with persistent reuse and captures `/usr/bin/time`; `hrm-0:9`
+monitors it. The final metric and timing comparison will be written to
+`comparison.json` in that plan directory.
+
+## DFM8 L Suite-Average History Repair, 2026-07-25
+
+Confidence: high from scheduler logs, the live W&B workspace specification,
+and remote sampled-history inspection.
+
+The DFM5 workspace `760qd0evtsa` correctly contains all three suite panels and
+uses `suite_avg_v3/epoch` as their x-axis. For run `g2oaotmc`, the 50K
+`suite_avg_v3/dfm` job originally reported a successful W&B sync, but that
+history point was absent remotely while the standard and EuroEval points were
+present. Relogging the 50K DFM-only average restored it. Remote history now
+contains:
+
+```text
+50K:  epoch 0.1859719823565767, suite_avg_v3/dfm 0.49810676177982177
+100K: epoch 0.3719439647131534, suite_avg_v3/dfm 0.5822767417590341
+```
+
+Operational lesson: a successful W&B CLI sync message is not sufficient
+verification for average rows written into an active resumed run. When one
+suite panel is missing a point, inspect remote sampled history for the metric
+and x-axis pair and relog only the missing suite/epoch point.
+
+Update, 2026-07-25. Confidence: high from local merged artifacts and remote
+W&B summary/history inspection.
+
+A full 50K/100K sync audit for DFM8 L run `g2oaotmc` checked 878 prefixed
+numeric metrics. Besides the repaired DFM average and 100K Angry Tweets point,
+it found and selectively restored Winogrande at both checkpoints, 50K
+EuroEval NordjyllandNews, and 100K DFM PIQA/Danish Citizen Tests plus EuroEval
+Danske Talemaader. A second audit reported zero missing and zero mismatched
+values across standard, DFM, and EuroEval.
+
+The first persistent-vLLM comparison attempt exposed two implementation
+issues. Pool acquisition originally held one global lock while waiting for
+server startup, serializing independent GPU starts. This is superseded by
+per-GPU lifecycle locks, covered by a concurrent-start unit test. The original
+persistent port formula could also exceed port 65535 on higher GPU IDs (for
+example 65574-65774). It now allocates a compact, process-specific eight-port
+block in the safe range 20000-51999. GNU `/usr/bin/time` is not installed on
+this host, so the comparison wrapper now records elapsed wall seconds directly.
+
+The clean no-W&B comparison plan is:
+
+```text
+logs/scheduler/dfm8_L_step100k_persistent_vllm_compare_v2_20260725
+```
+
+This v2 claim is superseded. EuroEval's native proxy was still assigned by the
+legacy additive port formula. It advertised ports above 65535 (for example
+68144); Linux bound the wrapped port, but LiteLLM rejected the advertised URL.
+Only EuroEval's initial model probe reached vLLM, after which clients repeatedly
+reported connection errors and GPUs appeared inactive. Relative EuroEval
+run/cache paths could also be resolved below the run directory a second time
+because the client changes its working directory.
+
+Update, 2026-07-25. Confidence: high from process arguments, listening sockets,
+proxy request logs, scheduler events, and live GPU utilization.
+
+`start_native_proxy` now maps legacy offsets into the valid unprivileged range
+30000-59999, and both EuroEval runners resolve their run roots before launching
+clients. The focused server-pool suite now has seven passing tests, including
+valid-port and concurrent-start checks. The clean replacement plan is:
+
+```text
+logs/scheduler/dfm8_L_step100k_persistent_vllm_compare_v3_20260725
+```
+
+It runs in `hrm-0:6`; the Rich monitor in `hrm-0:7` targets the same plan. The
+first wave completed six evaluation jobs without failures and immediately
+reused resident servers for later tasks. Proxy logs grew to hundreds or
+thousands of requests per completed task, and active inference produced
+55-95% GPU utilization.
+
+Persistent comparison result, 2026-07-25. Confidence: high from the completed
+scheduler state, lifecycle events, and local metric artifacts.
+
+- The v3 run finished 210 workflow rows, skipped the intentionally disabled
+  W&B row, and completed 186 of 187 GPU evaluation jobs.
+- Aggregate completed evaluation-job time fell from `32231` seconds in the
+  fresh-server 100K baseline to `15393` seconds with persistence: a `2.09x`
+  reduction in occupied GPU-job time.
+- The measured evaluation wall span fell from `7677` to `2106` seconds. This
+  `3.65x` figure is not a clean standalone speedup because the baseline plan
+  interleaved 50K and 100K work on the same eight GPUs; GPU-job time is the
+  more defensible comparison.
+- Lifecycle events recorded 27 server starts and 166 successful reuses. Seven
+  servers were invalidated during retries/configuration transitions, and all
+  remaining servers were torn down at scheduler exit.
+- Local comparison found 437 shared metrics. The only missing candidate keys
+  were `eval/MATH/{acc,invalid,n}` because MATH shard 42/64 repeatedly exited
+  with signal `-11`, ultimately leaving its merge plus three dependent average
+  rows blocked.
+- Other metric differences include expected nondeterminism from generated
+  answers and EuroEval confidence/bootstrap calculations. There was no broad
+  systematic shift attributable to server reuse.
+
+The partial comparison is saved at:
+
+```text
+logs/scheduler/dfm8_L_step100k_persistent_vllm_compare_v3_20260725/comparison.partial.json
+```
+
+MATH shard-42 investigation, 2026-07-25. Confidence: high from the failed
+client log, the successful fresh-server log, local Gemma-template tokenization,
+and focused tests.
+
+- The persistent server itself did not segfault. One MATH shard-42 prompt
+  exceeded the OpenAI request budget: vLLM received at least 1025 input tokens
+  plus the requested 3072 output tokens for a 4096-token model and returned
+  HTTP 400.
+- Python subsequently segfaulted during exception-driven interpreter teardown,
+  making scheduler status `-11` obscure the preceding actionable HTTP error.
+  Reducing batch size from 64 through 4 could not help because this was a
+  per-request context-length error.
+- The fresh baseline used in-process `VLLMEngine`, which accepted the same
+  request and dynamically limited output to the remaining model context.
+- Local inspection found exactly one shard-42 outlier above 1024 tokens. Under
+  the Gemma template it is about 1456 tokens; the next-longest prompt is only
+  476. Its correct maximum output allowance is therefore about
+  `4096 - 1456 = 2640`, while shorter prompts can retain the configured 3072.
+- Internal OpenAI standard evaluations now receive the exported tokenizer,
+  exact chat template, and model context window. `OpenAIEngine` counts each
+  rendered prompt locally and clamps only that request's output budget to the
+  remaining context. External-model behavior remains unchanged. The HTTP-400
+  parser remains as a generic fallback.
+- Nine focused scheduler/engine tests pass and both changed Python modules
+  compile. The shard has not yet been rerun because the DFM8 XXL training
+  started on all eight GPUs immediately after the comparison.
+
+DFM8 XXL 50K/100K persistent-evaluation campaign, 2026-07-25. Confidence:
+high from the W&B run config, live GPU telemetry, generated plan inspection,
+and running scheduler state.
+
+- Training run: W&B project `DFM5`, run ID `ak41pnma`, run name `dfm8-XXL`.
+  The architecture has `3,978,297,344` parameters.
+- Plan:
+  `logs/scheduler/dfm8_XXL_steps50k_100k_persistent_vllm_20260725`.
+  It contains guarded EMA exports and all standard, DFM, DFM IFEval-DA, and
+  EuroEval jobs for `step_50000` and `step_100000`, followed by task-local
+  merges, W&B sync, headline/suite averages, and reports.
+- Epoch coordinates are `0.1859719823565767` and `0.3719439647131534`,
+  derived from the DFM8 epoch size and the `262144` global batch.
+- The scheduler is running in `hrm-0:6` and its 30-second Rich monitor is in
+  `hrm-0:7`. Both were launched from the `hrm` conda environment.
+- Superseded launch setting: the first version restricted execution to GPUs
+  `1,3,6,7` and set every target server to utilization `0.08`. This was safe
+  but would provide unnecessarily little KV cache and ignore the established
+  successful task-specific settings.
+- Ordinary batches are standard `64`, DFM `32`, DFM IFEval-DA `32`, and
+  EuroEval `32`. Judged rows use batch/max-connections `16`. Every job allows
+  five retries after its initial attempt.
+- At launch, both checkpoint-wait jobs were active and no evaluation server
+  had started. This preserves training memory until a complete checkpoint is
+  available.
+
+Superseding headroom-gated launch, 2026-07-25. Confidence: high from focused
+tests, locked plan inspection, scheduler process arguments, and live status.
+
+- `eval_scheduler` now supports `min_gpu_free_mib` per job and exposes
+  `--min-gpu-free-mib` plus `--judged-min-gpu-free-mib` during plan creation.
+  A ready job waits instead of exiting when no GPU meets the gate, and the
+  eligible GPU with the most effective free memory is selected.
+- Effective free memory credits an incompatible persistent server's allocation
+  because it will be terminated before replacement. A compatible resident
+  server bypasses the gate, avoiding a deadlock after the first shard. HF
+  exports explicitly release any persistent server on their assigned GPU.
+- Thirteen focused headroom, persistent-server, and OpenAI-engine tests pass.
+- The live plan uses the previously verified production values rather than a
+  new estimate: ordinary eval rows use utilization `0.25` and require
+  `52,000 MiB` effective free memory; `generative_talemaader` rows use
+  utilization `0.18`, the local `unsloth/gemma-4-E4B-it` judge, and require
+  `55,000 MiB`. HF exports require `34,000 MiB`.
+- The scheduler was restarted in `hrm-0:6` across GPUs `0-7`; the Rich monitor
+  remains in `hrm-0:7`. Both checkpoint waits are active. Current XXL training
+  headroom is below the evaluation thresholds, so evaluation will remain
+  queued unless training releases sufficient memory.
+
+Superseding DFM8 XXL utilization policy, 2026-07-25. Confidence: high from
+locked plan inspection and live W&B workspace/API verification.
+
+- At user direction, the current 50K/100K XXL campaign now prioritizes
+  throughput on effectively free GPUs rather than coexistence with training.
+  Its `358` pending non-judged eval rows use
+  `vllm_gpu_memory_utilization=0.95` and require `178,000 MiB` effective free
+  memory. Its `16` pending `generative_talemaader` rows use utilization `0.85`
+  plus the local Gemma E4B judge and require `180,000 MiB`. The export gate
+  remains `34,000 MiB`.
+- These gates mean eval inference will not start while XXL training occupies
+  the GPUs. Once a GPU is effectively free, the persistent server receives the
+  requested large KV-cache allocation.
+- W&B run `peter-sk-sdu/DFM5/ak41pnma` exists online as `dfm8-XXL`, is in
+  `running` state, and had remote history through training step `5955` when
+  checked. The manual DFM5 workspace `760qd0evtsa` had an explicit six-run
+  selection tree that excluded this new run. The workspace was updated in
+  place to append `ak41pnma`; server-side re-read confirms it is selected.
+
+DFM8 XXL BP-memory risk, 2026-07-25. Confidence: high for the inspected
+schedule/current telemetry; medium for the future-memory estimate because the
+run has not executed an XXL step at BP 3-5.
+
+- Run `ak41pnma` currently reports `bp_steps=2` and uses approximately
+  `144,484-155,256 MiB` per B200, leaving only `27,370-38,142 MiB`.
+- With `total_steps=1,881,999`, `bp_warmup_ratio=0.2`, `bp_min_steps=2`, and
+  `bp_max_steps=5`, the integer schedule changes to BP 3 at about step
+  `125,467`, BP 4 at about `250,934`, and BP 5 at about `376,400`.
+- The active HRM has no activation checkpointing. BP 2 retains autograd state
+  for one H and one L recurrent application; BP 5 retains two H and three L
+  applications. The current most-used rank has only about `28 GiB` spare, so
+  each of the three added recurrent applications would need to cost less than
+  roughly `9 GiB` to fit. That is unlikely for the XXL 36-layer recurrent
+  block at this sequence length and microbatch.
+- Operational conclusion: do not assume this `gradient_accumulation_steps=2`
+  run will survive BP 3-5. A restart/resume with greater accumulation, most
+  plausibly `gradient_accumulation_steps=4` while retaining the same global
+  batch, is the conservative path unless a BP-5 memory smoke test proves GAS 2
+  viable.
+
+DFM8 XXL one-epoch GAS4/BP5 run command, 2026-07-25. Confidence: high from a
+successful Hydra `--cfg job` composition check.
+
+- To start at BP 5, set the absent/defaulted field with
+  `+arch.bp_min_steps=5` and retain `arch.bp_max_steps=5`. Do not set
+  `bp_warmup_ratio=0`; the current HRM scheduling expression divides by the
+  warmup ratio.
+- The isolated checkpoint path is
+  `checkpoints/dfm8/XXL-gas4-bp5-1epoch`, avoiding the active XXL run.
+
+DFM8 XXL one-epoch 50K/100K eval campaign, 2026-07-25. Confidence: high from
+the live process, W&B API, locked plan inspection, and running scheduler state.
+
+- Training target: W&B `DFM5/40j5y877`, run `dfm8-XXL-1epoch`, checkpoint path
+  `checkpoints/dfm8/XXL-1epoch`. The run uses GAS4 and BP2-to-BP5 warmup.
+- Plan:
+  `logs/scheduler/dfm8_XXL_1epoch_steps50k_100k_persistent_vllm_20260725`.
+  It guards `step_50000` and `step_100000`, exports EMA weights, and runs all
+  standard, DFM, DFM IFEval-DA, and EuroEval jobs with merges, W&B sync,
+  averages, and reports.
+- Pending non-judged rows use persistent vLLM utilization `0.95` and a
+  `178,000 MiB` effective-free-memory gate. Judged Talemaader rows use
+  utilization `0.85`, the local Gemma E4B judge, and a `180,000 MiB` gate.
+  Superseded 2026-07-28: exports initially used a separate `34,000 MiB` gate,
+  but that was insufficient for XXL HF conversion.
+- Scheduler: `hrm-0:6`; 30-second Rich monitor: `hrm-0:7`. Both checkpoint
+  guards are active. The obsolete scheduler for crashed run `ak41pnma` was
+  stopped and its stale wait rows reset.
+- The manual DFM5 workspace `760qd0evtsa` explicitly selects runs. Run
+  `40j5y877` was appended and verified server-side.
+
+DFM8 XXL one-epoch resume point, 2026-07-28. Confidence: high from DCP
+metadata, all rank/carry files, and the checkpoint-state sidecar.
+
+- Newest complete checkpoint:
+  `checkpoints/dfm8/XXL-1epoch/fsdp2_ephemeral_step_60500`.
+- `checkpoint_state_ephemeral_step_60500.json` records step `60500`, epoch
+  `1`, exact `batch_in_epoch=242000`, GAS `4`, local batch `8192`, and global
+  row cursor `48,806,932`. All eight DCP rank files, `.metadata`, and all eight
+  carry files exist.
+- Resume the same W&B run as ID `40j5y877` with
+  `wandb_resume=allow`. The remote run was marked crashed and its summary
+  lagged the local checkpoint, but beginning new history at step `60500` is
+  monotonic relative to the remote summary.
+
+DFM8 XXL 50K export failure and corrected gate, 2026-07-28. Confidence: high
+from scheduler events, attempt telemetry, and the conversion traceback.
+
+- The `step_50000` checkpoint completed at `2026-07-27 09:06:15 +02:00`.
+  Its checkpoint guard completed at `09:06:43`, and the scheduler immediately
+  launched HF export while training still occupied the GPUs.
+- The old `34,000 MiB` export gate admitted GPUs with only about
+  `38,926-39,780 MiB` free. HF conversion instantiated the model and
+  `AdamATan2` state; the traceback showed a training process retaining about
+  `131.12 GiB`, and conversion OOMed while allocating optimizer state.
+- All six export attempts were consumed between `09:06:46` and `09:08:38`.
+  The row then remained terminally failed, so stopping training later did not
+  make it retry and no 50K eval or W&B metric was produced.
+- The incomplete export directory was removed, `export-00002` was reset to
+  pending with attempt zero, and both 50K and 100K export rows now require
+  `178,000 MiB` effective free GPU memory. This prevents export from competing
+  with active XXL training; it will run when a GPU is effectively free.

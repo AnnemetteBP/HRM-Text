@@ -203,6 +203,60 @@ python -m eval_scheduler run \
   --gpus 0,1,2,3,4,5,6,7
 ```
 
+Demand-driven persistent vLLM reuse is opt-in:
+
+```bash
+python -m eval_scheduler run \
+  --plan-dir logs/scheduler/dfm5_L_step300000 \
+  --gpus 0,1,2,3,4,5,6,7 \
+  --persistent-vllm
+```
+
+Plans may gate GPU jobs on effective free memory:
+
+```bash
+python -m eval_scheduler plan create \
+  ... \
+  --vllm-gpu-memory-utilization 0.25 \
+  --min-gpu-free-mib 52000 \
+  --judged-vllm-gpu-memory-utilization 0.18 \
+  --judged-min-gpu-free-mib 55000
+```
+
+The scheduler polls rather than exiting when a ready GPU job cannot meet its
+gate. It selects the eligible GPU with the most effective free memory.
+Effective memory includes memory that will be reclaimed when an incompatible
+persistent server is replaced; a compatible resident server bypasses the gate
+because its allocation is already present. HF export jobs release a resident
+persistent server before loading the checkpoint. Omitting the gate, or setting
+it to zero, preserves the original scheduling behavior.
+
+With this option, each GPU starts a vLLM server only when its first compatible
+job is claimed. The scheduler reuses that process for subsequent standard,
+DFM, DFM-IFEval, EuroEval, and batched EuroEval IFEval jobs. It replaces the
+server whenever the GPU, model/export path, checkpoint tag, EMA mode, Python
+executable, host, dtype, context limit, GPU-memory utilization, attention
+backend, trust-remote-code setting, extra server arguments, or CUDA root
+changes. A failed health check, server exit, OOM, client/server failure, or
+callback exception invalidates the lease before retry.
+
+The scheduler stops all remaining pooled servers on normal exit, stop request,
+or exception. Pool lifecycle events (`VLLM_STARTED`, `VLLM_REUSE`,
+`VLLM_REPLACE`, `VLLM_INVALIDATE`, and `VLLM_STOP`) are written to
+`status.tsv`; pooled server logs live under `server_pool/gpu_<id>/` in the plan
+directory. The default remains one fresh server or in-process engine per job,
+so existing plans are unchanged unless `--persistent-vllm` is supplied.
+
+Internal HRM standard evaluations using `OpenAIEngine` automatically receive
+the exported tokenizer, the exact vLLM chat template, and the configured model
+context window. Before submitting each request, the engine counts the rendered
+prompt and clamps only that request's output budget to the remaining context.
+This is required for long MATH prompts: lowering batch size cannot repair an
+individual `prompt_tokens + max_tokens > model_context` request. Plan authors
+do not need to add an override; `run_standard_openai` supplies this contract
+for both fresh and persistent vLLM server paths. External-model jobs retain
+their provider-specific behavior.
+
 Gracefully stop after currently running jobs finish:
 
 ```bash

@@ -103,6 +103,7 @@ def create_plan(
     vllm_dtype: str = typer.Option("bfloat16", help="vLLM dtype."),
     vllm_max_model_len: int = typer.Option(4096, help="vLLM --max-model-len."),
     vllm_gpu_memory_utilization: float = typer.Option(0.9, help="vLLM --gpu-memory-utilization."),
+    min_gpu_free_mib: int = typer.Option(0, min=0, help="Do not start a GPU job until effective free memory reaches this MiB."),
     vllm_attention_backend: str = typer.Option("FLASH_ATTN", help="Attention backend passed to in-process vLLM standard evals."),
     vllm_trust_remote_code: bool = typer.Option(False, help="Pass --trust-remote-code to vLLM."),
     vllm_extra_args: str = typer.Option("", help="Extra shell-style args appended to vLLM server command."),
@@ -119,6 +120,7 @@ def create_plan(
     judged_max_connections: int | None = typer.Option(None, help="Inspect max-connections for judged dfm-evals tasks."),
     judged_batch: int | None = typer.Option(16, help="Initial batch for judged DFM tasks; use none to derive from DFM batch/max-connections."),
     judged_vllm_gpu_memory_utilization: float | None = typer.Option(0.18, help="Per-judged-task vLLM GPU memory utilization; use none to inherit global vLLM setting."),
+    judged_min_gpu_free_mib: int | None = typer.Option(None, min=0, help="Per-judged-task effective free-memory gate in MiB; inherit the global gate when omitted."),
     govreport_max_report_chars: int | None = typer.Option(9000, help="GovReport max_report_chars task override; use none to rely on the dfm-evals config."),
     append: bool = typer.Option(False, help="Append this checkpoint subgraph to an existing plan."),
     force: bool = typer.Option(False, help="Overwrite an existing plan.tsv."),
@@ -175,6 +177,7 @@ def create_plan(
         vllm_dtype=vllm_dtype,
         vllm_max_model_len=vllm_max_model_len,
         vllm_gpu_memory_utilization=vllm_gpu_memory_utilization,
+        min_gpu_free_mib=min_gpu_free_mib,
         vllm_attention_backend=vllm_attention_backend,
         vllm_trust_remote_code=vllm_trust_remote_code,
         vllm_extra_args=vllm_extra_args,
@@ -191,6 +194,7 @@ def create_plan(
         judged_max_connections=judged_max_connections,
         judged_batch=judged_batch,
         judged_vllm_gpu_memory_utilization=judged_vllm_gpu_memory_utilization,
+        judged_min_gpu_free_mib=judged_min_gpu_free_mib,
         govreport_max_report_chars=govreport_max_report_chars,
     )
     path = save_new_plan(config, force=force, append=append)
@@ -227,6 +231,7 @@ def create_external_plan(
     vllm_dtype: str = typer.Option("bfloat16", help="vLLM dtype."),
     vllm_max_model_len: int = typer.Option(4096, help="vLLM --max-model-len."),
     vllm_gpu_memory_utilization: float = typer.Option(0.9, help="vLLM --gpu-memory-utilization."),
+    min_gpu_free_mib: int = typer.Option(0, min=0, help="Do not start a GPU job until effective free memory reaches this MiB."),
     vllm_attention_backend: str = typer.Option("FLASH_ATTN", help="Attention backend passed to in-process vLLM standard evals."),
     vllm_trust_remote_code: bool = typer.Option(False, help="Pass --trust-remote-code to vLLM."),
     vllm_extra_args: str = typer.Option("", help="Extra shell-style args appended to vLLM server command."),
@@ -243,6 +248,7 @@ def create_external_plan(
     judged_max_connections: int | None = typer.Option(4, help="Inspect max-connections for judged dfm-evals tasks."),
     judged_batch: int | None = typer.Option(16, help="Initial batch for judged DFM tasks; use none to derive from DFM batch/max-connections."),
     judged_vllm_gpu_memory_utilization: float | None = typer.Option(0.18, help="Per-judged-task vLLM GPU memory utilization; use none to inherit global vLLM setting."),
+    judged_min_gpu_free_mib: int | None = typer.Option(None, min=0, help="Per-judged-task effective free-memory gate in MiB; inherit the global gate when omitted."),
     govreport_max_report_chars: int | None = typer.Option(9000, help="GovReport max_report_chars task override; use none to rely on the dfm-evals config."),
     append: bool = typer.Option(False, help="Append this model subgraph to an existing plan."),
     force: bool = typer.Option(False, help="Overwrite an existing plan.tsv."),
@@ -279,6 +285,7 @@ def create_external_plan(
         vllm_dtype=vllm_dtype,
         vllm_max_model_len=vllm_max_model_len,
         vllm_gpu_memory_utilization=vllm_gpu_memory_utilization,
+        min_gpu_free_mib=min_gpu_free_mib,
         vllm_attention_backend=vllm_attention_backend,
         vllm_trust_remote_code=vllm_trust_remote_code,
         vllm_extra_args=vllm_extra_args,
@@ -294,6 +301,7 @@ def create_external_plan(
         judged_max_connections=judged_max_connections,
         judged_batch=judged_batch,
         judged_vllm_gpu_memory_utilization=judged_vllm_gpu_memory_utilization,
+        judged_min_gpu_free_mib=judged_min_gpu_free_mib,
         govreport_max_report_chars=govreport_max_report_chars,
     )
     path = save_new_plan(config, force=force, append=append)
@@ -463,8 +471,16 @@ def reset_running(
 def run(
     plan_dir: Path = typer.Option(..., help="Directory containing plan.tsv."),
     gpus: str = typer.Option("0,1,2,3,4,5,6,7", help="Comma-separated GPU ids."),
+    persistent_vllm: bool = typer.Option(
+        False,
+        help="Demand-start and reuse compatible vLLM servers on each GPU.",
+    ),
 ) -> None:
-    Runner(plan_dir, parse_gpus(gpus)).run()
+    Runner(
+        plan_dir,
+        parse_gpus(gpus),
+        persistent_vllm=persistent_vllm,
+    ).run()
 
 
 @app.command("stop")

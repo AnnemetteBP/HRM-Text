@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shlex
@@ -9,10 +10,11 @@ import signal
 import subprocess
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Iterable
+from typing import Callable, Iterable
 from urllib.request import urlopen
 
 from .catalog import dfm_suite, ifeval_suite
@@ -30,6 +32,203 @@ STOP_STATUS = 130
 
 class SchedulerError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class VLLMServerKey:
+    gpu: int
+    model_path: str
+    checkpoint_tag: str
+    use_ema: bool
+    python: str
+    host: str
+    dtype: str
+    max_model_len: int
+    gpu_memory_utilization: float
+    attention_backend: str
+    trust_remote_code: bool
+    extra_args: str
+    cuda_home: str
+
+    @property
+    def digest(self) -> str:
+        payload = json.dumps(self.__dict__, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+@dataclass
+class VLLMServerLease:
+    key: VLLMServerKey
+    process: subprocess.Popen[bytes]
+    base_url: str
+    health_url: str
+    model_name: str
+    log_path: Path
+    started_at: float
+    reuse_count: int = 0
+
+
+class VLLMServerPool:
+    """Demand-driven, one-lease-per-GPU vLLM process pool."""
+
+    def __init__(
+        self,
+        plan_dir: Path,
+        event: Callable[[str], None],
+    ) -> None:
+        self.plan_dir = plan_dir
+        self.event = event
+        self._leases: dict[int, VLLMServerLease] = {}
+        self._registry_lock = Lock()
+        self._gpu_locks: dict[int, Lock] = {}
+
+    def _gpu_lock(self, gpu: int) -> Lock:
+        with self._registry_lock:
+            return self._gpu_locks.setdefault(gpu, Lock())
+
+    def _key(self, job: Job, gpu: int) -> VLLMServerKey:
+        cuda_home = str(job.metadata.get("cuda_home") or "")
+        if not cuda_home and Path("/usr/local/cuda").is_dir():
+            cuda_home = "/usr/local/cuda"
+        model_path = vllm_model_path(job)
+        local_model_path = Path(model_path)
+        if local_model_path.exists():
+            model_path = str(local_model_path.resolve())
+        return VLLMServerKey(
+            gpu=gpu,
+            model_path=model_path,
+            checkpoint_tag=str(job.metadata.get("ckpt_tag", "")),
+            use_ema=not bool(job.metadata.get("no_ema")),
+            python=str(job.metadata.get("vllm_python") or python_bin(job)),
+            host=str(job.metadata["host"]),
+            dtype=str(job.metadata.get("vllm_dtype", "bfloat16")),
+            max_model_len=int(job.metadata.get("vllm_max_model_len", 4096)),
+            gpu_memory_utilization=float(job.metadata.get("vllm_gpu_memory_utilization", 0.9)),
+            attention_backend=str(job.metadata.get("vllm_attention_backend", "")),
+            trust_remote_code=bool(job.metadata.get("vllm_trust_remote_code")),
+            extra_args=vllm_server_extra_args(job),
+            cuda_home=cuda_home,
+        )
+
+    @staticmethod
+    def _healthy(lease: VLLMServerLease) -> bool:
+        if lease.process.poll() is not None:
+            return False
+        try:
+            with urlopen(lease.health_url, timeout=2) as response:
+                if response.status != 200:
+                    return False
+            with urlopen(f"{lease.base_url}/models", timeout=2) as response:
+                data = json.loads(response.read())
+            return lease.model_name in {item.get("id") for item in data.get("data", [])}
+        except Exception:
+            return False
+
+    def acquire(self, job: Job, gpu: int) -> VLLMServerLease:
+        key = self._key(job, gpu)
+        with self._gpu_lock(gpu):
+            current = self._leases.get(gpu)
+            if current is not None and current.key == key and self._healthy(current):
+                current.reuse_count += 1
+                self.event(
+                    f"VLLM_REUSE gpu_{gpu} key_{key.digest} pid_{current.process.pid} "
+                    f"reuse_{current.reuse_count}"
+                )
+                return current
+            if current is not None:
+                reason = "key_mismatch" if current.key != key else "unhealthy"
+                self.event(
+                    f"VLLM_REPLACE gpu_{gpu} old_key_{current.key.digest} "
+                    f"new_key_{key.digest} reason_{reason}"
+                )
+                terminate(current.process)
+                self._leases.pop(gpu, None)
+
+            # Reserve a compact per-process block that cannot overflow TCP's
+            # 16-bit port range when all eight GPUs start concurrently.
+            port = 20000 + ((os.getpid() + int(job.metadata["port_base"])) % 4000) * 8 + gpu
+            model_name = f"eval-pool-{key.digest}"
+            log_path = self.plan_dir / "server_pool" / f"gpu_{gpu}" / f"{key.digest}.vllm.log"
+            process = start_vllm_server(
+                job,
+                gpu,
+                port=port,
+                model_name=model_name,
+                log=log_path,
+            )
+            lease = VLLMServerLease(
+                key=key,
+                process=process,
+                base_url=f"http://{key.host}:{port}/v1",
+                health_url=f"http://{key.host}:{port}/health",
+                model_name=model_name,
+                log_path=log_path,
+                started_at=time.monotonic(),
+            )
+            status = wait_for_vllm_server(
+                job,
+                process,
+                server_log=log_path,
+                health_url=lease.health_url,
+            )
+            if status != 0:
+                terminate(process)
+                self.event(f"VLLM_START_FAILED gpu_{gpu} key_{key.digest} status_{status}")
+                raise SchedulerError(f"persistent vLLM startup failed with status {status}")
+            self._leases[gpu] = lease
+            self.event(
+                f"VLLM_STARTED gpu_{gpu} key_{key.digest} pid_{process.pid} "
+                f"startup_seconds_{time.monotonic() - lease.started_at:.3f}"
+            )
+            return lease
+
+    def effective_free_credit_mib(self, job: Job, gpu: int, total_mib: int) -> int:
+        """Return reclaimable memory, or a sentinel when the lease is reusable."""
+        with self._registry_lock:
+            current = self._leases.get(gpu)
+        if current is None or current.process.poll() is not None:
+            return 0
+        if current.key == self._key(job, gpu):
+            return -1
+        return round(current.key.gpu_memory_utilization * total_mib)
+
+    def release_gpu(self, gpu: int, reason: str) -> None:
+        with self._gpu_lock(gpu):
+            lease = self._leases.get(gpu)
+            if lease is None:
+                return
+            self.event(
+                f"VLLM_STOP gpu_{gpu} key_{lease.key.digest} pid_{lease.process.pid} "
+                f"reuse_{lease.reuse_count} reason_{reason}"
+            )
+            terminate(lease.process)
+            self._leases.pop(gpu, None)
+
+    def invalidate(self, gpu: int, lease: VLLMServerLease, reason: str) -> None:
+        with self._gpu_lock(gpu):
+            if self._leases.get(gpu) is not lease:
+                return
+            self.event(
+                f"VLLM_INVALIDATE gpu_{gpu} key_{lease.key.digest} "
+                f"pid_{lease.process.pid} reason_{reason}"
+            )
+            terminate(lease.process)
+            self._leases.pop(gpu, None)
+
+    def close_all(self) -> None:
+        with self._registry_lock:
+            gpus = list(self._leases)
+        for gpu in gpus:
+            with self._gpu_lock(gpu):
+                lease = self._leases.get(gpu)
+                if lease is None:
+                    continue
+                self.event(
+                    f"VLLM_STOP gpu_{gpu} key_{lease.key.digest} pid_{lease.process.pid} "
+                    f"reuse_{lease.reuse_count}"
+                )
+                terminate(lease.process)
+                self._leases.pop(gpu, None)
 
 
 def now() -> str:
@@ -146,6 +345,27 @@ def gemma_bfcl_vllm_extra_args(job: Job, enabled: bool) -> str:
     if "--tool-call-parser" not in parts:
         parts.extend(["--tool-call-parser", "gemma4"])
     return shlex.join(parts)
+
+
+def vllm_server_extra_args(job: Job) -> str:
+    extra = gemma_bfcl_vllm_extra_args(
+        job,
+        bool(job.metadata.get("hrm_vllm_gemma_bfcl_tools")),
+    )
+    parts = shlex.split(extra) if extra else []
+    attention_backend = str(job.metadata.get("vllm_attention_backend") or "").strip()
+    if attention_backend and "--attention-backend" not in parts:
+        parts.extend(["--attention-backend", attention_backend])
+    return shlex.join(parts)
+
+
+def vllm_chat_template(job: Job) -> str | None:
+    parts = shlex.split(vllm_server_extra_args(job))
+    try:
+        index = parts.index("--chat-template")
+    except ValueError:
+        return None
+    return parts[index + 1] if index + 1 < len(parts) else None
 
 
 def run_command(argv: list[str], *, log_path: Path, env: dict[str, str] | None = None) -> int:
@@ -277,6 +497,11 @@ def wait_for_server(url: str, expected_model: str | None = None, *, timeout: int
     raise SchedulerError(f"server did not become healthy: {url}")
 
 
+def local_service_port(job: Job, offset: int) -> int:
+    """Map legacy port offsets into the valid, unprivileged local port range."""
+    return 30000 + ((int(job.metadata["port_base"]) + offset + os.getpid()) % 30000)
+
+
 def terminate(proc: subprocess.Popen[bytes] | None) -> None:
     if proc is None or proc.poll() is not None:
         return
@@ -354,7 +579,7 @@ def start_vllm_server(job: Job, gpu: int, *, port: int, model_name: str, log: Pa
     ]
     if job.metadata.get("vllm_trust_remote_code"):
         argv.append("--trust-remote-code")
-    extra = str(job.metadata.get("vllm_extra_args") or "").strip()
+    extra = vllm_server_extra_args(job)
     if extra:
         argv.extend(shlex.split(extra))
     log.parent.mkdir(parents=True, exist_ok=True)
@@ -419,7 +644,24 @@ def run_with_vllm_server(
     port_offset: int,
     log: Path,
     callback,
+    server_pool: VLLMServerPool | None = None,
 ) -> int:
+    if server_pool is not None:
+        lease = server_pool.acquire(job, gpu)
+        try:
+            status = callback(
+                lease.base_url,
+                lease.log_path,
+                lease.process,
+                lease.model_name,
+            )
+        except BaseException:
+            server_pool.invalidate(gpu, lease, "callback_exception")
+            raise
+        if status != 0 or lease.process.poll() is not None or contains_oom([lease.log_path]):
+            server_pool.invalidate(gpu, lease, f"job_status_{status}")
+        return status
+
     port = int(job.metadata["port_base"]) + port_offset + gpu * 100 + (os.getpid() % 80) + 1
     base_url = f"http://{job.metadata['host']}:{port}/v1"
     server_log = log
@@ -433,19 +675,26 @@ def run_with_vllm_server(
         )
         if startup_status != 0:
             return startup_status
-        return callback(base_url, server_log, server)
+        return callback(base_url, server_log, server, model_name)
     finally:
         terminate(server)
 
 
-def run_standard(job: Job, gpu: int, batch: int) -> int:
+def run_standard(
+    job: Job,
+    gpu: int,
+    batch: int,
+    server_pool: VLLMServerPool | None = None,
+) -> int:
     if is_external_model(job):
-        return run_standard_external(job, gpu, batch)
+        return run_standard_openai(job, gpu, batch, server_pool)
+    standard_backend = str(job.metadata.get("standard_engine_backend", "simple"))
+    if standard_backend == "vllm" and server_pool is not None:
+        return run_standard_openai(job, gpu, batch, server_pool)
     task = job.name
     shard = job.shard or 0
     shards = job.shards or 1
     log = Path(job.log_dir) / f"{task}_shard_{shard}_of_{shards}.log"
-    standard_backend = str(job.metadata.get("standard_engine_backend", "simple"))
     ckpt_path = str(job.metadata["ckpt_path"])
     ckpt_tag = str(job.metadata["ckpt_tag"])
     if standard_backend == "vllm":
@@ -486,16 +735,28 @@ def run_standard(job: Job, gpu: int, batch: int) -> int:
     return status
 
 
-def run_standard_external(job: Job, gpu: int, batch: int) -> int:
+def run_standard_openai(
+    job: Job,
+    gpu: int,
+    batch: int,
+    server_pool: VLLMServerPool | None,
+) -> int:
     task = job.name
     shard = job.shard or 0
     shards = job.shards or 1
-    model_name = f"{external_model_name(job)}-{task}-shard-{shard}-{job.metadata['ckpt_tag']}"
+    requested_model_name = (
+        f"{vllm_served_model_prefix(job)}-{task}-shard-{shard}-{job.metadata['ckpt_tag']}"
+    )
     root = Path(job.log_dir)
     log = root / f"{task}_shard_{shard}_of_{shards}.log"
     server_log = root / f"{task}_shard_{shard}_of_{shards}.vllm.log"
 
-    def callback(base_url: str, server_log_path: Path, server: subprocess.Popen[bytes]) -> int:
+    def callback(
+        base_url: str,
+        server_log_path: Path,
+        server: subprocess.Popen[bytes],
+        active_model_name: str,
+    ) -> int:
         generations_dir = root / "generations" / f"shard_{shard}_of_{shards}"
         argv = [
             python_bin(job),
@@ -504,7 +765,7 @@ def run_standard_external(job: Job, gpu: int, batch: int) -> int:
             "evaluation.main",
             f"config={job.metadata['standard_config']}",
             "engine=OpenAIEngine",
-            f"model={model_name}",
+            f"model={active_model_name}",
             f"base_url={base_url}",
             f"api_key={os.environ.get('OPENAI_API_KEY', 'inspectai')}",
             f"run_only=[{task}]",
@@ -514,6 +775,16 @@ def run_standard_external(job: Job, gpu: int, batch: int) -> int:
             f"save_generations_dir={generations_dir}",
             *standard_generation_overrides(job),
         ]
+        if not is_external_model(job):
+            argv.extend(
+                [
+                    f"context_window={job.metadata.get('vllm_max_model_len', 4096)}",
+                    f"tokenizer_path={job.metadata['standard_hf_export_dir']}",
+                ]
+            )
+            chat_template = vllm_chat_template(job)
+            if chat_template is not None:
+                argv.append(f"chat_template_path={chat_template}")
         status = run_client_with_server_monitor(
             argv,
             client_log=log,
@@ -530,10 +801,11 @@ def run_standard_external(job: Job, gpu: int, batch: int) -> int:
     return run_with_vllm_server(
         job,
         gpu,
-        model_name=model_name,
+        model_name=requested_model_name,
         port_offset=0,
         log=server_log,
         callback=callback,
+        server_pool=server_pool,
     )
 
 
@@ -570,6 +842,54 @@ def run_client_with_server_monitor(
     if contains_oom([server_log]):
         return 72
     return status
+
+
+def start_native_proxy(
+    job: Job,
+    *,
+    target_base_url: str,
+    model_name: str,
+    run_dir: Path,
+    port_offset: int,
+) -> tuple[subprocess.Popen[bytes], str, Path]:
+    port = local_service_port(job, port_offset)
+    log_path = run_dir / "server.log"
+    argv = [
+        python_bin(job),
+        "scripts/native_compatible_openai_proxy.py",
+        "--host",
+        str(job.metadata["host"]),
+        "--port",
+        str(port),
+        "--target-base-url",
+        target_base_url,
+        "--model-name",
+        model_name,
+        "--target-model-name",
+        model_name,
+        "--api-key",
+        os.environ.get("OPENAI_API_KEY", "inspectai"),
+        "--log-jsonl",
+        str(run_dir / "proxy_payloads.jsonl"),
+    ]
+    if job.metadata.get("hrm_vllm_gemma_bfcl_tools"):
+        argv.append("--gemma-native-bfcl-tools")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w") as log:
+        log.write(f"{now()}\tSTART_PROXY\t{shlex.join(argv)}\n")
+    proc = subprocess.Popen(
+        argv,
+        stdout=log_path.open("a"),
+        stderr=subprocess.STDOUT,
+        env=env_with_gpu(None),
+    )
+    base_url = f"http://{job.metadata['host']}:{port}/v1"
+    try:
+        wait_for_server(f"http://{job.metadata['host']}:{port}/health", timeout=120)
+    except Exception:
+        terminate(proc)
+        raise
+    return proc, base_url, log_path
 
 
 def start_hrm_server(job: Job, gpu: int, *, port: int, model_name: str, batch: int, log: Path) -> subprocess.Popen[bytes]:
@@ -654,9 +974,14 @@ def start_managed_judge(job: Job, gpu: int, run_dir: Path) -> tuple[subprocess.P
     return proc, f"http://{job.metadata['host']}:{port}/v1", log
 
 
-def run_dfm(job: Job, gpu: int, batch: int) -> int:
+def run_dfm(
+    job: Job,
+    gpu: int,
+    batch: int,
+    server_pool: VLLMServerPool | None = None,
+) -> int:
     if use_vllm_hrm_server(job):
-        return run_dfm_external(job, gpu, batch)
+        return run_dfm_external(job, gpu, batch, server_pool)
     shard = job.shard or 0
     shards = job.shards or 1
     port = int(job.metadata["port_base"]) + gpu * 100 + (os.getpid() % 80) + 1
@@ -761,7 +1086,12 @@ def run_dfm(job: Job, gpu: int, batch: int) -> int:
         terminate(server)
 
 
-def run_dfm_external(job: Job, gpu: int, batch: int) -> int:
+def run_dfm_external(
+    job: Job,
+    gpu: int,
+    batch: int,
+    server_pool: VLLMServerPool | None,
+) -> int:
     shard = job.shard or 0
     shards = job.shards or 1
     model_name = f"{vllm_served_model_prefix(job)}-{job.name}-shard-{shard}-{job.metadata['ckpt_tag']}"
@@ -774,17 +1104,22 @@ def run_dfm_external(job: Job, gpu: int, batch: int) -> int:
     eee_dir.mkdir(parents=True, exist_ok=True)
     server_log = run_dir / "vllm.log"
 
-    def callback(base_url: str, server_log_path: Path, server: subprocess.Popen[bytes]) -> int:
+    def callback(
+        base_url: str,
+        server_log_path: Path,
+        server: subprocess.Popen[bytes],
+        active_model_name: str,
+    ) -> int:
         judge_server: subprocess.Popen[bytes] | None = None
         env = env_with_gpu(None)
         env["OPENAI_API_KEY"] = env.get("OPENAI_API_KEY", "inspectai")
         env["OPENAI_BASE_URL"] = base_url
         env["DFM_EVALS_MODEL_INFO_OVERRIDES"] = json.dumps(
             {
-                openai_model_ref(model_name): {
+                openai_model_ref(active_model_name): {
                     "context_length": dfm_context_length(job),
                     "output_tokens": dfm_max_output_tokens(job),
-                    "display_name": model_name,
+                    "display_name": active_model_name,
                     "organization": "local",
                 }
             }
@@ -800,7 +1135,7 @@ def run_dfm_external(job: Job, gpu: int, batch: int) -> int:
             "--file",
             str(job.metadata["dfm_single_tasks_config"]),
             "--target-model",
-            openai_model_ref(model_name),
+            openai_model_ref(active_model_name),
             "--target-base-url",
             base_url,
         ]
@@ -869,12 +1204,18 @@ def run_dfm_external(job: Job, gpu: int, batch: int) -> int:
         port_offset=0,
         log=server_log,
         callback=callback,
+        server_pool=server_pool,
     )
 
 
-def run_dfm_ifeval(job: Job, gpu: int, batch: int) -> int:
+def run_dfm_ifeval(
+    job: Job,
+    gpu: int,
+    batch: int,
+    server_pool: VLLMServerPool | None = None,
+) -> int:
     if use_vllm_hrm_server(job):
-        return run_dfm_ifeval_external(job, gpu, batch)
+        return run_dfm_ifeval_external(job, gpu, batch, server_pool)
     shard = job.shard or 0
     shards = job.shards or 1
     port = int(job.metadata["port_base"]) + 1000 + gpu * 100 + shard
@@ -962,7 +1303,12 @@ def run_dfm_ifeval(job: Job, gpu: int, batch: int) -> int:
         terminate(server)
 
 
-def run_dfm_ifeval_external(job: Job, gpu: int, batch: int) -> int:
+def run_dfm_ifeval_external(
+    job: Job,
+    gpu: int,
+    batch: int,
+    server_pool: VLLMServerPool | None,
+) -> int:
     shard = job.shard or 0
     shards = job.shards or 1
     model_name = f"{vllm_served_model_prefix(job)}-ifeval-da-shard-{shard}-{job.metadata['ckpt_tag']}"
@@ -975,16 +1321,21 @@ def run_dfm_ifeval_external(job: Job, gpu: int, batch: int) -> int:
     eee_dir.mkdir(parents=True, exist_ok=True)
     server_log = run_dir / "vllm.log"
 
-    def callback(base_url: str, server_log_path: Path, server: subprocess.Popen[bytes]) -> int:
+    def callback(
+        base_url: str,
+        server_log_path: Path,
+        server: subprocess.Popen[bytes],
+        active_model_name: str,
+    ) -> int:
         env = env_with_gpu(None)
         env["OPENAI_API_KEY"] = env.get("OPENAI_API_KEY", "inspectai")
         env["OPENAI_BASE_URL"] = base_url
         env["DFM_EVALS_MODEL_INFO_OVERRIDES"] = json.dumps(
             {
-                openai_model_ref(model_name): {
+                openai_model_ref(active_model_name): {
                     "context_length": dfm_context_length(job),
                     "output_tokens": dfm_max_output_tokens(job),
-                    "display_name": model_name,
+                    "display_name": active_model_name,
                     "organization": "local",
                 }
             }
@@ -1000,7 +1351,7 @@ def run_dfm_ifeval_external(job: Job, gpu: int, batch: int) -> int:
             "--file",
             str(job.metadata["dfm_ifeval_config"]),
             "--target-model",
-            openai_model_ref(model_name),
+            openai_model_ref(active_model_name),
             "--target-base-url",
             base_url,
             "--mode",
@@ -1051,12 +1402,18 @@ def run_dfm_ifeval_external(job: Job, gpu: int, batch: int) -> int:
         port_offset=1000,
         log=server_log,
         callback=callback,
+        server_pool=server_pool,
     )
 
 
-def run_euroeval(job: Job, gpu: int, batch: int) -> int:
-    if is_external_model(job):
-        return run_euroeval_external(job, gpu, batch)
+def run_euroeval(
+    job: Job,
+    gpu: int,
+    batch: int,
+    server_pool: VLLMServerPool | None = None,
+) -> int:
+    if is_external_model(job) or (use_vllm_hrm_server(job) and server_pool is not None):
+        return run_euroeval_openai(job, gpu, batch, server_pool)
     run_root = Path(job.log_dir)
     run_root.mkdir(parents=True, exist_ok=True)
     euroeval_bin = str(job.metadata["euroeval_bin"])
@@ -1109,7 +1466,14 @@ def run_euroeval(job: Job, gpu: int, batch: int) -> int:
     return run_command(["scripts/run_euroeval_on_checkpoint.sh"], log_path=run_root / "euroeval-wrapper.log", env=env)
 
 
-def run_euroeval_batched_ifeval(job: Job, gpu: int, batch: int) -> int:
+def run_euroeval_batched_ifeval(
+    job: Job,
+    gpu: int,
+    batch: int,
+    server_pool: VLLMServerPool | None = None,
+) -> int:
+    if server_pool is not None and use_vllm_hrm_server(job):
+        return run_euroeval_batched_ifeval_openai(job, gpu, batch, server_pool)
     run_root = Path(job.log_dir)
     run_root.mkdir(parents=True, exist_ok=True)
     env = env_with_gpu(gpu)
@@ -1145,10 +1509,110 @@ def run_euroeval_batched_ifeval(job: Job, gpu: int, batch: int) -> int:
     return run_command(["scripts/run_batched_ifeval_on_checkpoint.sh"], log_path=run_root / "batched-wrapper.log", env=env)
 
 
-def run_euroeval_external(job: Job, gpu: int, batch: int) -> int:
-    run_root = Path(job.log_dir)
+def run_euroeval_batched_ifeval_openai(
+    job: Job,
+    gpu: int,
+    batch: int,
+    server_pool: VLLMServerPool,
+) -> int:
+    run_root = Path(job.log_dir).resolve()
     run_root.mkdir(parents=True, exist_ok=True)
-    model_name = f"{external_model_name(job)}-euroeval-{job.name}-{job.metadata['ckpt_tag']}"
+    results_file = run_root / "euroeval_benchmark_results.jsonl"
+    metrics_file = run_root / "wandb_metrics.json"
+    client_log = run_root / "batched_ifeval.log"
+
+    def callback(
+        base_url: str,
+        server_log_path: Path,
+        server: subprocess.Popen[bytes],
+        active_model_name: str,
+    ) -> int:
+        proxy, client_base_url, _ = start_native_proxy(
+            job,
+            target_base_url=base_url,
+            model_name=active_model_name,
+            run_dir=run_root,
+            port_offset=15000 + gpu * 100,
+        )
+        argv = [
+            python_bin(job),
+            "scripts/run_ifeval_batched_openai.py",
+            "--dataset",
+            job.name,
+            "--api-base",
+            client_base_url,
+            "--api-key",
+            os.environ.get("OPENAI_API_KEY", "inspectai"),
+            "--model",
+            active_model_name,
+            "--output-dir",
+            str(run_root),
+            "--concurrency",
+            str(batch),
+            "--max-tokens",
+            str(job.metadata.get("euroeval_max_tokens", 2048)),
+            "--resume",
+            "--epoch",
+            str(job.metadata["eval_epoch"]),
+        ]
+        try:
+            status = run_client_with_server_monitor(
+                argv,
+                client_log=client_log,
+                server_log=server_log_path,
+                server_proc=server,
+                env=env_with_gpu(None),
+            )
+        finally:
+            terminate(proxy)
+        if status != 0:
+            return status
+        if not results_file.is_file() or results_file.stat().st_size == 0:
+            with client_log.open("a") as log:
+                log.write(f"\nMissing EuroEval results file: {results_file}\n")
+            return 3
+        merge_argv = [
+            python_bin(job),
+            "scripts/log_euroeval_to_wandb.py",
+            "--results",
+            str(results_file),
+            "--epoch",
+            str(job.metadata["eval_epoch"]),
+            "--step",
+            eval_step(job),
+            "--output",
+            str(metrics_file),
+            "--prefix",
+            "euroeval",
+            *wandb_args(job),
+        ]
+        return run_command(
+            merge_argv,
+            log_path=run_root / "merge_and_wandb_sync.log",
+        )
+
+    return run_with_vllm_server(
+        job,
+        gpu,
+        model_name=f"{vllm_served_model_prefix(job)}-euroeval-{job.name}-{job.metadata['ckpt_tag']}",
+        port_offset=5000,
+        log=run_root / "vllm.log",
+        callback=callback,
+        server_pool=server_pool,
+    )
+
+
+def run_euroeval_openai(
+    job: Job,
+    gpu: int,
+    batch: int,
+    server_pool: VLLMServerPool | None,
+) -> int:
+    run_root = Path(job.log_dir).resolve()
+    run_root.mkdir(parents=True, exist_ok=True)
+    model_name = (
+        f"{vllm_served_model_prefix(job)}-euroeval-{job.name}-{job.metadata['ckpt_tag']}"
+    )
     server_log = run_root / "vllm.log"
     results_file = run_root / "euroeval_benchmark_results.jsonl"
     metrics_file = run_root / "merged_metrics.json"
@@ -1158,14 +1622,29 @@ def run_euroeval_external(job: Job, gpu: int, batch: int) -> int:
     if len(euroeval_bin_argv) == 1 and euroeval_bin_argv[0].endswith(".py") and not Path(euroeval_bin_argv[0]).is_absolute():
         euroeval_bin = str((Path.cwd() / euroeval_bin_argv[0]).resolve())
 
-    def callback(base_url: str, server_log_path: Path, server: subprocess.Popen[bytes]) -> int:
+    def callback(
+        base_url: str,
+        server_log_path: Path,
+        server: subprocess.Popen[bytes],
+        active_model_name: str,
+    ) -> int:
         results_file.unlink(missing_ok=True)
         metrics_file.unlink(missing_ok=True)
+        proxy: subprocess.Popen[bytes] | None = None
+        client_base_url = base_url
+        if job.metadata.get("hrm_vllm_native_proxy"):
+            proxy, client_base_url, _ = start_native_proxy(
+                job,
+                target_base_url=base_url,
+                model_name=active_model_name,
+                run_dir=run_root,
+                port_offset=12000 + gpu * 100,
+            )
         euroeval_argv = shlex.split(euroeval_bin) + [
             "--model",
-            model_name,
+            active_model_name,
             "--api-base",
-            base_url,
+            client_base_url,
             "--api-key",
             os.environ.get("OPENAI_API_KEY", "inspectai"),
             "--cache-dir",
@@ -1185,13 +1664,16 @@ def run_euroeval_external(job: Job, gpu: int, batch: int) -> int:
         if job.metadata.get("euroeval_generative_type"):
             euroeval_argv.extend(["--generative-type", str(job.metadata["euroeval_generative_type"])])
         argv = ["bash", "-lc", f"cd {shlex.quote(str(run_root))} && {shlex.join(euroeval_argv)}"]
-        status = run_client_with_server_monitor(
-            argv,
-            client_log=euroeval_log,
-            server_log=server_log_path,
-            server_proc=server,
-            env=env_with_gpu(None),
-        )
+        try:
+            status = run_client_with_server_monitor(
+                argv,
+                client_log=euroeval_log,
+                server_log=server_log_path,
+                server_proc=server,
+                env=env_with_gpu(None),
+            )
+        finally:
+            terminate(proxy)
         if status != 0:
             return status
         if not results_file.is_file() or results_file.stat().st_size == 0:
@@ -1226,6 +1708,7 @@ def run_euroeval_external(job: Job, gpu: int, batch: int) -> int:
         port_offset=2000,
         log=server_log,
         callback=callback,
+        server_pool=server_pool,
     )
 
 
@@ -1393,7 +1876,11 @@ def run_report(job: Job) -> int:
     return run_command([python_bin(job), "scripts/generate_dfm5_l_eval_comparison_report.py"], log_path=Path(job.log_dir) / "generate_report.log")
 
 
-def run_job(job: Job, gpu: int | None) -> int:
+def run_job(
+    job: Job,
+    gpu: int | None,
+    server_pool: VLLMServerPool | None = None,
+) -> int:
     batch = job.retry_batch() or 1
     if job.action == Action.WAIT_CHECKPOINT:
         return run_wait_checkpoint(job)
@@ -1402,19 +1889,19 @@ def run_job(job: Job, gpu: int | None) -> int:
         return run_export_hf(job, gpu)
     if job.action == Action.EVAL_STANDARD:
         assert gpu is not None
-        return run_standard(job, gpu, batch)
+        return run_standard(job, gpu, batch, server_pool)
     if job.action == Action.EVAL_DFM:
         assert gpu is not None
-        return run_dfm(job, gpu, batch)
+        return run_dfm(job, gpu, batch, server_pool)
     if job.action == Action.EVAL_DFM_IFEVAL:
         assert gpu is not None
-        return run_dfm_ifeval(job, gpu, batch)
+        return run_dfm_ifeval(job, gpu, batch, server_pool)
     if job.action == Action.EVAL_EUROEVAL:
         assert gpu is not None
-        return run_euroeval(job, gpu, batch)
+        return run_euroeval(job, gpu, batch, server_pool)
     if job.action == Action.EVAL_EUROEVAL_BATCHED_IFEVAL:
         assert gpu is not None
-        return run_euroeval_batched_ifeval(job, gpu, batch)
+        return run_euroeval_batched_ifeval(job, gpu, batch, server_pool)
     if job.action == Action.MERGE_STANDARD:
         return run_merge_standard(job)
     if job.action == Action.MERGE_DFM:
@@ -1431,13 +1918,21 @@ def run_job(job: Job, gpu: int | None) -> int:
 
 
 class Runner:
-    def __init__(self, plan_dir: Path, gpus: list[int]) -> None:
+    def __init__(
+        self,
+        plan_dir: Path,
+        gpus: list[int],
+        *,
+        persistent_vllm: bool = False,
+    ) -> None:
         self.plan_dir = plan_dir
         self.plan_file = plan_path(plan_dir)
         self.status_file = plan_dir / "status.tsv"
         self.attempts_file = plan_dir / "attempts.tsv"
         self.gpus = gpus
         self.lock = Lock()
+        self.server_pool = VLLMServerPool(plan_dir, self.event) if persistent_vllm else None
+        self._last_headroom_event = 0.0
 
     def load(self) -> list[Job]:
         with PlanLock(self.plan_dir, exclusive=False):
@@ -1505,7 +2000,13 @@ class Runner:
             f"batch_{batch if batch is not None else '-'} mem_free_before_{free_before}"
         )
         try:
-            status = run_job(job, gpu)
+            if (
+                gpu is not None
+                and job.action == Action.EXPORT_HF
+                and self.server_pool is not None
+            ):
+                self.server_pool.release_gpu(gpu, "checkpoint_export")
+            status = run_job(job, gpu, self.server_pool)
         except SchedulerError as exc:
             status = 72
             self.event(
@@ -1566,78 +2067,133 @@ class Runner:
             paths.append(Path(job.log_dir) / f"{job.name}_shard_{job.shard}_of_{job.shards}.log")
         return contains_oom(paths)
 
+    def select_gpu(self, job: Job, free_gpus: list[int]) -> int | None:
+        if not free_gpus:
+            return None
+        minimum = int(job.metadata.get("min_gpu_free_mib") or 0)
+        if minimum <= 0:
+            return free_gpus.pop(0)
+
+        candidates: list[tuple[int, int]] = []
+        for gpu in free_gpus:
+            free_text, _used_text, total_text = gpu_snapshot(gpu)
+            try:
+                free_mib = int(free_text)
+                total_mib = int(total_text)
+            except ValueError:
+                continue
+            effective_free = free_mib
+            if self.server_pool is not None:
+                credit = self.server_pool.effective_free_credit_mib(job, gpu, total_mib)
+                if credit < 0:
+                    effective_free = total_mib
+                else:
+                    effective_free += credit
+            if effective_free >= minimum:
+                candidates.append((effective_free, gpu))
+        if not candidates:
+            return None
+        _effective_free, gpu = max(candidates)
+        free_gpus.remove(gpu)
+        return gpu
+
     def run(self) -> None:
         stop_request_path(self.plan_dir).unlink(missing_ok=True)
         self.event(f"RUN_START gpus_{','.join(map(str, self.gpus))}")
         non_gpu_slots = 4
         checkpoint_wait_slots = int(os.environ.get("EVAL_SCHEDULER_CHECKPOINT_WAIT_SLOTS", "8"))
-        with ThreadPoolExecutor(max_workers=max(1, len(self.gpus) + non_gpu_slots + checkpoint_wait_slots)) as pool:
-            futures: dict[object, tuple[str, int | None, str]] = {}
-            free_gpus = list(self.gpus)
-            free_non_gpu_slots = non_gpu_slots
-            free_checkpoint_wait_slots = checkpoint_wait_slots
-            while True:
-                launched = False
-                if stop_requested(self.plan_dir):
-                    self.event("STOP_REQUEST_OBSERVED no_new_jobs")
-                else:
-                    ready = self.ready_jobs()
-                    for job in ready:
-                        if job.requires_gpu:
-                            if not free_gpus:
+        try:
+            with ThreadPoolExecutor(max_workers=max(1, len(self.gpus) + non_gpu_slots + checkpoint_wait_slots)) as pool:
+                futures: dict[object, tuple[str, int | None, str]] = {}
+                free_gpus = list(self.gpus)
+                free_non_gpu_slots = non_gpu_slots
+                free_checkpoint_wait_slots = checkpoint_wait_slots
+                while True:
+                    launched = False
+                    if stop_requested(self.plan_dir):
+                        self.event("STOP_REQUEST_OBSERVED no_new_jobs")
+                    else:
+                        ready = self.ready_jobs()
+                        for job in ready:
+                            if job.requires_gpu:
+                                gpu = self.select_gpu(job, free_gpus)
+                                if gpu is None:
+                                    continue
+                                slot = ("gpu", gpu)
+                            elif job.action == Action.WAIT_CHECKPOINT:
+                                if free_checkpoint_wait_slots <= 0:
+                                    continue
+                                gpu = None
+                                free_checkpoint_wait_slots -= 1
+                                slot = ("checkpoint_wait", None)
+                            else:
+                                if free_non_gpu_slots <= 0:
+                                    continue
+                                gpu = None
+                                free_non_gpu_slots -= 1
+                                slot = ("non_gpu", None)
+                            claimed = self.claim_job(job.job_id)
+                            if claimed is None:
+                                if slot[0] == "gpu":
+                                    assert gpu is not None
+                                    free_gpus.append(gpu)
+                                elif slot[0] == "checkpoint_wait":
+                                    free_checkpoint_wait_slots += 1
+                                else:
+                                    free_non_gpu_slots += 1
                                 continue
-                            gpu = free_gpus.pop(0)
-                            slot = ("gpu", gpu)
-                        elif job.action == Action.WAIT_CHECKPOINT:
-                            if free_checkpoint_wait_slots <= 0:
+                            job = claimed
+                            futures[pool.submit(self.run_one, job, gpu)] = (slot[0], slot[1], job.job_id)
+                            launched = True
+                    if not futures:
+                        remaining = [job for job in self.load() if job.status in {JobStatus.PENDING, JobStatus.RUNNING}]
+                        if remaining:
+                            if stop_requested(self.plan_dir):
+                                break
+                            ready = self.ready_jobs()
+                            gated = [
+                                job
+                                for job in ready
+                                if job.requires_gpu and int(job.metadata.get("min_gpu_free_mib") or 0) > 0
+                            ]
+                            if gated:
+                                current_time = time.monotonic()
+                                if current_time - self._last_headroom_event >= 60:
+                                    examples = ",".join(
+                                        f"{job.job_id}:{job.metadata.get('min_gpu_free_mib')}MiB"
+                                        for job in gated[:8]
+                                    )
+                                    self.event(
+                                        f"HEADROOM_WAIT ready_{len(gated)} examples_{examples}"
+                                    )
+                                    self._last_headroom_event = current_time
+                                time.sleep(5)
                                 continue
-                            gpu = None
-                            free_checkpoint_wait_slots -= 1
-                            slot = ("checkpoint_wait", None)
-                        else:
-                            if free_non_gpu_slots <= 0:
-                                continue
-                            gpu = None
-                            free_non_gpu_slots -= 1
-                            slot = ("non_gpu", None)
-                        claimed = self.claim_job(job.job_id)
-                        if claimed is None:
-                            if slot[0] == "gpu":
+                            blocked = ", ".join(job.job_id for job in remaining[:10])
+                            self.event(f"BLOCKED remaining_{len(remaining)} examples_{blocked}")
+                        break
+                    done, _ = wait(futures.keys(), return_when=FIRST_COMPLETED, timeout=5)
+                    for fut in done:
+                        slot_kind, gpu, job_id_for_future = futures.pop(fut)
+                        try:
+                            fut.result()
+                        except BaseException as exc:
+                            self.update_job(job_id_for_future, status=JobStatus.FAILED)
+                            self.event(
+                                f"RUN_EXCEPTION {job_id_for_future} "
+                                f"{type(exc).__name__} {str(exc).replace(chr(10), ' ')[:500]}"
+                            )
+                        finally:
+                            if slot_kind == "gpu":
                                 assert gpu is not None
                                 free_gpus.append(gpu)
-                            elif slot[0] == "checkpoint_wait":
+                            elif slot_kind == "checkpoint_wait":
                                 free_checkpoint_wait_slots += 1
                             else:
                                 free_non_gpu_slots += 1
-                            continue
-                        job = claimed
-                        futures[pool.submit(self.run_one, job, gpu)] = (slot[0], slot[1], job.job_id)
-                        launched = True
-                if not futures:
-                    remaining = [job for job in self.load() if job.status in {JobStatus.PENDING, JobStatus.RUNNING}]
-                    if remaining:
-                        blocked = ", ".join(job.job_id for job in remaining[:10])
-                        self.event(f"BLOCKED remaining_{len(remaining)} examples_{blocked}")
-                    break
-                done, _ = wait(futures.keys(), return_when=FIRST_COMPLETED, timeout=5)
-                for fut in done:
-                    slot_kind, gpu, job_id_for_future = futures.pop(fut)
-                    try:
-                        fut.result()
-                    except BaseException as exc:
-                        self.update_job(job_id_for_future, status=JobStatus.FAILED)
-                        self.event(
-                            f"RUN_EXCEPTION {job_id_for_future} "
-                            f"{type(exc).__name__} {str(exc).replace(chr(10), ' ')[:500]}"
-                        )
-                    finally:
-                        if slot_kind == "gpu":
-                            assert gpu is not None
-                            free_gpus.append(gpu)
-                        elif slot_kind == "checkpoint_wait":
-                            free_checkpoint_wait_slots += 1
-                        else:
-                            free_non_gpu_slots += 1
-                if not launched and not done:
-                    time.sleep(1)
+                    if not launched and not done:
+                        time.sleep(1)
+        finally:
+            if self.server_pool is not None:
+                self.server_pool.close_all()
         self.event("RUN_END")

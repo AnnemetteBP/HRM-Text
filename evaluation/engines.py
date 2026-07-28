@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -151,18 +152,55 @@ class SimpleEngine(BaseEngine):
 
 
 class OpenAIEngine(BaseEngine):
+    _CONTEXT_LENGTH_RE = re.compile(
+        r"maximum context length is (?P<context>\d+) tokens.*?"
+        r"requested (?P<output>\d+) output tokens.*?"
+        r"prompt contains at least (?P<input>\d+) input tokens",
+        re.IGNORECASE,
+    )
+
     def __init__(
         self,
         model: str,
         base_url: str,
         api_key: str | None = None,
         timeout: float = 600.0,
+        context_window: int | None = None,
+        tokenizer_path: str | None = None,
+        chat_template_path: str | None = None,
         **_: object,
     ):
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "inspectai")
         self.timeout = timeout
+        self.context_window = context_window
+        self.tokenizer = None
+        self.chat_template = None
+        if tokenizer_path is not None and chat_template_path is not None:
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, use_fast=True)
+            self.chat_template = jinja2.Environment().from_string(
+                Path(chat_template_path).read_text()
+            )
+
+    def _prompt_token_count(self, prompt: str) -> int | None:
+        if self.tokenizer is None or self.chat_template is None:
+            return None
+        rendered = self.chat_template.render(
+            messages=[{"role": "user", "content": prompt.strip()}],
+            tools=None,
+            add_generation_prompt=True,
+            enable_thinking=False,
+            bos_token=self.tokenizer.bos_token or "",
+            eos_token=self.tokenizer.eos_token or "",
+        )
+        return len(
+            self.tokenizer(
+                rendered,
+                return_attention_mask=False,
+                add_special_tokens=False,
+            )["input_ids"]
+        )
 
     def _generate_one(
         self,
@@ -171,6 +209,8 @@ class OpenAIEngine(BaseEngine):
         max_tokens: int,
         temperature: float,
         stop: Optional[str | list[str]],
+        stop_token_ids: Optional[list[int]],
+        skip_special_tokens: bool,
     ) -> str:
         payload = {
             "model": self.model,
@@ -180,20 +220,33 @@ class OpenAIEngine(BaseEngine):
         }
         if stop is not None:
             payload["stop"] = stop
-        request = urllib.request.Request(
-            f"{self.base_url}/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-            },
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                data = json.loads(response.read())
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"OpenAI-compatible request failed with HTTP {exc.code}: {body}") from exc
+        if stop_token_ids is not None:
+            payload["stop_token_ids"] = stop_token_ids
+        payload["skip_special_tokens"] = skip_special_tokens
+        for attempt in range(2):
+            request = urllib.request.Request(
+                f"{self.base_url}/chat/completions",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                },
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    data = json.loads(response.read())
+                break
+            except urllib.error.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                match = self._CONTEXT_LENGTH_RE.search(body)
+                if exc.code == 400 and attempt == 0 and match is not None:
+                    remaining = int(match.group("context")) - int(match.group("input"))
+                    if 0 < remaining < int(payload["max_tokens"]):
+                        payload["max_tokens"] = remaining
+                        continue
+                raise RuntimeError(
+                    f"OpenAI-compatible request failed with HTTP {exc.code}: {body}"
+                ) from exc
         return str(data["choices"][0]["message"]["content"])
 
     def generate(
@@ -205,10 +258,21 @@ class OpenAIEngine(BaseEngine):
         temperature: float = 0.0,
         condition: str = "direct",
         stop: Optional[str | list[str]] = None,
+        stop_token_ids: Optional[list[int]] = None,
+        skip_special_tokens: bool = False,
     ) -> list[str]:
         del max_context, condition
         if max_tokens is None:
             max_tokens = 1024
+        output_budgets = [max_tokens] * len(prompts)
+        if self.context_window is not None:
+            for index, prompt in enumerate(prompts):
+                prompt_tokens = self._prompt_token_count(prompt)
+                if prompt_tokens is not None:
+                    output_budgets[index] = max(
+                        1,
+                        min(max_tokens, self.context_window - prompt_tokens),
+                    )
         outputs = [""] * len(prompts)
         workers = max(1, int(batch_size))
         with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -216,9 +280,11 @@ class OpenAIEngine(BaseEngine):
                 pool.submit(
                     self._generate_one,
                     prompt.strip(),
-                    max_tokens=max_tokens,
+                    max_tokens=output_budgets[index],
                     temperature=temperature,
                     stop=stop,
+                    stop_token_ids=stop_token_ids,
+                    skip_special_tokens=skip_special_tokens,
                 ): index
                 for index, prompt in enumerate(prompts)
             }
