@@ -335,20 +335,18 @@ def audit_plan(export_dir: Path, args: argparse.Namespace) -> dict[str, Any]:
                     fail(f"BFCL vLLM extra args missing {token!r}: {expanded}")
 
     average_jobs = {job.name: job for job in jobs if job.action == Action.AVERAGE}
-    for name in ("standard-average", "dfm-average", "euroeval-average"):
-        assert_eq(average_jobs[name].metadata.get("average_prefix"), "suite_avg_v3", f"{name} prefix")
-    for name in ("danish-average", "english-average", "math-code-average", "headline-averages"):
-        assert_eq(average_jobs[name].metadata.get("average_prefix"), "headline_avg_v3", f"{name} prefix")
-    headline_deps = set(average_jobs["headline-averages"].deps)
-    expected_headline_deps = {
-        average_jobs["standard-average"].job_id,
-        average_jobs["dfm-average"].job_id,
-        average_jobs["euroeval-average"].job_id,
-        average_jobs["danish-average"].job_id,
-        average_jobs["english-average"].job_id,
-        average_jobs["math-code-average"].job_id,
-    }
-    assert_eq(headline_deps, expected_headline_deps, "headline average deps")
+    assert_eq(set(average_jobs), {"checkpoint-averages"}, "atomic average jobs")
+    checkpoint_average = average_jobs["checkpoint-averages"]
+    assert_eq(
+        checkpoint_average.metadata.get("atomic_v3_averages"),
+        True,
+        "atomic average layout",
+    )
+    assert_eq(
+        checkpoint_average.metadata.get("average_prefix"),
+        "headline_avg_v3",
+        "atomic average prefix",
+    )
 
     return {
         "plan_config": asdict(cfg),

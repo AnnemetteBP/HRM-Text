@@ -70,15 +70,35 @@ def main() -> None:
         help="Which averages to compute when --log-averages is set.",
     )
     parser.add_argument(
+        "--atomic-v3-averages",
+        action="store_true",
+        help=(
+            "Log all headline_avg_v3 section averages and suite_avg_v3 suite "
+            "averages in one W&B history row."
+        ),
+    )
+    parser.add_argument(
         "--wandb-step",
         type=int,
         default=None,
         help="Optional explicit W&B history step. Omit when backfilling into an active run.",
     )
     args = parser.parse_args()
+    atomic_v3_averages = args.atomic_v3_averages or (
+        args.averages_only
+        and args.average_scope == "all"
+        and args.average_prefix == "headline_avg_v3"
+        and not args.extra_average_prefix
+    )
+
+    raw_metrics: dict[str, float] = {}
+    if not args.averages_only or atomic_v3_averages:
+        raw_metrics.update(collect_standard(args.standard_root))
+        raw_metrics.update(collect_dfm(args.dfm_root))
+        raw_metrics.update(collect_euroeval(args.euroeval_root))
 
     row: dict[str, Any] = {}
-    if not args.averages_only:
+    if not args.averages_only or atomic_v3_averages:
         row.update(
             {
                 "eval/epoch": args.epoch,
@@ -89,15 +109,36 @@ def main() -> None:
                 "euroeval/train_step": args.step,
             }
         )
-        row.update(collect_standard(args.standard_root))
-        row.update(collect_dfm(args.dfm_root))
-        row.update(collect_euroeval(args.euroeval_root))
+        if args.averages_only:
+            from log_dfm5_headline_averages import HEADLINE_METRIC_KEYS
+
+            row.update({key: value for key, value in raw_metrics.items() if key in HEADLINE_METRIC_KEYS})
+        else:
+            row.update(raw_metrics)
 
     if args.log_averages:
         from log_dfm5_headline_averages import EvalItem, build_row
 
         item = EvalItem(args.step, args.epoch, args.standard_root, args.dfm_root, args.euroeval_root)
-        if args.average_scope == "all":
+        if atomic_v3_averages:
+            row.update(
+                build_row(
+                    item,
+                    metric_prefix="headline_avg_v3",
+                    include_sections=True,
+                    include_suites=False,
+                )
+            )
+            row.update(
+                build_row(
+                    item,
+                    metric_prefix="suite_avg_v3",
+                    include_sections=False,
+                    include_suites=True,
+                )
+            )
+            build_kwargs = None
+        elif args.average_scope == "all":
             build_kwargs = {}
         elif args.average_scope == "sections":
             build_kwargs = {"include_sections": True, "include_suites": False}
@@ -114,8 +155,9 @@ def main() -> None:
             build_kwargs = {"include_sections": False, "include_suites": False, "overall_only": True}
         else:
             build_kwargs = {"include_sections": False, "include_suites": True, "suites": {args.average_scope}}
-        for average_prefix in [args.average_prefix, *args.extra_average_prefix]:
-            row.update(build_row(item, metric_prefix=average_prefix, **build_kwargs))
+        if build_kwargs is not None:
+            for average_prefix in [args.average_prefix, *args.extra_average_prefix]:
+                row.update(build_row(item, metric_prefix=average_prefix, **build_kwargs))
 
     import wandb
 
@@ -127,12 +169,27 @@ def main() -> None:
         resume="allow",
     )
     assert run is not None
-    for prefix in ("eval", "dfm_eval", "euroeval", args.average_prefix, *args.extra_average_prefix):
+    average_prefixes = (
+        ["headline_avg_v3", "suite_avg_v3"]
+        if atomic_v3_averages
+        else [args.average_prefix, *args.extra_average_prefix]
+    )
+    from log_dfm5_headline_averages import HEADLINE_METRIC_KEYS
+
+    for prefix in ("eval", "dfm_eval", "euroeval", *average_prefixes):
         epoch_key = f"{prefix}/epoch"
         train_step_key = f"{prefix}/train_step"
         wandb.define_metric(epoch_key)
         wandb.define_metric(train_step_key)
         wandb.define_metric(f"{prefix}/*", step_metric=epoch_key)
+        for key in row:
+            is_average = prefix in average_prefixes
+            if (
+                key.startswith(f"{prefix}/")
+                and key not in {epoch_key, train_step_key}
+                and (is_average or key in HEADLINE_METRIC_KEYS)
+            ):
+                wandb.define_metric(key, step_metric=epoch_key, summary="last")
     if args.wandb_step is None:
         wandb.log(row, commit=True)
     else:

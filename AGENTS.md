@@ -33,3 +33,7 @@ If new information contradicts an existing page, do not silently overwrite it. M
 - Sapient FLAN/Tasksource are denied by default, with narrow allow overrides for selected reasoning/commonsense/science tasks.
 - `data_io/tokenizer` must be run from `data_io/tokenizer`, where `Cargo.toml` lives.
 
+## W&B Metric Logging Safety
+
+- Log checkpoint averages atomically and explicitly register each metric; do not rely only on W&B prefix wildcards.
+- For invisible metrics or workspace-selection edits, follow the verified diagnosis and selection semantics in [`wiki/pages/current-state.md`](wiki/pages/current-state.md) under “Atomic W&B average finalization.”

@@ -17,6 +17,9 @@ class JobStatus(StrEnum):
 
 
 class Action(StrEnum):
+    TRAIN_UNTIL_STEP = "train_until_step"
+    TERMINAL_BARRIER = "terminal_barrier"
+    TEARDOWN_EVAL = "teardown_eval"
     WAIT_CHECKPOINT = "wait_checkpoint"
     EXPORT_HF = "export_hf"
     EVAL_STANDARD = "eval_standard"
@@ -40,6 +43,7 @@ FIELDNAMES = [
     "shard",
     "shards",
     "deps",
+    "deps_mode",
     "initial_batch",
     "max_retries",
     "gpu_policy",
@@ -59,6 +63,7 @@ class Job:
     shard: int | None = None
     shards: int | None = None
     deps: tuple[str, ...] = ()
+    deps_mode: str = "success"
     initial_batch: int | None = None
     max_retries: int = 3
     gpu_policy: str = "any"
@@ -70,6 +75,7 @@ class Job:
     @property
     def requires_gpu(self) -> bool:
         return self.action in {
+            Action.TRAIN_UNTIL_STEP,
             Action.EXPORT_HF,
             Action.EVAL_STANDARD,
             Action.EVAL_DFM,
@@ -77,6 +83,10 @@ class Job:
             Action.EVAL_EUROEVAL,
             Action.EVAL_EUROEVAL_BATCHED_IFEVAL,
         }
+
+    @property
+    def requires_all_gpus(self) -> bool:
+        return self.action == Action.TRAIN_UNTIL_STEP or self.gpu_policy == "all"
 
     def retry_batch(self) -> int | None:
         if self.initial_batch is None:
@@ -100,6 +110,7 @@ class Job:
             "shard": "" if self.shard is None else str(self.shard),
             "shards": "" if self.shards is None else str(self.shards),
             "deps": ",".join(self.deps),
+            "deps_mode": self.deps_mode,
             "initial_batch": "" if self.initial_batch is None else str(self.initial_batch),
             "max_retries": str(self.max_retries),
             "gpu_policy": self.gpu_policy,
@@ -120,6 +131,7 @@ class Job:
             shard=int(row["shard"]) if row.get("shard") else None,
             shards=int(row["shards"]) if row.get("shards") else None,
             deps=tuple(x for x in row.get("deps", "").split(",") if x),
+            deps_mode=row.get("deps_mode") or "success",
             initial_batch=int(row["initial_batch"]) if row.get("initial_batch") else None,
             max_retries=int(row.get("max_retries") or 3),
             gpu_policy=row.get("gpu_policy") or "any",

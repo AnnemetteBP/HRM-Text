@@ -2677,6 +2677,24 @@ After this upload, the remaining known local-only DFM8 rebuild gaps are `dbc`
 and `lexdk`, pending separate upload or an explicit replacement/exclusion
 decision.
 
+Dataset inventory update, 2026-07-31. Confidence: high from the sampled epoch
+indices, `data/show_analytics_dfm8.md`, and the local download manifest. A
+human-readable inventory of every nonzero DFM8 source, its HF repository (where
+applicable), and its sampled per-epoch token contribution is maintained in
+[`docs/dfm8-datasets.md`](../../docs/dfm8-datasets.md). DBC and LexDK are listed
+separately there as non-HF datasets supplied through Danish Foundation Model
+agreements. The six-epoch analytics sum to 70.479B tokens per epoch and agree
+with direct epoch-index length sums to normal sampling variation.
+
+Inventory refinement, 2026-07-31. Confidence: high from the DFM8 prefix
+specification, category/task analytics, tokenized source links, and converter
+source code. The inventory is exhaustive at HF-repository granularity: 159
+distinct HF dataset IDs have one row each, while DBC and LexDK occupy two
+separate agreement-supplied rows. Combined analytics categories for Giannor
+TV2R and corrected Dolci tool use are split using task-level coverage rather
+than estimated proportions. `acereason` is correctly attributed to
+`nvidia/AceReason-1.1-SFT`.
+
 Repair runner scheduling fix, 2026-07-13. Confidence: high from script
 inspection and `bash -n`. `dfm8_openhermes_repaired/scripts/run_openhermes_repair_8gpu.sh`
 previously used a FIFO wait pattern in `run_shards`: after launching one shard
@@ -3120,3 +3138,186 @@ OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 torchrun --nproc_per_node=8 pretrain.py \
   wandb_run_id=dfm8-xl-from-dfm6-dfm7-epoch5-clean-full \
   wandb_resume=allow
 ```
+
+## DFM8 L Resume On 2026-08-01
+
+Update, 2026-08-01. Confidence: high from inspected checkpoint sidecars,
+process state, and live training output.
+
+The DFM8 XXL one-epoch scheduler campaign was stopped before switching models.
+Its latest fully written checkpoint at the time of the stop was
+`checkpoints/dfm8/XXL-1epoch/fsdp2_ephemeral_step_151000`. The scheduler plan
+`logs/scheduler/dfm8_XXL_1epoch_steps50k_100k_persistent_vllm_20260725` retains
+its stop request and must not be resumed unintentionally.
+
+The DFM8 L run was resumed from the complete sharded checkpoint
+`checkpoints/dfm8/L-gbs131072/fsdp2_step_100000` in W&B run `g2oaotmc`
+(`DFM5` / `DFM8-L-gbs131072`). Despite the historical `L-gbs131072` name,
+both `all_config.yaml` and `checkpoint_state_step_100000.json` specify
+`global_batch_size=262144` and `gradient_accumulation_steps=1`; these
+authoritative values must be preserved on resume. The checkpoint sidecar gives
+`step=100000`, `epoch=1`, and exact `batch_in_epoch=100000`.
+
+The verified resume command is:
+
+```bash
+cd /work/dfm/HRM-Text
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 torchrun --nproc_per_node=8 pretrain.py \
+  data=dfm8 \
+  arch/size@arch=L \
+  lr=3e-4 \
+  lr_min_ratio=1 \
+  lr_warmup_steps=2000 \
+  weight_decay=0.1 \
+  beta1=0.9 \
+  beta2=0.95 \
+  ema=0.9999 \
+  global_batch_size=262144 \
+  gradient_accumulation_steps=1 \
+  epochs=1 \
+  distributed_strategy=fsdp \
+  fsdp_params_precision=fp32 \
+  checkpoint_format=sharded \
+  fwd_bwd_dtype=bfloat16 \
+  accelerator_type=sm100 \
+  compile_train_batch=true \
+  checkpoint_interval=1 \
+  checkpoint_step_interval=10000 \
+  ephemeral_checkpoint_step_interval=1000 \
+  checkpoint_path=checkpoints/dfm8/L-gbs131072 \
+  resume_checkpoint_path=checkpoints/dfm8/L-gbs131072 \
+  resume_checkpoint_tag=step_100000 \
+  reset_ema_on_resume=false \
+  upcast_optimizer_state_on_resume=false \
+  project_name=DFM5 \
+  run_name=DFM8-L-gbs131072 \
+  wandb_run_id=g2oaotmc \
+  wandb_resume=allow
+```
+
+The process was launched in tmux pane `%146` (currently window `hrm-0:4`) and
+was verified advancing beyond step 100079 with all eight GPUs active. W&B had
+already received history through step 100079 from an earlier attempt, so resumed
+points at or below that tail were rejected as out of order; normal logging
+resumed after the process passed that point.
+
+Superseded later on 2026-08-01: the uninterrupted manual resume was stopped
+after the complete `ephemeral_step_101000` checkpoint so that training and
+evaluation could be orchestrated by one scheduler campaign. Its W&B history had
+advanced to step 101366, so the scheduler-managed resume intentionally replays
+steps 101001-101366 without logging duplicate W&B points.
+
+## DFM8 L Alternating Training/Evaluation Campaign
+
+Update, 2026-08-01. Confidence: high from the atomically generated plan,
+dependency audit, live scheduler state, and GPU telemetry.
+
+The active campaign is:
+
+```text
+logs/scheduler/dfm8_L_campaign_150k_epoch1_20260801
+```
+
+It resumes from `ephemeral_step_101000`, forces regular checkpoints and full
+evaluations every 50K steps at 150K, 200K, and 250K, and then trains the final
+short segment to the one-epoch endpoint at step 268857. Each evaluation graph
+has 188 GPU rows spanning standard, DFM, 32-shard DFM IFEval-DA, and EuroEval
+tasks. A terminal eval barrier and evaluator teardown precede each next training
+segment, while merges, W&B synchronization, averages, and reports can finish
+independently and therefore cannot unnecessarily hold the training GPUs.
+
+Training segments and exact sources are:
+
+| Segment | Resume source | Forced target |
+| --- | --- | ---: |
+| `101000 -> 150000` | `ephemeral_step_101000` | `step_150000` |
+| `150000 -> 200000` | `step_150000` | `step_200000` |
+| `200000 -> 250000` | `step_200000` | `step_250000` |
+| `250000 -> 268857` | `step_250000` | `step_268857` |
+
+The production eval configuration uses the previous successful DFM8 L vLLM
+path: EuroEval-first ordering, standard/DFM/IFEval/EuroEval initial batches of
+128/64/64/64, six total attempts, Gemma 4 native chat template, vLLM utilization
+0.9, and 178000 MiB effective-free-memory gates. Judged tasks use
+`unsloth/gemma-4-E4B-it`, batch/concurrency 32, and vLLM utilization 0.65.
+Persistent vLLM leases are enabled.
+
+The campaign can be recreated by
+`scripts/setup_dfm8_l_campaign.sh`. Its live tmux layout is:
+
+| Window | Name | Purpose |
+| ---: | --- | --- |
+| 4 | `training` | follows the current scheduler-managed training log |
+| 5 | `scheduler` | campaign scheduler with persistent vLLM |
+| 6 | `monitor` | Rich scheduler monitor at 30-second refresh |
+
+The `training` window uses `scripts/follow_dfm8_l_training.sh`, which
+automatically switches to the newest segment log. At campaign launch,
+`campaign-train-150000` successfully claimed GPUs 0-7 and resumed the complete
+101000 checkpoint.
+
+Monitor update, 2026-08-01. Confidence: high from focused tests and the live
+150K training segment. The scheduler monitor now parses `train_until_step`
+tqdm output, displays `current_step/forced_target` and segment-relative percent,
+and computes ETA from the latest reported `it/s` or `s/it` rate. This avoids the
+previous `ETA unknown` and avoids incorrectly extrapolating from the full-epoch
+tqdm denominator. The Rich monitor in `hrm-0:6` was restarted on the updated
+code without interrupting scheduler or training processes.
+
+Managed-judge stall and fix, 2026-08-02. Confidence: high from process/socket
+inspection, server logs, and successful live retries. Two step-200000
+`generative_talemaader` shards assigned to GPUs 6 and 7 stalled for about 3.6
+hours because the old judge formula generated ports 65606 and 65700. Uvicorn
+silently listened on wrapped ports 70 and 164, while the OpenAI client rejected
+the advertised out-of-range URLs; both jobs therefore remained at zero samples
+with idle GPUs. `eval_scheduler.runtime.managed_judge_port` now folds all
+deterministic GPU/shard offsets into ports 20000-59999. A regression test checks
+validity and uniqueness across eight GPUs and eight shards. The scheduler was
+stopped cleanly, the two malformed attempts were terminated, all persistent
+servers were released, and only those two rows retried at valid ports 45606 and
+45700. The retries immediately produced judge requests and active GPU load.
+
+Tmux recovery note, 2026-08-02. Confidence: high from live tmux/process
+inspection. When the old scheduler window exited during the managed-judge
+restart, tmux renumbered window 6 to 5; respawning target 5 then replaced the
+monitor while leaving the scheduler alive under the stale `monitor` name. The
+layout was restored without interrupting training: `hrm-0:5` is the active
+`scheduler`, and a fresh Rich `monitor` runs in `hrm-0:6`.
+
+## DFM8 L Second-Epoch Campaign
+
+Update, 2026-08-03. Confidence: high from the completed `epoch_1` checkpoint,
+its sidecar, the prior campaign log, and the live second-epoch scheduler.
+
+The earlier predicted first-epoch endpoint of step 268857 is superseded. The
+data loader actually exhausted `epoch_0` after step 268650 and wrote the
+complete regular checkpoint `fsdp2_epoch_1` at global step **268651**. Its
+sidecar records `epoch=1`, exact `batch_in_epoch=0`, global batch 262144, and
+all eight carry shards are present. The old campaign's sole failed row,
+`campaign-train-268857`, was therefore a checkpoint-name verification failure
+after successful completion, not a training failure.
+
+The second epoch is managed by:
+
+```text
+logs/scheduler/dfm8_L_campaign_epoch2_20260803
+```
+
+It resumes `checkpoints/dfm8/L-gbs131072/fsdp2_epoch_1`, keeps the existing
+W&B run `DFM5/g2oaotmc`, and evaluates complete EMA checkpoints at 300K, 350K,
+400K, 450K, and 500K. The final scheduler target is the conservative
+metadata-derived upper estimate 537714. This does not assert that epoch 2 has
+exactly that many steps: the training loop naturally stops and writes
+`fsdp2_epoch_2` when sampled `epoch_1` is exhausted. The actual second-epoch
+boundary must be taken from that checkpoint sidecar after completion.
+Evaluation epochs currently use `global_step / 268651`, anchored to the
+observed first-epoch boundary. The full evaluation
+configuration remains the one documented above: standard, DFM, 32-shard
+IFEval-DA, and EuroEval; EuroEval-first ordering; persistent vLLM; Gemma 4
+native chat template; and the established separate judge configuration.
+
+The reproducible plan builder is
+`scripts/setup_dfm8_l_epoch2_campaign.sh`. Live tmux windows are
+`hrm-0:4` (`training`), `hrm-0:5` (`scheduler`), and `hrm-0:6` (`monitor`).
+The training-log follower now searches both the first- and second-epoch log
+roots.

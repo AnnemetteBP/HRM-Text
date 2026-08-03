@@ -250,6 +250,9 @@ def main() -> None:
         wandb.define_metric(f"{args.prefix}/*", step_metric=epoch_key)
         if args.step is not None:
             wandb.define_metric(train_step_key)
+        from log_dfm5_headline_averages import define_present_headline_metrics
+
+        define_present_headline_metrics(wandb, row, epoch_key=epoch_key)
         wandb.log(row)
         label = str(int(args.epoch)) if args.epoch.is_integer() else str(args.epoch).replace(".", "p")
         for key, value in metrics.items():

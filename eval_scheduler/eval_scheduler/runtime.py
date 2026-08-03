@@ -192,6 +192,13 @@ class VLLMServerPool:
             return -1
         return round(current.key.gpu_memory_utilization * total_mib)
 
+    def reclaimable_memory_mib(self, gpu: int, total_mib: int) -> int:
+        with self._registry_lock:
+            current = self._leases.get(gpu)
+        if current is None or current.process.poll() is not None:
+            return 0
+        return round(current.key.gpu_memory_utilization * total_mib)
+
     def release_gpu(self, gpu: int, reason: str) -> None:
         with self._gpu_lock(gpu):
             lease = self._leases.get(gpu)
@@ -435,6 +442,125 @@ def run_wait_checkpoint(job: Job) -> int:
                     log.flush()
                     return STOP_STATUS
                 time.sleep(1)
+
+
+def training_checkpoint_ready(job: Job, target_step: int) -> tuple[bool, str]:
+    ready, reason = checkpoint_ready(job)
+    if not ready:
+        return False, reason
+    ckpt_tag = str(job.metadata["ckpt_tag"])
+    sidecar = Path(str(job.metadata["ckpt_path"])) / f"checkpoint_state_{ckpt_tag}.json"
+    try:
+        state = json.loads(sidecar.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, f"invalid checkpoint sidecar {sidecar}: {exc}"
+    if int(state.get("step", -1)) != target_step:
+        return False, f"checkpoint sidecar step is {state.get('step')}, expected {target_step}"
+    if state.get("checkpoint_kind") != "regular":
+        return False, f"checkpoint kind is {state.get('checkpoint_kind')}, expected regular"
+    return True, "ready"
+
+
+def replace_hydra_overrides(argv: list[str], replacements: dict[str, str]) -> list[str]:
+    keys = tuple(f"{key}=" for key in replacements)
+    cleaned = [
+        part
+        for part in argv
+        if not any(part.lstrip("+").startswith(prefix) for prefix in keys)
+    ]
+    cleaned.extend(f"{key}={value}" for key, value in replacements.items())
+    return cleaned
+
+
+def split_command_environment(argv: list[str]) -> tuple[dict[str, str], list[str]]:
+    environment: dict[str, str] = {}
+    index = 0
+    while index < len(argv):
+        match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)", argv[index])
+        if match is None:
+            break
+        environment[match.group(1)] = match.group(2)
+        index += 1
+    return environment, argv[index:]
+
+
+def run_training_until_step(job: Job, gpus: tuple[int, ...]) -> int:
+    target_step = int(job.metadata["stop_after_step"])
+    ckpt_tag = str(job.metadata.get("ckpt_tag") or f"step_{target_step}")
+    if ckpt_tag != f"step_{target_step}":
+        raise SchedulerError(
+            f"training target checkpoint must be step_{target_step}, got {ckpt_tag}"
+        )
+
+    ready, _reason = training_checkpoint_ready(job, target_step)
+    if ready:
+        return 0
+
+    raw_command = job.metadata.get("command")
+    if isinstance(raw_command, str):
+        argv = shlex.split(raw_command)
+    elif isinstance(raw_command, list) and all(isinstance(part, str) for part in raw_command):
+        argv = list(raw_command)
+    else:
+        raise SchedulerError("train_until_step requires metadata.command as a string or string list")
+    command_environment, argv = split_command_environment(argv)
+    if not argv:
+        raise SchedulerError("training command contains environment assignments but no executable")
+    replacements = {"stop_after_step": str(target_step)}
+    resume_from_tag = str(job.metadata.get("resume_from_tag") or "")
+    if resume_from_tag:
+        resume_metadata = dict(job.metadata)
+        resume_metadata["ckpt_tag"] = resume_from_tag
+        resume_job = job.with_updates(metadata=resume_metadata)
+        resume_ready, resume_reason = checkpoint_ready(resume_job)
+        if not resume_ready:
+            raise SchedulerError(
+                f"resume checkpoint {resume_from_tag} is not complete: {resume_reason}"
+            )
+        replacements.update(
+            {
+                "resume_checkpoint_path": str(job.metadata["ckpt_path"]),
+                "resume_checkpoint_tag": resume_from_tag,
+            }
+        )
+        argv = [
+            part
+            for part in argv
+            if not part.lstrip("+").startswith(
+                ("resume_step=", "resume_epoch=", "resume_batch_in_epoch=")
+            )
+        ]
+    argv = replace_hydra_overrides(argv, replacements)
+
+    cwd = Path(str(job.metadata.get("workdir") or Path.cwd()))
+    log_path = Path(job.log_dir) / f"train_until_step_{target_step}.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env.update(command_environment)
+    env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpus))
+    env["PYTHONUNBUFFERED"] = "1"
+    with log_path.open("a") as log:
+        log.write(f"\n{now()}\tcommand\t{shlex.join(argv)}\n")
+        log.write(f"{now()}\tgpus\t{env['CUDA_VISIBLE_DEVICES']}\n")
+        log.flush()
+        status = subprocess.Popen(
+            argv,
+            cwd=cwd,
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        ).wait()
+        if status != 0:
+            return status
+
+        ready, reason = training_checkpoint_ready(job, target_step)
+        if not ready:
+            log.write(f"{now()}\tcheckpoint verification failed\t{reason}\n")
+            return 4
+        sidecar = Path(str(job.metadata["ckpt_path"])) / f"checkpoint_state_{ckpt_tag}.json"
+        log.write(f"{now()}\tcheckpoint ready\t{sidecar}\n")
+    return 0
 
 
 def run_export_hf(job: Job, gpu: int) -> int:
@@ -930,6 +1056,13 @@ def judge_served_model_name(job: Job) -> str:
     return model.removeprefix("openai/")
 
 
+def managed_judge_port(job: Job, gpu: int, shard: int) -> int:
+    # Keep the deterministic GPU/shard spacing while preventing uvicorn from
+    # silently wrapping ports above 65535 to a different listening port.
+    raw_port = int(job.metadata["port_base"]) + 7000 + gpu * 100 + shard
+    return 20000 + raw_port % 40000
+
+
 def start_judge_server(job: Job, gpu: int, *, port: int, log: Path) -> subprocess.Popen[bytes]:
     argv = [
         python_bin(job),
@@ -959,7 +1092,7 @@ def start_managed_judge(job: Job, gpu: int, run_dir: Path) -> tuple[subprocess.P
     if not managed_judge_enabled(job):
         return None, None, None
     shard = job.shard or 0
-    port = int(job.metadata["port_base"]) + 7000 + gpu * 100 + shard
+    port = managed_judge_port(job, gpu, shard)
     log = run_dir / "judge-server.log"
     proc = start_judge_server(job, gpu, port=port, log=log)
     status = wait_for_vllm_server(
@@ -1847,6 +1980,8 @@ def run_average(job: Job) -> int:
         average_scope,
         "--averages-only",
     ]
+    if job.metadata.get("atomic_v3_averages", False):
+        argv.append("--atomic-v3-averages")
     for prefix in extra_average_prefixes:
         argv.extend(["--extra-average-prefix", str(prefix)])
     return run_command(argv, log_path=Path(job.log_dir) / f"{job.name}.log")
@@ -1880,8 +2015,19 @@ def run_job(
     job: Job,
     gpu: int | None,
     server_pool: VLLMServerPool | None = None,
+    gpus: tuple[int, ...] = (),
 ) -> int:
     batch = job.retry_batch() or 1
+    if job.action == Action.TRAIN_UNTIL_STEP:
+        if not gpus:
+            raise SchedulerError("train_until_step requires an all-GPU allocation")
+        return run_training_until_step(job, gpus)
+    if job.action == Action.TERMINAL_BARRIER:
+        return 0
+    if job.action == Action.TEARDOWN_EVAL:
+        if server_pool is not None:
+            server_pool.close_all()
+        return 0
     if job.action == Action.WAIT_CHECKPOINT:
         return run_wait_checkpoint(job)
     if job.action == Action.EXPORT_HF:
@@ -1915,6 +2061,46 @@ def run_job(
     if job.action == Action.REPORT:
         return run_report(job)
     raise SchedulerError(f"Unsupported action: {job.action}")
+
+
+def _cannot_succeed(job_id: str, jobs_by_id: dict[str, Job], visiting: set[str] | None = None) -> bool:
+    job = jobs_by_id.get(job_id)
+    if job is None:
+        return False
+    if job.status in {JobStatus.FAILED, JobStatus.SKIPPED}:
+        return True
+    if job.status in {JobStatus.DONE, JobStatus.RUNNING}:
+        return False
+    if job.deps_mode == "terminal":
+        return False
+    visiting = set() if visiting is None else visiting
+    if job_id in visiting:
+        return False
+    visiting.add(job_id)
+    try:
+        return any(_cannot_succeed(dep, jobs_by_id, visiting) for dep in job.deps)
+    finally:
+        visiting.remove(job_id)
+
+
+def dependencies_satisfied(job: Job, jobs: list[Job]) -> bool:
+    jobs_by_id = {candidate.job_id: candidate for candidate in jobs}
+    if job.deps_mode == "success":
+        return all(
+            dep in jobs_by_id and jobs_by_id[dep].status == JobStatus.DONE
+            for dep in job.deps
+        )
+    if job.deps_mode != "terminal":
+        raise SchedulerError(f"Unsupported dependency mode for {job.job_id}: {job.deps_mode}")
+    terminal = {JobStatus.DONE, JobStatus.FAILED, JobStatus.SKIPPED}
+    return all(
+        dep in jobs_by_id
+        and (
+            jobs_by_id[dep].status in terminal
+            or _cannot_succeed(dep, jobs_by_id)
+        )
+        for dep in job.deps
+    )
 
 
 class Runner:
@@ -1966,12 +2152,11 @@ class Runner:
         with self.lock:
             with PlanLock(self.plan_dir, exclusive=True):
                 jobs = read_plan(self.plan_file)
-                done = {job.job_id for job in jobs if job.status == JobStatus.DONE}
                 out: list[Job] = []
                 claimed: Job | None = None
                 for job in jobs:
                     if job.job_id == job_id:
-                        if job.status == JobStatus.PENDING and all(dep in done for dep in job.deps):
+                        if job.status == JobStatus.PENDING and dependencies_satisfied(job, jobs):
                             job = job.with_updates(status=JobStatus.RUNNING)
                             claimed = job
                     out.append(job)
@@ -1982,31 +2167,37 @@ class Runner:
     def ready_jobs(self) -> list[Job]:
         with PlanLock(self.plan_dir, exclusive=False):
             jobs = read_plan(self.plan_file)
-        done = {job.job_id for job in jobs if job.status == JobStatus.DONE}
         return [
             job
             for job in jobs
-            if job.status == JobStatus.PENDING and all(dep in done for dep in job.deps)
+            if job.status == JobStatus.PENDING and dependencies_satisfied(job, jobs)
         ]
 
-    def run_one(self, job: Job, gpu: int | None) -> tuple[str, int]:
+    def run_one(
+        self,
+        job: Job,
+        gpu: int | None,
+        allocated_gpus: tuple[int, ...] = (),
+    ) -> tuple[str, int]:
+        if not allocated_gpus and gpu is not None:
+            allocated_gpus = (gpu,)
         free_before, used_before, total_before = gpu_snapshot(gpu) if gpu is not None else ("NA", "NA", "NA")
         batch = job.retry_batch()
+        gpu_label = ",".join(map(str, allocated_gpus)) if allocated_gpus else "-"
         self.event(
             "START "
             f"{job.job_id} {job.action.value} {job.family} {job.name} "
             f"shard_{job.shard if job.shard is not None else '-'}_of_{job.shards if job.shards is not None else '-'} "
-            f"gpu_{gpu if gpu is not None else '-'} attempt_{job.attempt + 1}_of_{job.max_retries + 1} "
+            f"gpu_{gpu_label} attempt_{job.attempt + 1}_of_{job.max_retries + 1} "
             f"batch_{batch if batch is not None else '-'} mem_free_before_{free_before}"
         )
         try:
-            if (
-                gpu is not None
-                and job.action == Action.EXPORT_HF
-                and self.server_pool is not None
-            ):
-                self.server_pool.release_gpu(gpu, "checkpoint_export")
-            status = run_job(job, gpu, self.server_pool)
+            if self.server_pool is not None:
+                if gpu is not None and job.action == Action.EXPORT_HF:
+                    self.server_pool.release_gpu(gpu, "checkpoint_export")
+                elif job.action == Action.TRAIN_UNTIL_STEP:
+                    self.server_pool.close_all()
+            status = run_job(job, gpu, self.server_pool, allocated_gpus)
         except SchedulerError as exc:
             status = 72
             self.event(
@@ -2027,7 +2218,7 @@ class Runner:
                     job.name,
                     "" if job.shard is None else str(job.shard),
                     "" if job.shards is None else str(job.shards),
-                    str(gpu) if gpu is not None else "",
+                    ",".join(map(str, allocated_gpus)),
                     str(job.attempt + 1),
                     "" if batch is None else str(batch),
                     str(status),
@@ -2084,11 +2275,14 @@ class Runner:
                 continue
             effective_free = free_mib
             if self.server_pool is not None:
-                credit = self.server_pool.effective_free_credit_mib(job, gpu, total_mib)
-                if credit < 0:
-                    effective_free = total_mib
+                if job.action == Action.TRAIN_UNTIL_STEP:
+                    effective_free += self.server_pool.reclaimable_memory_mib(gpu, total_mib)
                 else:
-                    effective_free += credit
+                    credit = self.server_pool.effective_free_credit_mib(job, gpu, total_mib)
+                    if credit < 0:
+                        effective_free = total_mib
+                    else:
+                        effective_free += credit
             if effective_free >= minimum:
                 candidates.append((effective_free, gpu))
         if not candidates:
@@ -2097,6 +2291,22 @@ class Runner:
         free_gpus.remove(gpu)
         return gpu
 
+    def select_gpus(self, job: Job, free_gpus: list[int]) -> tuple[int, ...] | None:
+        if not job.requires_all_gpus:
+            gpu = self.select_gpu(job, free_gpus)
+            return None if gpu is None else (gpu,)
+        if set(free_gpus) != set(self.gpus):
+            return None
+        candidates = list(free_gpus)
+        selected: list[int] = []
+        while candidates:
+            gpu = self.select_gpu(job, candidates)
+            if gpu is None:
+                return None
+            selected.append(gpu)
+        free_gpus.clear()
+        return tuple(sorted(selected))
+
     def run(self) -> None:
         stop_request_path(self.plan_dir).unlink(missing_ok=True)
         self.event(f"RUN_START gpus_{','.join(map(str, self.gpus))}")
@@ -2104,7 +2314,7 @@ class Runner:
         checkpoint_wait_slots = int(os.environ.get("EVAL_SCHEDULER_CHECKPOINT_WAIT_SLOTS", "8"))
         try:
             with ThreadPoolExecutor(max_workers=max(1, len(self.gpus) + non_gpu_slots + checkpoint_wait_slots)) as pool:
-                futures: dict[object, tuple[str, int | None, str]] = {}
+                futures: dict[object, tuple[str, tuple[int, ...], str]] = {}
                 free_gpus = list(self.gpus)
                 free_non_gpu_slots = non_gpu_slots
                 free_checkpoint_wait_slots = checkpoint_wait_slots
@@ -2116,34 +2326,40 @@ class Runner:
                         ready = self.ready_jobs()
                         for job in ready:
                             if job.requires_gpu:
-                                gpu = self.select_gpu(job, free_gpus)
-                                if gpu is None:
+                                allocated_gpus = self.select_gpus(job, free_gpus)
+                                if allocated_gpus is None:
                                     continue
-                                slot = ("gpu", gpu)
+                                gpu = allocated_gpus[0]
+                                slot = ("gpu", allocated_gpus)
                             elif job.action == Action.WAIT_CHECKPOINT:
                                 if free_checkpoint_wait_slots <= 0:
                                     continue
                                 gpu = None
+                                allocated_gpus = ()
                                 free_checkpoint_wait_slots -= 1
-                                slot = ("checkpoint_wait", None)
+                                slot = ("checkpoint_wait", ())
                             else:
                                 if free_non_gpu_slots <= 0:
                                     continue
                                 gpu = None
+                                allocated_gpus = ()
                                 free_non_gpu_slots -= 1
-                                slot = ("non_gpu", None)
+                                slot = ("non_gpu", ())
                             claimed = self.claim_job(job.job_id)
                             if claimed is None:
                                 if slot[0] == "gpu":
-                                    assert gpu is not None
-                                    free_gpus.append(gpu)
+                                    free_gpus.extend(allocated_gpus)
                                 elif slot[0] == "checkpoint_wait":
                                     free_checkpoint_wait_slots += 1
                                 else:
                                     free_non_gpu_slots += 1
                                 continue
                             job = claimed
-                            futures[pool.submit(self.run_one, job, gpu)] = (slot[0], slot[1], job.job_id)
+                            futures[pool.submit(self.run_one, job, gpu, allocated_gpus)] = (
+                                slot[0],
+                                slot[1],
+                                job.job_id,
+                            )
                             launched = True
                     if not futures:
                         remaining = [job for job in self.load() if job.status in {JobStatus.PENDING, JobStatus.RUNNING}]
@@ -2174,7 +2390,7 @@ class Runner:
                         break
                     done, _ = wait(futures.keys(), return_when=FIRST_COMPLETED, timeout=5)
                     for fut in done:
-                        slot_kind, gpu, job_id_for_future = futures.pop(fut)
+                        slot_kind, allocated_gpus, job_id_for_future = futures.pop(fut)
                         try:
                             fut.result()
                         except BaseException as exc:
@@ -2185,8 +2401,7 @@ class Runner:
                             )
                         finally:
                             if slot_kind == "gpu":
-                                assert gpu is not None
-                                free_gpus.append(gpu)
+                                free_gpus.extend(allocated_gpus)
                             elif slot_kind == "checkpoint_wait":
                                 free_checkpoint_wait_slots += 1
                             else:

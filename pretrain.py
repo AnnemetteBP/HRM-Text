@@ -112,6 +112,7 @@ class PretrainConfig(pydantic.BaseModel):
     checkpoint_step_interval: Optional[int] = None
     ephemeral_checkpoint_step_interval: Optional[int] = None
     max_steps: Optional[int] = None  # Optional early stop after this many optimizer steps (benchmarking/debugging).
+    stop_after_step: Optional[int] = None  # Gracefully stop after checkpointing this global optimizer step.
     dataloader_prefetch_factor: int = pydantic.Field(default=8, ge=1)  # Batches prefetched by the (single) dataloader worker.
     log_interval: int = 5
     validation_interval: int = 0
@@ -125,6 +126,8 @@ class PretrainConfig(pydantic.BaseModel):
             raise ValueError("checkpoint_step_interval must be >= 1 when set")
         if self.ephemeral_checkpoint_step_interval is not None and self.ephemeral_checkpoint_step_interval < 1:
             raise ValueError("ephemeral_checkpoint_step_interval must be >= 1 when set")
+        if self.stop_after_step is not None and self.stop_after_step < 1:
+            raise ValueError("stop_after_step must be >= 1 when set")
         if self.log_interval < 1:
             raise ValueError("log_interval must be >= 1")
         if self.validation_interval < 0:
@@ -1044,7 +1047,19 @@ def launch(hydra_config: DictConfig):
         save_code_and_config(config, train_metadata)
 
     # Training Loop
+    stop_after_step_reached = (
+        config.stop_after_step is not None
+        and train_state.step >= config.stop_after_step
+    )
+    if stop_after_step_reached and RANK == 0:
+        print(
+            f"stop_after_step={config.stop_after_step} already reached at "
+            f"step={train_state.step}; exiting without another optimizer step",
+            flush=True,
+        )
     for epoch in range(start_epoch, config.epochs + 1):
+        if stop_after_step_reached:
+            break
         print (f"[Rank {RANK}, World Size {WORLD_SIZE}]: Epoch {epoch}")
         trace_print(config, RANK, f"epoch_begin epoch={epoch}")
 
@@ -1140,8 +1155,16 @@ def launch(hydra_config: DictConfig):
 
             del metrics
 
+            stop_after_step_reached = (
+                config.stop_after_step is not None
+                and train_state.step >= config.stop_after_step
+            )
             saved_regular_step_checkpoint = False
-            if config.checkpoint_step_interval is not None and train_state.step % config.checkpoint_step_interval == 0:
+            regular_interval_reached = (
+                config.checkpoint_step_interval is not None
+                and train_state.step % config.checkpoint_step_interval == 0
+            )
+            if regular_interval_reached or stop_after_step_reached:
                 save_train_checkpoint(config, train_state, f"step_{train_state.step}", epoch, batch_in_epoch, RANK, local_batch_size=local_batch_size, resume_info=accumulation_resume_info, batch_in_epoch_exact=batch_in_epoch_exact)
                 saved_regular_step_checkpoint = True
 
@@ -1153,12 +1176,16 @@ def launch(hydra_config: DictConfig):
                     save_train_checkpoint(config, train_state, ephemeral_tag, epoch, batch_in_epoch, RANK, checkpoint_kind="ephemeral", local_batch_size=local_batch_size, resume_info=accumulation_resume_info, batch_in_epoch_exact=batch_in_epoch_exact)
                     remove_stale_ephemeral_checkpoints(config, ephemeral_tag, RANK)
 
-            if config.max_steps is not None and train_state.step >= config.max_steps:
+            if stop_after_step_reached or (
+                config.max_steps is not None and train_state.step >= config.max_steps
+            ):
                 break
 
         skip_batches = 0
 
-        if config.max_steps is not None and train_state.step >= config.max_steps:
+        if stop_after_step_reached or (
+            config.max_steps is not None and train_state.step >= config.max_steps
+        ):
             break
 
         ############ EVAL STACK: TBD TODO

@@ -447,117 +447,35 @@ def make_plan(config: PlanConfig) -> list[Job]:
         dfm_merge_by_task["ifeval-da"] = merge.job_id
 
     if config.include_average:
-        suite_average_ids: list[str] = []
-        section_average_ids: list[str] = []
-
-        def standard_deps(tasks: list[str]) -> tuple[str, ...]:
-            return tuple(standard_merge_by_task[task] for task in tasks if task in standard_merge_by_task)
-
-        def dfm_deps(tasks: list[str]) -> tuple[str, ...]:
-            return tuple(dfm_merge_by_task[task] for task in tasks if task in dfm_merge_by_task)
-
-        def euroeval_deps(groups: list[str]) -> tuple[str, ...]:
-            return tuple(euroeval_job_by_group[group] for group in groups if group in euroeval_job_by_group)
-
-        def add_average(name: str, scope: str, deps: tuple[str, ...], *, suite: bool = False) -> str | None:
-            if not deps:
-                return None
-            average_metadata = metadata | {
-                "average_scope": scope,
-                "average_prefix": "headline_avg_v3",
-                "extra_average_prefixes": [],
-            }
-            if suite:
-                average_metadata |= {
-                    "average_prefix": "suite_avg_v3",
-                    "extra_average_prefixes": [],
-                }
+        average_deps = tuple(
+            dict.fromkeys(standard_merge_ids + dfm_merge_ids + euroeval_average_job_ids)
+        )
+        average_id = None
+        if average_deps:
             average = Job(
                 job_id=job_id("average", counter),
                 action=Action.AVERAGE,
                 family="post",
-                name=name,
-                deps=deps,
+                name="checkpoint-averages",
+                deps=average_deps,
                 log_dir=str(config.plan_dir),
-                metadata=average_metadata,
+                metadata=metadata
+                | {
+                    "average_scope": "all",
+                    "average_prefix": "headline_avg_v3",
+                    "extra_average_prefixes": [],
+                    "atomic_v3_averages": True,
+                },
             )
             add(average)
-            return average.job_id
-
-        if standard_merge_ids:
-            average_id = add_average("standard-average", "standard", tuple(standard_merge_ids), suite=True)
-            if average_id:
-                suite_average_ids.append(average_id)
-        if dfm_merge_ids:
-            average_id = add_average("dfm-average", "dfm", tuple(dfm_merge_ids), suite=True)
-            if average_id:
-                suite_average_ids.append(average_id)
-        if euroeval_average_job_ids:
-            average_id = add_average("euroeval-average", "euroeval", tuple(euroeval_average_job_ids), suite=True)
-            if average_id:
-                suite_average_ids.append(average_id)
-
-        danish_deps = (
-            dfm_deps([
-                "dala",
-                "danish_citizen_tests",
-                "gec_dala",
-                "generative_talemaader",
-                "ifeval-da",
-                "multi_wiki_qa",
-                "nordjyllandnews",
-                "piqa",
-                "wmt24pp_en_da",
-            ])
-            + euroeval_deps([
-                "angry-tweets",
-                "scala-da",
-                "dansk",
-                "multi-wiki-qa-da",
-                "nordjylland-news",
-                "danske-talemaader",
-                "danish-citizen-tests",
-                "hellaswag-da",
-                "ifeval-da",
-            ])
-        )
-        english_deps = (
-            standard_deps(["ARC", "BoolQ", "DROP", "HellaSwag", "MMLU", "Winogrande"])
-            + dfm_deps(["govreport"])
-            + euroeval_deps([
-                "sst5",
-                "scala-en",
-                "conll-en",
-                "squad",
-                "cnn-dailymail",
-                "life-in-the-uk",
-                "hellaswag",
-                "ifeval",
-            ])
-        )
-        math_code_deps = (
-            standard_deps(["GSM8k", "MATH"])
-            + dfm_deps(["humaneval"])
-            + euroeval_deps(["bfcl-v2"])
-        )
-        for name, scope, deps in (
-            ("danish-average", "danish", danish_deps),
-            ("english-average", "english", english_deps),
-            ("math-code-average", "math_code", math_code_deps),
-        ):
-            average_id = add_average(name, scope, deps)
-            if average_id:
-                section_average_ids.append(average_id)
-
-        overall_deps = tuple(section_average_ids + suite_average_ids)
-        average_id = add_average("headline-averages", "overall", overall_deps)
+            average_id = average.job_id
         if config.include_report:
             report = Job(
                 job_id=job_id("report", counter),
                 action=Action.REPORT,
                 family="post",
                 name="dfm5-report",
-                deps=tuple([average_id] if average_id else section_average_ids + suite_average_ids),
+                deps=tuple([average_id] if average_id else average_deps),
                 log_dir=str(config.plan_dir),
                 metadata=metadata,
             )

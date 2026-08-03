@@ -15,7 +15,7 @@ import typer
 
 from .catalog import BatchDefaults
 from .locking import PlanLock
-from .model import JobStatus, read_plan, write_plan
+from .model import Action, Job, JobStatus, read_plan, write_plan
 from .monitor import rich_status_renderable, rich_watch, status_text, watch
 from .plan import PlanConfig, plan_path, save_new_plan, set_batch, summarize_plan
 from .runtime import Runner
@@ -317,6 +317,128 @@ def summary(plan_dir: Path = typer.Option(..., help="Directory containing plan.t
         typer.echo(f"{key}\t{value}")
 
 
+def append_jobs(plan_dir: Path, additions: list[Job]) -> None:
+    path = plan_path(plan_dir)
+    with PlanLock(plan_dir, exclusive=True):
+        jobs = read_plan(path)
+        existing = {job.job_id for job in jobs}
+        duplicates = sorted(existing & {job.job_id for job in additions})
+        if duplicates:
+            raise typer.BadParameter(f"job ids already exist: {', '.join(duplicates)}")
+        write_plan(path, [*jobs, *additions])
+
+
+@plan_app.command("add-eval-release")
+def add_eval_release(
+    plan_dir: Path = typer.Option(..., help="Directory containing plan.tsv."),
+    checkpoint_tag: str = typer.Option(..., help="Eval checkpoint tag whose GPU jobs must become terminal."),
+    barrier_job_id: str = typer.Option(..., help="Job id for the terminal barrier."),
+    teardown_job_id: str = typer.Option(..., help="Job id for persistent-server teardown."),
+) -> None:
+    path = plan_path(plan_dir)
+    with PlanLock(plan_dir, exclusive=True):
+        jobs = read_plan(path)
+        eval_actions = {
+            Action.EVAL_STANDARD,
+            Action.EVAL_DFM,
+            Action.EVAL_DFM_IFEVAL,
+            Action.EVAL_EUROEVAL,
+            Action.EVAL_EUROEVAL_BATCHED_IFEVAL,
+        }
+        eval_ids = tuple(
+            job.job_id
+            for job in jobs
+            if job.action in eval_actions
+            and str(job.metadata.get("ckpt_tag")) == checkpoint_tag
+        )
+        if not eval_ids:
+            raise typer.BadParameter(f"no GPU eval rows found for checkpoint {checkpoint_tag}")
+        existing = {job.job_id for job in jobs}
+        if barrier_job_id in existing or teardown_job_id in existing:
+            raise typer.BadParameter("barrier or teardown job id already exists")
+        common_metadata = {
+            "checkpoint_tag": checkpoint_tag,
+            "eval_gpu_job_count": len(eval_ids),
+        }
+        jobs.extend(
+            [
+                Job(
+                    job_id=barrier_job_id,
+                    action=Action.TERMINAL_BARRIER,
+                    family="campaign",
+                    name=f"{checkpoint_tag}_evals_terminal",
+                    deps=eval_ids,
+                    deps_mode="terminal",
+                    max_retries=0,
+                    log_dir=str(plan_dir),
+                    metadata=common_metadata,
+                ),
+                Job(
+                    job_id=teardown_job_id,
+                    action=Action.TEARDOWN_EVAL,
+                    family="campaign",
+                    name=f"{checkpoint_tag}_eval_teardown",
+                    deps=(barrier_job_id,),
+                    max_retries=0,
+                    log_dir=str(plan_dir),
+                    metadata=common_metadata,
+                ),
+            ]
+        )
+        write_plan(path, jobs)
+    typer.echo(
+        f"added_eval_release\tcheckpoint={checkpoint_tag}\tevals={len(eval_ids)}"
+        f"\tbarrier={barrier_job_id}\tteardown={teardown_job_id}"
+    )
+
+
+@plan_app.command("add-training")
+def add_training(
+    plan_dir: Path = typer.Option(..., help="Directory containing plan.tsv."),
+    job_id: str = typer.Option(..., help="Unique training job id."),
+    stop_after_step: int = typer.Option(..., min=1, help="Exact global optimizer step to checkpoint and stop."),
+    command: str = typer.Option(..., help="Training command; stop_after_step is replaced/appended automatically."),
+    checkpoint_path: Path = typer.Option(..., help="Training checkpoint directory."),
+    log_dir: Path = typer.Option(..., help="Segment log directory."),
+    deps: str = typer.Option("", help="Comma-separated prerequisite job ids, normally an eval teardown row."),
+    resume_from_tag: str | None = typer.Option(None, help="Verified checkpoint tag to inject as the resume source."),
+    workdir: Path = typer.Option(Path.cwd(), help="Working directory for the training command."),
+    checkpoint_carry_ranks: int = typer.Option(8, min=1, help="Required carry files in the completed checkpoint."),
+    min_gpu_free_mib: int = typer.Option(0, min=0, help="Required effective free memory on every scheduler GPU."),
+    max_retries: int = typer.Option(0, min=0, help="Training retries after the first attempt."),
+) -> None:
+    dependency_ids = tuple(part.strip() for part in deps.split(",") if part.strip())
+    append_jobs(
+        plan_dir,
+        [
+            Job(
+                job_id=job_id,
+                action=Action.TRAIN_UNTIL_STEP,
+                family="training",
+                name=f"step_{stop_after_step}",
+                deps=dependency_ids,
+                max_retries=max_retries,
+                gpu_policy="all",
+                log_dir=str(log_dir),
+                metadata={
+                    "command": command,
+                    "stop_after_step": stop_after_step,
+                    "ckpt_path": str(checkpoint_path),
+                    "ckpt_tag": f"step_{stop_after_step}",
+                    "checkpoint_carry_ranks": checkpoint_carry_ranks,
+                    "min_gpu_free_mib": min_gpu_free_mib,
+                    "workdir": str(workdir),
+                    "resume_from_tag": resume_from_tag,
+                },
+            )
+        ],
+    )
+    typer.echo(
+        f"added_training\tjob={job_id}\tstop_after_step={stop_after_step}"
+        f"\tdeps={','.join(dependency_ids)}"
+    )
+
+
 @plan_app.command("set-batch")
 def set_batch_cmd(
     plan_dir: Path = typer.Option(..., help="Directory containing plan.tsv."),
@@ -425,7 +547,7 @@ def list_jobs(
         jobs = [job for job in jobs if job.status.value == status]
     if family:
         jobs = [job for job in jobs if job.family == family]
-    typer.echo("job_id\taction\tfamily\tname\tshard\tshards\tbatch\tstatus\tattempt\tdeps")
+    typer.echo("job_id\taction\tfamily\tname\tshard\tshards\tbatch\tstatus\tattempt\tdeps_mode\tdeps")
     for job in jobs[:limit]:
         typer.echo(
             "\t".join(
@@ -439,6 +561,7 @@ def list_jobs(
                     "" if job.initial_batch is None else str(job.initial_batch),
                     job.status.value,
                     str(job.attempt),
+                    job.deps_mode,
                     ",".join(job.deps),
                 ]
             )

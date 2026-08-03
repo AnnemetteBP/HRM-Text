@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-25
+Last updated: 2026-07-28
 Confidence: high
 Scope: Local repo state and verified commands from this session.
 
@@ -10484,3 +10484,254 @@ from scheduler events, attempt telemetry, and the conversion traceback.
   pending with attempt zero, and both 50K and 100K export rows now require
   `178,000 MiB` effective free GPU memory. This prevents export from competing
   with active XXL training; it will run when a GPU is effectively free.
+
+Segmented training/evaluation campaign support, 2026-07-28. Confidence: high
+from Hydra composition, 20 focused tests, and an end-to-end dry scheduler plan.
+
+- `pretrain.py` and `config/cfg_pretrain.yaml` expose `stop_after_step`. At the
+  exact global optimizer step, training forces a regular step checkpoint and
+  then follows the normal distributed/W&B shutdown path. Null preserves the
+  previous behavior.
+- `eval_scheduler` supports `train_until_step`, `terminal_barrier`, and
+  `teardown_eval`, plus explicit `deps_mode` in `plan.tsv`. Existing plans
+  remain success-only by default.
+- `train_until_step` atomically reserves all scheduler GPUs, closes persistent
+  vLLM leases, injects a verified resume checkpoint path/tag and exact stop
+  target, and accepts success only after the target's regular checkpoint,
+  carry files, and state sidecar verify.
+- `plan add-eval-release` builds a terminal barrier over only the selected
+  checkpoint's GPU eval rows, followed by evaluator teardown.
+  `plan add-training` appends the next all-GPU training segment.
+- The next training segment depends on evaluator teardown, not on
+  merge/sync/average. Eval failures and their blocked post-processing no longer
+  waste GPU time; active or runnable retries still delay teardown.
+- This support has not been inserted into the currently live
+  `dfm8-XXL-1epoch` plan. Its scheduler process loaded the previous code;
+  campaign rows should run from a fresh scheduler process.
+
+Superseded 2026-07-28: the segmented campaign support was subsequently added
+to the live `dfm8-XXL-1epoch` plan. Confidence: high from locked plan
+inspection, checkpoint sidecar inspection, and live scheduler telemetry.
+
+- Plan:
+  `logs/scheduler/dfm8_XXL_1epoch_steps50k_100k_persistent_vllm_20260725`.
+- The source resume checkpoint is the complete
+  `checkpoints/dfm8/XXL-1epoch/fsdp2_ephemeral_step_62000`, with all eight
+  carry files and sidecar row cursor `50,017,079`.
+- `campaign-barrier-50000` has terminal dependencies on all `188` 50K GPU eval
+  rows. `campaign-teardown-50000` follows it independently of merges and
+  averages.
+- `campaign-train-100000` then reserves all eight GPUs, resumes
+  `ephemeral_step_62000`, keeps the same W&B run `DFM5/40j5y877`, and injects
+  `stop_after_step=100000`.
+- The old scheduler and monitor processes were stopped before adding the new
+  action rows. Fresh code is running in separate tmux windows `hrm-0:6` and
+  `hrm-0:7` with persistent vLLM enabled and the `hrm` environment.
+- Training had stopped and released all GPUs; the corrected 50K HF export
+  started on GPU 7 immediately after scheduler restart.
+
+DFM8 XXL segmented 100K-to-150K continuation, 2026-07-28. Confidence: high
+from locked plan inspection, Hydra composition, checkpoint-sidecar inspection,
+the remote W&B run config, and live scheduler telemetry.
+
+- The live plan now also contains the complete `step_150000` evaluation graph:
+  all standard, DFM, 32-shard DFM IFEval-DA, and EuroEval tasks, followed by
+  per-task merges, W&B synchronization, `suite_avg_v3` averages, and report
+  generation. Its eval epoch is `0.5579159470697301`.
+- The 150K graph exactly preserves the production 100K settings: EuroEval
+  first; initial batches `64` standard, `32` DFM, `32` DFM IFEval-DA, and
+  `32` EuroEval; five retries after the first attempt; EMA HF export; Gemma 4
+  native chat template; persistent vLLM utilization `0.95`; and a
+  `178,000 MiB` effective-free-memory gate.
+- Judged Talemaader rows retain batch/concurrency `16`, vLLM utilization
+  `0.85`, the `unsloth/gemma-4-E4B-it` local judge, and the `180,000 MiB`
+  effective-free-memory gate.
+- `campaign-barrier-100000` has terminal dependencies on exactly the 188
+  `step_100000` GPU eval rows. `campaign-teardown-100000` then releases all
+  evaluator servers even when a post-processing row is blocked by an eval
+  failure.
+- `campaign-train-150000` depends on that teardown, reserves all eight GPUs,
+  resumes the forced regular `step_100000` checkpoint, and injects
+  `stop_after_step=150000`. The 150K checkpoint wait is already active, which
+  verifies that the running scheduler picked up the appended graph without a
+  restart.
+- Both scheduled training segments use the same base command and match the
+  resolved local and remote `DFM5/40j5y877` config: DFM8 XXL, BP 2-to-5 with
+  warmup ratio `0.2`, LR `4e-4`, LR ratio `1`, GAS `4`, global batch
+  `262144`, FP32 FSDP parameters, BF16 forward/backward, sharded checkpoints,
+  EMA `0.9999`, and the original optimizer/checkpoint settings.
+- The 62K source is complete: DCP `.metadata`, all eight carry files, and an
+  exact state sidecar with step `62000`, epoch `1`,
+  `batch_in_epoch=248000`, global row cursor `50,017,079`, GAS `4`, local
+  batch `8192`, and global batch `262144`.
+- Neither resume command supplies manual step, epoch, or batch offsets.
+  Resume position comes from the verified checkpoint sidecar. The 100K source
+  does not exist yet; `stop_after_step=100000` will force it to be written as
+  a regular checkpoint before the first training segment exits, and the
+  scheduler verifies it before accepting the segment.
+- A fresh Hydra composition omits `data.validation_path`, whereas the saved
+  runtime config serializes it as `null`; these are equivalent and both mean
+  that no validation dataset is configured.
+- The 50K EuroEval results are remotely synchronized to the same W&B run at
+  `euroeval/epoch=0.1859719823565767` and
+  `euroeval/train_step=50000`. Nineteen task rows completed; `valeu-da` was
+  intentionally skipped.
+- At `20:32` on 2026-07-28, the 50K GPU eval rows became terminal, persistent
+  servers were torn down, and `campaign-train-100000` started successfully on
+  all eight GPUs. Its direct stdout/stderr log is followed in tmux window
+  `hrm-0:8` (`training-output`); scheduler and Rich monitor remain in windows
+  `6` and `7`.
+- The remote W&B history had reached step `62056`, while the newest fully
+  resumable checkpoint was step `62000`. W&B therefore ignores the first 56
+  repeated log points as non-monotonic; logging resumes normally above
+  `62056`. This does not prevent the training segment from continuing to
+  `100000`.
+
+DFM8 XXL segmented campaign through epoch 1, 2026-07-30. Confidence: high from
+locked plan inspection, live scheduler telemetry, and dependency assertions.
+
+- The same live plan now covers the complete remainder of epoch 1:
+  `logs/scheduler/dfm8_XXL_1epoch_steps50k_100k_persistent_vllm_20260725`.
+- The chain is:
+  `100K eval -> train 100K-150K -> 150K eval -> train 150K-200K -> 200K
+  eval -> train 200K-250K -> 250K eval -> train 250K-268857`.
+- `268857` is the exact optimizer-step count for one DFM8 epoch under this
+  run: `floor(70,479,433,697 / 262,144)`.
+- Each of the 100K, 150K, 200K, and 250K checkpoints has 188 GPU evaluation
+  rows: 85 standard shards, 51 DFM shards, 32 DFM IFEval-DA shards, and 20
+  EuroEval jobs. Each also has one atomic `checkpoint-averages` finalizer.
+- Every checkpoint release barrier uses terminal dependencies over exactly its
+  188 GPU rows. Evaluator teardown and the next training segment therefore
+  proceed after all eval attempts become terminal even if a merge, W&B sync,
+  average, or report row fails.
+- Training segments reserve all eight scheduler GPUs and resume from the
+  preceding forced regular step checkpoint. Their targets are `step_150000`,
+  `step_200000`, `step_250000`, and `step_268857`.
+- The appended 200K and 250K evals preserve the production settings used at
+  150K: EMA HF export, EuroEval-first ordering, batches 64/32/32/32 for
+  standard/DFM/DFM-IFEval/EuroEval, six total attempts, Gemma 4 native chat
+  template, persistent vLLM utilization `0.95`, and the `178000 MiB`
+  effective-free-memory gate. Judged Talemaader uses batch/concurrency `16`,
+  vLLM utilization `0.85`, a local `unsloth/gemma-4-E4B-it` judge, and the
+  `180000 MiB` gate.
+- The running scheduler noticed the newly appended rows without restart. The
+  200K and 250K checkpoint waits are active while the 100K evaluation
+  continues.
+- At `12:55` on 2026-07-30, the 100K GPU eval graph became terminal,
+  evaluator teardown completed, and `campaign-train-150000` resumed from
+  `step_100000` on all eight GPUs. Tmux window `hrm-0:8` had remained
+  hard-coded to the prior 62K-to-100K log. It now runs
+  `scripts/follow_latest_training_log.sh`, which polls the campaign log root
+  every 10 seconds and follows the newest segment automatically. A live check
+  showed it following `step_100000_to_150000/train_until_step_150000.log` at
+  step `100350`.
+
+DFM8 XL clean-full metric export and checkpoint ranking, 2026-07-31.
+Confidence: high from unsampled W&B history, CSV validation, and explicit
+metric calculations.
+
+- Source run: `peter-sk-sdu/DFM5/dfm8-xl-from-dfm6-dfm7-epoch5-clean-full`,
+  displayed as `DFM8-XL clean full from DFM6-DFM7 epoch5`.
+- Tidy CSV:
+  `exports/metrics/dfm8-xl-clean-full-from-dfm6-dfm7-epoch5_metrics.csv`.
+  It contains `2,031,140` numeric observations across all `468` selected
+  training/evaluation metric keys, is `365,260,686` bytes, has no blank metric
+  values, and is monotonic over W&B steps `5` through `1,768,065`.
+- The broad normalized headline average is highest at `step_1450000`, epoch
+  `5.820123020035972`, with `0.6041569566`. `step_1700000`, epoch
+  `6.749984582191261`, ranks third at `0.6009481502`.
+- Removing EuroEval and averaging the remaining 8 standard plus 11 DFM
+  headline metrics individually still selects 1450K: `0.6914526360` versus
+  `0.6897745957` at 1700K.
+- For an international equal-weight score of ARC, BoolQ, DROP, HellaSwag,
+  MMLU, Winogrande, GovReport BERTScore, MATH, GSM8K, and HumanEval, the best
+  checkpoint is `step_1650000`, epoch `6.564012269760203`, at `0.725127399`.
+  The next checkpoints are 1550K (`0.722743017`), 1750K (`0.722418191`), and
+  1450K (`0.722382183`). 1700K ranks eighth at `0.719983877`.
+- If every one of the 37 headline metrics receives weight 1 but GSM8K and
+  HumanEval each receive 5x or 10x weight, 1450K remains best. At 25x,
+  1650K becomes best. If selection is almost exclusively the mean of GSM8K
+  and HumanEval, 1750K is best.
+
+Atomic W&B average finalization, 2026-07-28. Confidence: high from local logs,
+remote W&B history inspection, raw workspace-spec inspection, focused plan
+generation, and scheduler unit tests.
+
+- The 50K plan launched seven separate average writers. `dfm-average` and
+  `danish-average` both resumed W&B run `40j5y877` in the same second and both
+  wrote internal history step `10846`; one row replaced the other. The
+  calculated Danish value was valid, but its history point was initially
+  absent.
+- The 50K averages were repaired in one atomic W&B row. Remote history now
+  contains `headline_avg_v3/danish=0.4415358429103832` with count `18` at
+  epoch `0.1859719823565767`, together with the other headline and suite
+  averages.
+- Further diagnosis showed why the Danish point alone remained invisible in
+  line panels: its rows existed and paired correctly with
+  `headline_avg_v3/epoch`, but W&B's `historyKeys` registry had no numeric
+  schema entry for `headline_avg_v3/danish`; English, Math/Code, and overall
+  did. The metric and count were explicitly registered and re-logged.
+  Server-side verification now shows numeric history-key entries and a fresh
+  Danish point at internal history step `62756`. The user subsequently
+  confirmed that the point renders in both Danish-average panels in workspace
+  `3fvncok3gjh`.
+- The average logger now explicitly calls `wandb.define_metric` for every
+  emitted average key in addition to the prefix wildcard. Atomic average rows
+  therefore register each series even if an earlier concurrent W&B client
+  lost the wildcard-derived history-key update.
+- Superseded mistaken diagnosis: `760qd0evtsa` was not the workspace the user
+  was viewing. Adding an explicit panel to its auto-generated Danish section
+  suppressed its other auto panels. That edit was fully reverted to the
+  previously observed state (`panels=[]`, `isPanelsAuto=true`).
+- The actual workspace is `3fvncok3gjh`. It already had the correct Danish
+  average panel and all 20 Danish panels.
+- Superseded mistaken selection interpretation: this workspace uses
+  `selections.root=1`, W&B's subtractive mode, where IDs in `tree` are hidden
+  rather than selected. Appending `40j5y877` therefore hid the run. The run ID
+  was removed from that exclusion tree. A server-side re-read confirms it is
+  no longer hidden and the workspace still has Danish `20`, English `17`, and
+  Math/Code `5` panels with unchanged definitions.
+- Future generated plans now create one `checkpoint-averages` action instead
+  of seven concurrent average actions. It waits for all standard/DFM merges
+  and EuroEval jobs, then writes all `headline_avg_v3/*` section averages and
+  all `suite_avg_v3/*` suite averages in one W&B history event.
+- A subsequent full audit of the 46 unique metrics used by workspace
+  `3fvncok3gjh` found seven raw series whose values existed in W&B summaries
+  but lacked queryable history schemas: Angry Tweets, ARC, MATH, DFM
+  MultiWikiQA, GovReport BERTScore, EuroEval Danish Talemaader, and Valeu-en.
+  These were explicitly registered and re-logged at the 50K epoch. Remote
+  history verification now finds the expected 50K value for all 45 metrics
+  that were actually evaluated: standard `8/8`, DFM `11/11`, EuroEval
+  `19/19`, headline averages `4/4`, and suite averages `3/3`. The remaining
+  workspace metric, Valeu-da, is intentionally absent because that task was
+  skipped and produced no value.
+- Superseded implementation: registering every one of the roughly 449 raw
+  evaluation keys in one W&B update was too broad and did not reliably create
+  every remote history schema. The production loggers now explicitly register
+  only metrics used by the headline workspace. Individual standard, DFM, and
+  EuroEval writers do this when their task completes.
+- The atomic `checkpoint-averages` finalizer is now also the authoritative
+  raw-headline finalizer. Even though it is invoked with `--averages-only`, it
+  collects and re-logs the 37 configured headline metrics together with all
+  headline and suite averages in one history event. It does not re-log the
+  hundreds of diagnostic metrics. This avoids concurrent W&B-client row
+  collisions while ensuring every visible panel receives a schema-backed
+  checkpoint point.
+- DFM8 XXL 100K timing clarification, 2026-07-30. Confidence: high from the
+  locked plan, merged local EuroEval artifacts, and remote W&B history. All
+  19 executable EuroEval jobs had completed while standard, DFM, and
+  IFEval-DA were still running. The unified `checkpoint-averages` row therefore
+  correctly remained pending: it waits for all suites, not merely EuroEval.
+  To expose the already-final EuroEval result promptly, the 100K suite average
+  was logged separately with exact metric registration:
+  `suite_avg_v3/euroeval=0.4836866461293064`, count `18`, epoch
+  `0.3719439647131534`. Remote history verification found the point. The
+  eventual atomic checkpoint finalizer will safely re-log the same result
+  together with the other suites.
+- The pending 100K and 150K rows in the live XXL plan were migrated under the
+  plan lock to this atomic layout. The logger recognizes the atomic contract
+  even when invoked by the already-running pre-change scheduler process, so
+  training and scheduler processes do not need to restart.
+- GPU release remains independent of average success: campaign teardown and
+  the next training segment depend on the terminal state of GPU eval jobs, not
+  on the atomic average or report row.

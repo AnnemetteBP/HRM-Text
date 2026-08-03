@@ -12,13 +12,18 @@ evaluation entrypoints as external commands.
 The scheduler writes an explicit TSV plan:
 
 ```tsv
-job_id	action	family	name	shard	shards	deps	initial_batch	max_retries	gpu_policy	status	attempt	log_dir	metadata_json
+job_id	action	family	name	shard	shards	deps	deps_mode	initial_batch	max_retries	gpu_policy	status	attempt	log_dir	metadata_json
 ```
 
 The plan is the desired workflow, not just a list of eval shards.  It can
 contain:
 
 - `wait_checkpoint`: wait until a checkpoint is fully written.
+- `train_until_step`: reserve all scheduler GPUs and train to an exact,
+  verified regular checkpoint.
+- `terminal_barrier`: wait until dependencies are terminal, including failed
+  or permanently unreachable eval rows.
+- `teardown_eval`: stop persistent evaluation servers before training resumes.
 - `eval_standard`: one standard benchmark shard.
 - `eval_dfm`: one dfm-evals task shard.
 - `eval_dfm_ifeval`: one Danish IFEval shard.
@@ -32,6 +37,9 @@ Every merge/sync/average/report row lists dependencies on the rows that must
 complete first.  Pending rows can be edited directly, including
 `initial_batch`, before the scheduler starts or while earlier dependencies are
 still running.
+
+Dependencies default to `deps_mode=success`. Campaign release barriers opt
+into `deps_mode=terminal`; merges retain success-only behavior.
 
 Generated plans include a `wait_checkpoint` row by default. Eval jobs depend on
 that row, so the plan can be created before the checkpoint exists. The wait row
@@ -329,6 +337,60 @@ python -m eval_scheduler monitor \
   --rich
 ```
 
+## Alternating Training And Evaluation
+
+`pretrain.py` accepts `stop_after_step=N`. After optimizer/EMA step `N`, it
+forces a regular `step_N` checkpoint, writes the exact resume sidecar, crosses
+the checkpoint barriers, and exits normally. A null value preserves
+uninterrupted training.
+
+Build an eval subgraph first, then add its terminal GPU-eval barrier and
+teardown:
+
+```bash
+python -m eval_scheduler plan add-eval-release \
+  --plan-dir "$PLAN" \
+  --checkpoint-tag step_50000 \
+  --barrier-job-id campaign-barrier-50000 \
+  --teardown-job-id campaign-teardown-50000
+```
+
+Append the next training segment:
+
+```bash
+python -m eval_scheduler plan add-training \
+  --plan-dir "$PLAN" \
+  --job-id campaign-train-100000 \
+  --deps campaign-teardown-50000 \
+  --resume-from-tag step_50000 \
+  --stop-after-step 100000 \
+  --checkpoint-path checkpoints/dfm8/XXL-1epoch \
+  --log-dir logs/training/dfm8_XXL_1epoch/step_50000_to_100000 \
+  --min-gpu-free-mib 178000 \
+  --command 'torchrun --nproc_per_node=8 pretrain.py data=dfm8 ...'
+```
+
+The scheduler parses `--command` without a shell. Leading assignments such as
+`OMP_NUM_THREADS=1 MKL_NUM_THREADS=1` are accepted and applied directly to the
+child environment. It atomically reserves every GPU passed to
+`eval_scheduler run`, sets `CUDA_VISIBLE_DEVICES`, replaces/appends
+`stop_after_step`, and, when
+`--resume-from-tag` is set, verifies and injects the source checkpoint
+path/tag while removing stale manual resume-step/epoch/batch overrides.
+
+The dependency graph deliberately forks:
+
+```text
+GPU eval rows -> ordinary success-only merges/sync/averages
+             \-> terminal barrier -> server teardown -> next training segment
+```
+
+An eval that exhausts retries can leave its merge blocked for later repair
+without holding training GPUs idle. The barrier also recognizes eval rows made
+permanently unreachable by a failed export. It does not pass while an eval is
+running or has a runnable retry. Training/checkpoint failure remains fatal to
+the segment.
+
 ## Notes
 
 - `plan.tsv` is human-editable.  Edits only affect pending jobs.
@@ -351,6 +413,9 @@ python -m eval_scheduler monitor \
   `plan.tsv`, `status.tsv`, GPU memory/utilization, and active task logs. It
   reports standard tqdm progress, dfm-evals server completion counts, and
   EuroEval nested pass/sample progress such as `pass 3/10 samples 137/343`.
+  For `train_until_step` rows, it reports progress from the resume checkpoint
+  to the forced target and derives ETA from the latest tqdm `it/s` or `s/it`
+  rate rather than from the full-epoch progress fraction.
 - Active GPU lines and the `next ready` queue include a model/checkpoint label
   such as `hrm-dfm5-L@step_400000:ema`, `hrm-dfm5-L@step_400000:noema`, or
   `qwen35-2b@qwen35_2b:ema`.
@@ -362,3 +427,7 @@ python -m eval_scheduler monitor \
   configuration failures such as missing judge placeholders. Some dfm-evals
   jobs still show `progress unknown` during model/metric setup before the task
   header or server requests exist.
+- Managed judge ports are deterministically folded into the valid
+  `20000-59999` range. Do not construct them as an unbounded
+  `port_base + GPU/shard offset`: uvicorn can silently wrap values above 65535
+  while OpenAI clients reject the advertised out-of-range URL.

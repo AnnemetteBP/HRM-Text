@@ -16,9 +16,14 @@ from typing import Any
 from .locking import PlanLock
 from .model import Action, Job, JobStatus, read_plan
 from .plan import plan_path
+from .runtime import dependencies_satisfied
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 TQDM_TEXT_RE = re.compile(r"(?P<pct>\d+)%\|.*?\|\s+(?P<done>\d+)/(?P<total>\d+)\s+\[")
+TRAINING_RATE_RE = re.compile(
+    r"(?P<done>\d+)/(?P<total>\d+)\s+\[[^\]]*?,\s*"
+    r"(?:(?P<it_per_second>\d+(?:\.\d+)?)it/s|(?P<seconds_per_it>\d+(?:\.\d+)?)s/it)\]"
+)
 SERVER_COMPLETION_RE = re.compile(r'POST /v1/(?:chat/)?completions HTTP/1\.1" (?P<status>\d+)')
 DFM_SAMPLES_RE = re.compile(r"\((?P<samples>\d+)\s+samples\)")
 DFM_PLACEHOLDER_ERROR_RE = re.compile(r"Placeholder `\{\{(?P<name>[^}]+)\}\}`.*?requires `(?P<option>--[^`]+)`")
@@ -33,10 +38,14 @@ END_RE = re.compile(r"^(?:END|FAILED|STOPPED)\s+(?P<job_id>\S+)\s+")
 @dataclass(frozen=True)
 class RunningEvent:
     job_id: str
-    gpu: int | None
+    gpus: tuple[int, ...]
     started_at: datetime
     batch: str
     attempt: str
+
+    @property
+    def gpu(self) -> int | None:
+        return self.gpus[0] if self.gpus else None
 
 
 @dataclass(frozen=True)
@@ -52,6 +61,7 @@ class GpuInfo:
 class Progress:
     fraction: float | None
     text: str
+    eta_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -111,6 +121,41 @@ def tqdm_progress(path: Path) -> Progress:
     if total <= 0:
         return Progress(None, f"{done}/{total}")
     return Progress(done / total, f"{done}/{total}")
+
+
+def step_from_checkpoint_tag(tag: object) -> int | None:
+    match = re.search(r"(?:^|_)(\d+)$", str(tag or ""))
+    return int(match.group(1)) if match else None
+
+
+def training_progress(job: Job) -> Progress:
+    target = int(job.metadata.get("stop_after_step") or 0)
+    if target <= 0:
+        return Progress(None, "progress unknown")
+    path = Path(job.log_dir) / f"train_until_step_{target}.log"
+    text = strip_ansi(tail_text(path).replace("\r", "\n"))
+    matches = list(TRAINING_RATE_RE.finditer(text))
+    if not matches:
+        return Progress(None, f"waiting for step/{target}")
+
+    match = matches[-1]
+    current = int(match.group("done"))
+    start = step_from_checkpoint_tag(job.metadata.get("resume_from_tag"))
+    if start is None:
+        start = min(int(matches[0].group("done")), current)
+    span = target - start
+    completed = min(max(current - start, 0), max(span, 0))
+    fraction = completed / span if span > 0 else None
+
+    remaining = max(target - current, 0)
+    eta_seconds: float | None = None
+    if match.group("it_per_second"):
+        rate = float(match.group("it_per_second"))
+        if rate > 0:
+            eta_seconds = remaining / rate
+    elif match.group("seconds_per_it"):
+        eta_seconds = remaining * float(match.group("seconds_per_it"))
+    return Progress(fraction, f"step {current}/{target}", eta_seconds)
 
 
 def euroeval_total_samples(path: Path) -> int | None:
@@ -400,6 +445,8 @@ def dfm_failure_progress(job: Job) -> Progress | None:
 
 
 def job_progress(job: Job) -> Progress:
+    if job.action == Action.TRAIN_UNTIL_STEP:
+        return training_progress(job)
     if job.action == Action.EVAL_STANDARD:
         path = Path(job.log_dir) / f"{job.name}_shard_{job.shard}_of_{job.shards}.log"
         return tqdm_progress(path)
@@ -430,6 +477,14 @@ def job_progress(job: Job) -> Progress:
             return Progress(None, f"0/{total}")
         return progress
     return Progress(None, "")
+
+
+def progress_eta(progress: Progress, elapsed: float) -> str:
+    if progress.eta_seconds is not None:
+        return fmt_seconds(progress.eta_seconds)
+    if progress.fraction is not None and progress.fraction > 0:
+        return fmt_seconds(elapsed * (1.0 / progress.fraction - 1.0))
+    return "unknown"
 
 
 def gpu_infos(gpus: list[int]) -> dict[int, GpuInfo]:
@@ -481,10 +536,14 @@ def read_running_events(plan_dir: Path) -> dict[str, RunningEvent]:
         except ValueError:
             continue
         gpu_text = start_match.group("gpu")
-        gpu = int(gpu_text) if gpu_text.isdigit() else None
+        gpus = tuple(
+            int(part)
+            for part in gpu_text.split(",")
+            if part.isdigit()
+        )
         active[start_match.group("job_id")] = RunningEvent(
             job_id=start_match.group("job_id"),
-            gpu=gpu,
+            gpus=gpus,
             started_at=started_at,
             batch=start_match.group("batch"),
             attempt=f"{start_match.group('attempt')}/{start_match.group('attempts')}",
@@ -493,8 +552,11 @@ def read_running_events(plan_dir: Path) -> dict[str, RunningEvent]:
 
 
 def runnable_pending(jobs: list[Job]) -> list[Job]:
-    done = {job.job_id for job in jobs if job.status == JobStatus.DONE}
-    return [job for job in jobs if job.status == JobStatus.PENDING and all(dep in done for dep in job.deps)]
+    return [
+        job
+        for job in jobs
+        if job.status == JobStatus.PENDING and dependencies_satisfied(job, jobs)
+    ]
 
 
 def blocked_pending_jobs(jobs: list[Job]) -> list[tuple[Job, list[str]]]:
@@ -502,6 +564,8 @@ def blocked_pending_jobs(jobs: list[Job]) -> list[tuple[Job, list[str]]]:
     blocked: list[tuple[Job, list[str]]] = []
     for job in jobs:
         if job.status != JobStatus.PENDING:
+            continue
+        if dependencies_satisfied(job, jobs):
             continue
         unmet: list[str] = []
         for dep in job.deps:
@@ -545,9 +609,7 @@ def gpu_line(gpu: int, info: GpuInfo, job: Job | None, event: RunningEvent | Non
         return f"{prefix} idle"
     elapsed = (now - event.started_at).total_seconds()
     progress = job_progress(job)
-    eta = "unknown"
-    if progress.fraction is not None and progress.fraction > 0:
-        eta = fmt_seconds(elapsed * (1.0 / progress.fraction - 1.0))
+    eta = progress_eta(progress, elapsed)
     shard = "-" if job.shard is None else str(job.shard)
     shards = "-" if job.shards is None else str(job.shards)
     return (
@@ -593,12 +655,20 @@ def collect_status(plan_dir: Path, *, gpus: list[int] | None = None) -> MonitorS
         for job_id, event in running_events.items()
         if job_id in jobs_by_id and jobs_by_id[job_id].status == JobStatus.RUNNING
     ]
-    active_gpu_ids = sorted(event.gpu for _job, event in active_pairs if event.gpu is not None)
+    active_gpu_ids = sorted(
+        gpu
+        for _job, event in active_pairs
+        for gpu in event.gpus
+    )
     if gpus is None:
         gpus = list(range(max(active_gpu_ids, default=7) + 1))
 
-    active_by_gpu = {event.gpu: (job, event) for job, event in active_pairs if event.gpu is not None}
-    active_non_gpu = [(job, event) for job, event in active_pairs if event.gpu is None]
+    active_by_gpu = {
+        gpu: (job, event)
+        for job, event in active_pairs
+        for gpu in event.gpus
+    }
+    active_non_gpu = [(job, event) for job, event in active_pairs if not event.gpus]
     infos = gpu_infos(gpus)
     ready = runnable_pending(jobs)
     blocked = blocked_pending_jobs(jobs)
@@ -722,9 +792,7 @@ def rich_status_renderable(plan_dir: Path, *, gpus: list[int] | None = None) -> 
         job, event = job_event
         elapsed = (snapshot.now - event.started_at).total_seconds()
         progress = job_progress(job)
-        eta = "unknown"
-        if progress.fraction is not None and progress.fraction > 0:
-            eta = fmt_seconds(elapsed * (1.0 / progress.fraction - 1.0))
+        eta = progress_eta(progress, elapsed)
         shard = "-" if job.shard is None else str(job.shard)
         shards = "-" if job.shards is None else str(job.shards)
         task_width = max(24, columns // 2)

@@ -62,6 +62,9 @@ SECTION_KEYS = {
     "english": ENGLISH_KEYS,
     "math_code": MATH_CODE_KEYS,
 }
+HEADLINE_METRIC_KEYS = frozenset(
+    key for keys in SECTION_KEYS.values() for key in keys
+)
 
 SUITE_KEYS = {
     "standard": sorted(
@@ -89,6 +92,17 @@ SUITE_KEYS = {
         }
     ),
 }
+
+
+def define_present_headline_metrics(
+    wandb_module: Any,
+    row: dict[str, Any],
+    *,
+    epoch_key: str,
+) -> None:
+    """Register visible workspace metrics explicitly in W&B's history schema."""
+    for key in sorted(HEADLINE_METRIC_KEYS.intersection(row)):
+        wandb_module.define_metric(key, step_metric=epoch_key, summary="last")
 
 
 @dataclass(frozen=True)

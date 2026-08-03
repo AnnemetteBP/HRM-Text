@@ -169,6 +169,9 @@ def main() -> None:
         if args.step is not None:
             wandb.define_metric(train_step_key)
             row[train_step_key] = args.step
+        from log_dfm5_headline_averages import define_present_headline_metrics
+
+        define_present_headline_metrics(wandb, row, epoch_key=epoch_key)
         wandb.log(row, commit=True)
         summary = {epoch_key: args.epoch, f"{args.prefix}/last_epoch": args.epoch}
         if args.step is not None:

@@ -1,6 +1,6 @@
 # Script Entities
 
-Last updated: 2026-06-19
+Last updated: 2026-07-30
 Confidence: high
 Scope: Local scripts added or used during data preparation.
 
@@ -35,7 +35,7 @@ eval_scheduler/eval_scheduler/monitor.py
 The editable plan format is `plan.tsv` with header:
 
 ```text
-job_id	action	family	name	shard	shards	deps	initial_batch	max_retries	gpu_policy	status	attempt	log_dir	metadata_json
+job_id	action	family	name	shard	shards	deps	deps_mode	initial_batch	max_retries	gpu_policy	status	attempt	log_dir	metadata_json
 ```
 
 The plan is intentionally more expressive than the old `jobs.tsv`. It includes
@@ -47,6 +47,9 @@ had to be injected to force future shards to use a lower batch size.
 Current supported actions:
 
 ```text
+train_until_step
+terminal_barrier
+teardown_eval
 wait_checkpoint
 eval_standard
 eval_dfm
@@ -3673,4 +3676,59 @@ DFM6 eval smoke passed. Wrote /work/dfm/HRM-Text/logs/smoke/dfm6_eval_contracts_
 Standard tasks: 10
 DFM tasks: 10 + 32 IFEval shards
 EuroEval groups: 20 (valeu-da skipped by plan)
+```
+
+### Segmented training/evaluation campaigns
+
+Last updated: 2026-07-28
+Confidence: high
+Scope: exact-step training stops and non-blocking eval post-processing.
+
+- `pretrain.py stop_after_step=N` forces a regular `step_N` checkpoint after
+  optimizer/EMA step `N`, then exits through the normal distributed and W&B
+  shutdown path. Null preserves ordinary uninterrupted training.
+- `train_until_step` reserves every GPU passed to the scheduler atomically,
+  closes persistent vLLM leases, runs an explicit training command, and accepts
+  success only after the target checkpoint, carries, and sidecar verify.
+- `deps_mode` is explicit in `plan.tsv`. Existing rows default to `success`;
+  `terminal` is opt-in.
+- `terminal_barrier` treats done, failed, skipped, and permanently unreachable
+  eval rows as terminal, but waits for active or runnable retries.
+- `teardown_eval` closes persistent evaluator leases. The next training segment
+  depends on teardown rather than merge/sync/average, so failed eval
+  post-processing does not leave training GPUs idle.
+- `plan add-eval-release` adds the terminal barrier and teardown for one
+  checkpoint. `plan add-training` adds the next all-GPU segment and can inject
+  a verified prior checkpoint with `--resume-from-tag`.
+
+### `scripts/follow_latest_training_log.sh`
+
+Added on 2026-07-30. Confidence: high from a live tmux smoke test.
+
+Follows the newest `train_until_step_*.log` below a training-log root and
+automatically replaces its `tail -F` child when the scheduler starts a newer
+segment. This avoids hard-coding one segment path in a long-running tmux
+window. For the DFM8 XXL campaign, `hrm-0:8` runs:
+
+```bash
+scripts/follow_latest_training_log.sh logs/training/dfm8_XXL_1epoch 10
+```
+
+### `scripts/export_wandb_metrics_csv.py`
+
+Added on 2026-07-31. Confidence: high from a complete remote-history export
+and CSV integrity validation.
+
+Streams unsampled W&B history into a tidy CSV with one numeric metric
+observation per row. It includes training, standard eval, DFM eval, EuroEval,
+headline-average, and suite-average namespaces plus W&B step/time metadata.
+Use `--workers` to partition the W&B step range into non-overlapping parallel
+API scans; the parts are merged in step order and removed afterward.
+
+```bash
+python scripts/export_wandb_metrics_csv.py \
+  peter-sk-sdu/DFM5/dfm8-xl-from-dfm6-dfm7-epoch5-clean-full \
+  exports/metrics/dfm8-xl-clean-full-from-dfm6-dfm7-epoch5_metrics.csv \
+  --workers 8 \
+  --progress-every 10000
 ```
