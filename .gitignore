@@ -10,6 +10,25 @@
 /old/
 /experimental/
 
+# Checkpoints & exports
+/exports/
+/export*/
+/external/
+
+# Logs & temp
+/logs/
+/tmp/
+/outputs/
+tmp_*
+
+# Synthetic & data
+/synth/
+
+# DFM8 packages (ignore for now)
+/dfm8_openhermes_da/
+/dfm8_openhermes_repaired/
+/dfm8_synthetic/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

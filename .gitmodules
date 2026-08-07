@@ -1,0 +1,6 @@
+[submodule "data_io"]
+	path = data_io
+	url = https://github.com/schneiderkamplab/data_io
+[submodule "dfm-evals"]
+	path = dfm-evals
+	url = https://github.com/schneiderkamplab/dfm-evals

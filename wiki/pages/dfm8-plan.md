@@ -3321,3 +3321,16 @@ The reproducible plan builder is
 `hrm-0:4` (`training`), `hrm-0:5` (`scheduler`), and `hrm-0:6` (`monitor`).
 The training-log follower now searches both the first- and second-epoch log
 roots.
+
+Epoch-2→Epoch-3 chain correction, 2026-08-04. Confidence: high from
+`plan.tsv` metadata inspection. The continuation row was fixed to begin at the
+actual end-of-epoch-2 checkpoint (`step_537714`) instead of restarting from
+`step_500000`:
+
+- `campaign-train-537714` ends epoch 2 from `step_500000` to `step_537714`.
+- `campaign-train-550000` now depends on `campaign-teardown-537714` and resumes
+  from `step_537714` (then stops at 550000).
+
+This keeps the existing 50K cadence schedule for epoch 3 (`600000`, `650000`,
+`700000`, `750000`, `800000`, `806365`) and avoids overlapping a stale
+`resume_from_tag` at the epoch boundary.
