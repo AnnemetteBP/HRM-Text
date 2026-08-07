@@ -10735,3 +10735,15 @@ generation, and scheduler unit tests.
 - GPU release remains independent of average success: campaign teardown and
   the next training segment depend on the terminal state of GPU eval jobs, not
   on the atomic average or report row.
+- Repo structure: submodules and .gitignore cleanup, 2026-08-07. Confidence:
+  high from direct `git` inspection and successful commits. `data_io/` and
+  `dfm-evals/` are now git submodules pinned to commits `0483afe` and
+  `80c121d` respectively. `.gitmodules` uses HTTPS URLs
+  (`https://github.com/schneiderkamplab/{data_io,dfm-evals}`). The parent
+  `.gitignore` was extended to cover `/exports/`, `/export*/`, `/external/`,
+  `/logs/`, `/tmp/`, `/outputs/`, `/synth/`, `tmp_*`, and the DFM8 packages
+  (`/dfm8_openhermes_da/`, `/dfm8_openhermes_repaired/`, `/dfm8_synthetic/`).
+  `eval_scheduler/tests/` (4 test files) is now tracked. `codex_proxy.py` and
+  `eval_scheduler/uv.lock` were removed. The `evals/ferrum/` directory
+  remains intentionally untracked but not gitignored. Both submodules have
+  clean working trees after their respective commits.
