@@ -11,6 +11,7 @@ This wiki is the durable memory for the HRM-Text adaptation and data-preparation
 - [[pages/dfm6-plan]]: DFM6 migration plan covering tokenizer/template, data mix, tool-calling, evals, and risk controls.
 - [[pages/dfm7-plan]]: forward-looking DFM7 plan items, including math answer-format and prompt-contract policy.
 - [[pages/dfm8-plan]]: DFM8 planning notes for Danish education data, math answer-contract cleanup, and post-DFM7 data fixes.
+- [[pages/dfm9-plan]]: DFM9 plan for closing factual-knowledge eval gaps via FLAN cap raising.
 - [[pages/source-filtering]]: source filter policy and allow/deny patterns.
 - [[pages/download-convert-tokenize]]: concrete pipeline commands.
 - [[pages/original-l-reproduction]]: Sapient original-mix L-size reproduction run plan.

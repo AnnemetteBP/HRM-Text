@@ -21,6 +21,11 @@
 /outputs/
 tmp_*
 
+# Local evaluation campaigns and downloaded eval data
+/eval_scheduler/plans/
+/evals/
+/hellaswag-da-mini/
+
 # Synthetic & data
 /synth/
 

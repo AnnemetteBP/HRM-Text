@@ -187,3 +187,266 @@ sets:
       - "4242"
       - --temperature
       - "0"
+
+  # ── MC9 individual tasks ──────────────────────────────────────────────
+
+  hrm_mc9_arc_easy:
+    description: "Single-task MC9 suite: ARC-Easy."
+    tasks:
+      - inspect_evals/arc_easy
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_mc9_arc_challenge:
+    description: "Single-task MC9 suite: ARC-Challenge."
+    tasks:
+      - inspect_evals/arc_challenge
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_mc9_boolq:
+    description: "Single-task MC9 suite: BoolQ."
+    tasks:
+      - inspect_evals/boolq
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_mc9_commonsense_qa:
+    description: "Single-task MC9 suite: CommonsenseQA."
+    tasks:
+      - inspect_evals/commonsense_qa
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_mc9_hellaswag:
+    description: "Single-task MC9 suite: HellaSwag."
+    tasks:
+      - inspect_evals/hellaswag
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_mc9_piqa_en:
+    description: "Single-task MC9 suite: PIQA (English)."
+    tasks:
+      - inspect_evals/piqa
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_mc9_winogrande:
+    description: "Single-task MC9 suite: WinoGrande (0-shot)."
+    tasks:
+      - name: inspect_evals/winogrande
+        args:
+          - -T
+          - fewshot=false
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_mc9_openbookqa:
+    description: "Single-task MC9 suite: OpenBookQA."
+    tasks:
+      - dfm_evals/openbookqa
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_mc9_socialiqa:
+    description: "Single-task MC9 suite: SocialIQa."
+    tasks:
+      - dfm_evals/socialiqa
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  # ── Gen5 individual tasks ─────────────────────────────────────────────
+
+  hrm_gen5_squad:
+    description: "Single-task Gen5 suite: SQuAD."
+    tasks:
+      - dfm_evals/squad
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_gen5_drop:
+    description: "Single-task Gen5 suite: DROP (0-shot)."
+    tasks:
+      - name: inspect_evals/drop
+        args:
+          - -T
+          - fewshot=false
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_gen5_coqa:
+    description: "Single-task Gen5 suite: CoQA."
+    tasks:
+      - dfm_evals/coqa
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_gen5_nq_open:
+    description: "Single-task Gen5 suite: NQ-Open."
+    tasks:
+      - dfm_evals/nq_open
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_gen5_triviaqa:
+    description: "Single-task Gen5 suite: TriviaQA."
+    tasks:
+      - dfm_evals/triviaqa
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  # ── Code4 individual tasks ────────────────────────────────────────────
+
+  hrm_code4_humaneval_plus:
+    description: "Single-task Code4 suite: HumanEval+ (local sandbox)."
+    tasks:
+      - name: dfm_evals/humaneval_plus
+        args:
+          - -T
+          - sandbox=local
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_code4_mbpp:
+    description: "Single-task Code4 suite: MBPP (local sandbox)."
+    tasks:
+      - name: dfm_evals/mbpp
+        args:
+          - -T
+          - sandbox=local
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_code4_mbpp_plus:
+    description: "Single-task Code4 suite: MBPP+ (local sandbox)."
+    tasks:
+      - name: dfm_evals/mbpp_plus
+        args:
+          - -T
+          - sandbox=local
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  # ── FlexOlmo extras ───────────────────────────────────────────────────
+
+  hrm_flex_mmlu_pro:
+    description: "Single-task FlexOlmo extra suite: MMLU-Pro."
+    tasks:
+      - dfm_evals/mmlu_pro
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_flex_agieval:
+    description: "Single-task FlexOlmo extra suite: AGIEval."
+    tasks:
+      - dfm_evals/agieval
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+
+  hrm_flex_bbh:
+    description: "Single-task FlexOlmo extra suite: BBH."
+    tasks:
+      - dfm_evals/bbh
+    args:
+      - --model
+      - "{{target_model}}"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"

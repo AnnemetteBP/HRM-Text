@@ -17,17 +17,15 @@ def epoch_label(epoch: float) -> str:
 
 
 def iter_sample_records(paths: list[Path]):
-    seen_ids: set[str] = set()
-    for path in paths:
+    """Yield sample records from .eval zip files, disambiguating IDs across shards."""
+    for shard_idx, path in enumerate(paths):
         if not zipfile.is_zipfile(path):
             continue
         with zipfile.ZipFile(path) as zf:
             for name in sorted(n for n in zf.namelist() if n.startswith("samples/") and n.endswith(".json")):
                 record = json.loads(zf.read(name))
-                sample_id = str(record.get("id") or f"{path}:{name}")
-                if sample_id in seen_ids:
-                    raise ValueError(f"Duplicate sample id across shards: {sample_id}")
-                seen_ids.add(sample_id)
+                raw_id = str(record.get("id") or f"{path.stem}:{name}")
+                record["id"] = f"s{shard_idx}:{raw_id}"
                 yield record
 
 
@@ -204,6 +202,34 @@ def task_metrics(task: str, samples: list[dict[str, Any]]) -> dict[str, float]:
             )
             scorer = "verify" if "verify" in scorer_names else (scorer_names.most_common(1)[0][0] if scorer_names else "verify")
             return accuracy_from_values(samples, scorer)
+        case "arc_easy" | "arc_challenge" | "commonsense_qa" | "hellaswag" | "piqa_en" | "winogrande" | "openbookqa" | "socialiqa":
+            return accuracy_from_values(samples, "choice")
+        case "boolq":
+            return accuracy_from_values(samples, "pattern")
+        case "squad" | "drop" | "coqa" | "nq_open" | "triviaqa":
+            return numeric_metrics(samples, "f1", flatten_dict=False) | numeric_metrics(samples, "exact", flatten_dict=False)
+        case "humaneval_plus" | "mbpp" | "mbpp_plus":
+            scorer_names = Counter(
+                scorer
+                for sample in samples
+                for scorer in (sample.get("scores") or {}).keys()
+            )
+            scorer = "verify" if "verify" in scorer_names else (scorer_names.most_common(1)[0][0] if scorer_names else "verify")
+            return accuracy_from_values(samples, scorer)
+        case "mmlu_pro":
+            return accuracy_from_values(samples, "choice")
+        case "agieval":
+            scorer_names = Counter(
+                scorer
+                for sample in samples
+                for scorer in (sample.get("scores") or {}).keys()
+            )
+            if "choice" in scorer_names:
+                return accuracy_from_values(samples, "choice")
+            scorer = scorer_names.most_common(1)[0][0] if scorer_names else "choice"
+            return accuracy_from_values(samples, scorer)
+        case "bbh":
+            return accuracy_from_values(samples, "bbh_scorer")
         case _:
             raise ValueError(f"Unsupported DFM task merge: {task}")
 

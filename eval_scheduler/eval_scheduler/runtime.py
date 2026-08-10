@@ -7,6 +7,7 @@ import re
 import shlex
 import shutil
 import signal
+import socket
 import subprocess
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
@@ -146,7 +147,7 @@ class VLLMServerPool:
 
             # Reserve a compact per-process block that cannot overflow TCP's
             # 16-bit port range when all eight GPUs start concurrently.
-            port = 20000 + ((os.getpid() + int(job.metadata["port_base"])) % 4000) * 8 + gpu
+            port = find_free_port(20000 + ((os.getpid() + int(job.metadata["port_base"])) % 4000) * 8 + gpu, host=key.host)
             model_name = f"eval-pool-{key.digest}"
             log_path = self.plan_dir / "server_pool" / f"gpu_{gpu}" / f"{key.digest}.vllm.log"
             process = start_vllm_server(
@@ -683,6 +684,20 @@ def openai_model_ref(model_name: str) -> str:
     return model_name if model_name.startswith("openai/") else f"openai/{model_name}"
 
 
+def find_free_port(preferred: int, host: str = "127.0.0.1", max_tries: int = 200) -> int:
+    """Return *preferred* if available, otherwise increment until a free port is found."""
+    for offset in range(max_tries):
+        port = preferred + offset
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+                s.bind((host, port))
+            return port
+        except OSError:
+            continue
+    raise SchedulerError(f"no free port found near {preferred} after {max_tries} attempts")
+
+
 def start_vllm_server(job: Job, gpu: int, *, port: int, model_name: str, log: Path) -> subprocess.Popen[bytes]:
     argv = [
         str(job.metadata.get("vllm_python") or python_bin(job)),
@@ -788,7 +803,7 @@ def run_with_vllm_server(
             server_pool.invalidate(gpu, lease, f"job_status_{status}")
         return status
 
-    port = int(job.metadata["port_base"]) + port_offset + gpu * 100 + (os.getpid() % 80) + 1
+    port = find_free_port(int(job.metadata["port_base"]) + port_offset + gpu * 100 + (os.getpid() % 80) + 1, host=str(job.metadata.get("host", "127.0.0.1")))
     base_url = f"http://{job.metadata['host']}:{port}/v1"
     server_log = log
     server = start_vllm_server(job, gpu, port=port, model_name=model_name, log=server_log)
@@ -978,7 +993,7 @@ def start_native_proxy(
     run_dir: Path,
     port_offset: int,
 ) -> tuple[subprocess.Popen[bytes], str, Path]:
-    port = local_service_port(job, port_offset)
+    port = find_free_port(local_service_port(job, port_offset), host=str(job.metadata.get("host", "127.0.0.1")))
     log_path = run_dir / "server.log"
     argv = [
         python_bin(job),
@@ -1092,7 +1107,7 @@ def start_managed_judge(job: Job, gpu: int, run_dir: Path) -> tuple[subprocess.P
     if not managed_judge_enabled(job):
         return None, None, None
     shard = job.shard or 0
-    port = managed_judge_port(job, gpu, shard)
+    port = find_free_port(managed_judge_port(job, gpu, shard), host=str(job.metadata.get("host", "127.0.0.1")))
     log = run_dir / "judge-server.log"
     proc = start_judge_server(job, gpu, port=port, log=log)
     status = wait_for_vllm_server(
@@ -1117,7 +1132,7 @@ def run_dfm(
         return run_dfm_external(job, gpu, batch, server_pool)
     shard = job.shard or 0
     shards = job.shards or 1
-    port = int(job.metadata["port_base"]) + gpu * 100 + (os.getpid() % 80) + 1
+    port = find_free_port(int(job.metadata["port_base"]) + gpu * 100 + (os.getpid() % 80) + 1, host=str(job.metadata.get("host", "127.0.0.1")))
     base_url = f"http://{job.metadata['host']}:{port}/v1"
     model_name = f"{job.metadata['model_prefix']}-{job.name}-shard-{shard}-{job.metadata['ckpt_tag']}"
     run_dir = Path(job.log_dir)
@@ -1351,7 +1366,7 @@ def run_dfm_ifeval(
         return run_dfm_ifeval_external(job, gpu, batch, server_pool)
     shard = job.shard or 0
     shards = job.shards or 1
-    port = int(job.metadata["port_base"]) + 1000 + gpu * 100 + shard
+    port = find_free_port(int(job.metadata["port_base"]) + 1000 + gpu * 100 + shard, host=str(job.metadata.get("host", "127.0.0.1")))
     base_url = f"http://{job.metadata['host']}:{port}/v1"
     model_name = f"{job.metadata['model_prefix']}-ifeval-da-shard-{shard}-{job.metadata['ckpt_tag']}"
     run_dir = Path(job.log_dir)
@@ -1561,7 +1576,7 @@ def run_euroeval(
     env.update(
         {
             "GPU": str(gpu),
-            "PORT": str(int(job.metadata["port_base"]) + 2000 + gpu * 100 + (os.getpid() % 80) + 1),
+            "PORT": str(find_free_port(int(job.metadata["port_base"]) + 2000 + gpu * 100 + (os.getpid() % 80) + 1, host=str(job.metadata.get("host", "127.0.0.1")))),
             "CKPT_PATH": str(job.metadata["ckpt_path"]),
             "CKPT_TAG": str(job.metadata["ckpt_tag"]),
             "EVAL_EPOCH": str(job.metadata["eval_epoch"]),
@@ -1610,12 +1625,14 @@ def run_euroeval_batched_ifeval(
     run_root = Path(job.log_dir)
     run_root.mkdir(parents=True, exist_ok=True)
     env = env_with_gpu(gpu)
-    port = int(job.metadata["port_base"]) + 5000 + gpu * 100 + (os.getpid() % 80) + 1
+    host = str(job.metadata.get("host", "127.0.0.1"))
+    port = find_free_port(int(job.metadata["port_base"]) + 5000 + gpu * 100 + (os.getpid() % 80) + 1, host=host)
+    vllm_port = find_free_port(port + 1000, host=host)
     env.update(
         {
             "GPU": str(gpu),
             "PORT": str(port),
-            "VLLM_PORT": str(port + 1000),
+            "VLLM_PORT": str(vllm_port),
             "CKPT_TAG": str(job.metadata["ckpt_tag"]),
             "EVAL_EPOCH": str(job.metadata["eval_epoch"]),
             "EVAL_STEP": eval_step(job),

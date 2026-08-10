@@ -54,6 +54,15 @@ FLAN allow back:
 - DFM5 factual QA and lower-risk dialogue/role-play: `natural_questions_open`,
   `naturalquestion`, `dailydialog`, `daily_dialog`, `personachat`,
   `deal_or_no`, `casino`, `air_dialogue`, `wiki_dialog`, `dream`, `mutual`
+- DFM4 benchmark-adjacent additions (documented in `data-mix-policy.md` but
+  missing from this summary until 2026-08-07): `squad_v1`, `squad_v2`,
+  `squad1.1`, `squad2.0`, `trivia_qa`, `triviaqa`, `trivia_question`, `arc`,
+  `boolq`, `drop`, `race`, `anli`, `mnli`, `glue`, `superglue`, `coqa`, `quac`,
+  `ropes`, `openbookqa` (train), `sciq` (train), and additional commonsense
+  families. These have explicit allow overrides in `config/data/source_filter.yaml`
+  and are included in DFM8 training data with `max_per_file: 5000` sampling cap.
+- HotpotQA: passes filter by default inclusion (no deny pattern matches; no
+  allow override needed). 28 files in filtered_sources and tokenized_dfm8.
 
 Tasksource allow back:
 

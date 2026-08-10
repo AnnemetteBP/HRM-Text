@@ -1,0 +1,5 @@
+path: data/sampled_dfm9
+target_only: true
+
+# DFM9 uses the Gemma 4 native chat template and its own sampled corpus.
+# See wiki/pages/dfm9-plan.md for source, conversion, and sampling details.

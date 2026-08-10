@@ -57,10 +57,53 @@ MATH_CODE_KEYS = [
     "euroeval/en/tool-calling/bfcl-v2/tool_calling_accuracy",
 ]
 
+MC9_KEYS = [
+    "dfm_eval/arc_easy/choice/accuracy",
+    "dfm_eval/arc_challenge/choice/accuracy",
+    "dfm_eval/boolq/pattern/accuracy",
+    "dfm_eval/commonsense_qa/choice/accuracy",
+    "dfm_eval/hellaswag/choice/accuracy",
+    "dfm_eval/piqa_en/choice/accuracy",
+    "dfm_eval/winogrande/choice/accuracy",
+    "dfm_eval/openbookqa/choice/accuracy",
+    "dfm_eval/socialiqa/choice/accuracy",
+]
+
+GEN5_KEYS = [
+    "dfm_eval/squad/f1/mean",
+    "dfm_eval/drop/f1/mean",
+    "dfm_eval/coqa/f1/mean",
+    "dfm_eval/nq_open/f1/mean",
+    "dfm_eval/triviaqa/f1/mean",
+]
+
+CODE4_KEYS = [
+    "dfm_eval/humaneval/verify_sanitized/accuracy",
+    "dfm_eval/humaneval_plus/verify_humaneval_plus/accuracy",
+    "dfm_eval/mbpp/verify/accuracy",
+    "dfm_eval/mbpp_plus/verify_mbpp_plus/accuracy",
+]
+
+MATH2_KEYS = [
+    "eval/GSM8k/acc",
+    "eval/MATH/acc",
+]
+
+FLEXOLMO_EXTRA_KEYS = [
+    "dfm_eval/mmlu_pro/choice/accuracy",
+    "dfm_eval/agieval/choice/accuracy",
+    "dfm_eval/bbh/bbh_scorer/accuracy",
+]
+
 SECTION_KEYS = {
     "danish": DANISH_KEYS,
     "english": ENGLISH_KEYS,
     "math_code": MATH_CODE_KEYS,
+    "mc9": MC9_KEYS,
+    "gen5": GEN5_KEYS,
+    "code4": CODE4_KEYS,
+    "math2": MATH2_KEYS,
+    "flexolmo_extras": FLEXOLMO_EXTRA_KEYS,
 }
 HEADLINE_METRIC_KEYS = frozenset(
     key for keys in SECTION_KEYS.values() for key in keys
@@ -234,7 +277,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--average-scope",
-        choices=["all", "sections", "suites", "danish", "english", "math_code", "overall", "standard", "dfm", "euroeval"],
+        choices=["all", "sections", "suites", "danish", "english", "math_code", "mc9", "gen5", "code4", "math2", "flexolmo_extras", "overall", "standard", "dfm", "euroeval"],
         default="all",
         help="Which averages to compute.",
     )

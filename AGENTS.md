@@ -33,6 +33,27 @@ If new information contradicts an existing page, do not silently overwrite it. M
 - Sapient FLAN/Tasksource are denied by default, with narrow allow overrides for selected reasoning/commonsense/science tasks.
 - `data_io/tokenizer` must be run from `data_io/tokenizer`, where `Cargo.toml` lives.
 
+## Eval Scheduler Runner Launch
+
+- **CRITICAL**: Prepend `PATH="/home/ucloud/miniforge3/envs/hrm/bin:$PATH"` so `torchrun` and `ninja` are on PATH.
+- Always use `--persistent-vllm` for efficiency (reuses vLLM servers across eval shards).
+- Launch detached with `setsid` so the runner survives shell timeouts.
+
+```bash
+cd /work/dfm/HRM-Text && \
+PATH="/home/ucloud/miniforge3/envs/hrm/bin:$PATH" \
+setsid /home/ucloud/miniforge3/envs/hrm/bin/python -m eval_scheduler run \
+  --plan-dir logs/scheduler/<PLAN_DIR> \
+  --gpus 0,1,2,3,4,5,6,7 \
+  --persistent-vllm \
+  > logs/scheduler/<PLAN_DIR>/runner.log 2>&1 &
+```
+
+- Soft stop: `python -m eval_scheduler stop --plan-dir <PLAN_DIR>` (lets running shards finish).
+- Clear stop: `python -m eval_scheduler clear-stop --plan-dir <PLAN_DIR>`.
+- Status: `python -m eval_scheduler status --plan-dir <PLAN_DIR>`.
+- Monitor: `python -m eval_scheduler monitor --plan-dir <PLAN_DIR>`.
+
 ## W&B Metric Logging Safety
 
 - Log checkpoint averages atomically and explicitly register each metric; do not rely only on W&B prefix wildcards.
