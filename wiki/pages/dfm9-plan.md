@@ -1,8 +1,13 @@
+---
+type: Training Data Plan
+title: DFM9 Plan
+description: DFM9 data rebuild and continuation plan focused on factual knowledge, code, and instruction coverage.
+tags: [dfm9, data, training, factual-knowledge, code]
+status: stable
+last_updated: 2026-08-11
+confidence: high
+---
 # DFM9 Plan
-
-Last updated: 2026-08-08
-Confidence: high
-Scope: Forward-looking plan for a DFM9 data rebuild focused on closing factual-knowledge eval gaps identified in the FlexOlmo comparison.
 
 ## Motivation
 
@@ -556,6 +561,146 @@ Output: `data/sampled_dfm9/` with 10 epoch dirs + `tokens.npy` (754GB).
 1. ~~Re-run DFM9 sampling~~ — done, 93.93B tokens/epoch (with extension)
 2. Launch DFM9 training from DFM8 L epoch 3 checkpoint or fresh start
 3. Training config: `data=dfm9` pointing to `data/sampled_dfm9/`
+
+## DFM8 XL Epoch-7 To DFM9 Continuation Command
+
+Update, 2026-08-10. Confidence: high from checkpoint shard/sidecar inspection,
+sampled-data inspection, trainer resume-code inspection, and successful Hydra
+configuration composition. The command has not yet been launched.
+
+The newest complete DFM8 XL epoch checkpoint is
+`checkpoints/dfm8/XL-from-dfm6-dfm7-epoch5/fsdp2_epoch_7`. Its sidecar records
+global step `1768071`, completed epoch `7`, global batch size `262144`, gradient
+accumulation `2`, and exact epoch-boundary state. All eight FSDP shards and all
+eight carry files are present.
+
+Resuming `epoch_7` gives `start_epoch=8`; the trainer then loads sampled dataset
+directory `data/sampled_dfm9/epoch_7`. Therefore `epochs=8` trains exactly one
+DFM9 continuation epoch and writes `epoch_8`. Use a separate checkpoint tree so
+DFM8 checkpoint artifacts remain intact.
+
+Superseded, 2026-08-10: the initial command used a new W&B run named
+`DFM9-XL from DFM8 epoch7`. The subsequent operational decision is to continue
+the existing `DFM8-XL clean full from DFM6-DFM7 epoch5` history instead, using
+run ID `dfm8-xl-from-dfm6-dfm7-epoch5-clean-full` in project `DFM5`.
+
+```bash
+cd /work/dfm/HRM-Text
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 torchrun --nproc_per_node=8 pretrain.py \
+  data=dfm9 \
+  arch/size@arch=XL \
+  lr=3e-4 \
+  lr_min_ratio=1 \
+  lr_warmup_steps=2000 \
+  weight_decay=0.1 \
+  beta1=0.9 \
+  beta2=0.95 \
+  ema=0.9999 \
+  global_batch_size=262144 \
+  gradient_accumulation_steps=2 \
+  epochs=8 \
+  training_total_steps=2127489 \
+  distributed_strategy=fsdp \
+  fsdp_params_precision=fp32 \
+  checkpoint_format=sharded \
+  fwd_bwd_dtype=bfloat16 \
+  accelerator_type=sm100 \
+  compile_train_batch=true \
+  checkpoint_interval=1 \
+  checkpoint_step_interval=10000 \
+  ephemeral_checkpoint_step_interval=500 \
+  checkpoint_path=checkpoints/dfm9/XL-from-dfm8-epoch7 \
+  resume_checkpoint_path=checkpoints/dfm8/XL-from-dfm6-dfm7-epoch5 \
+  resume_checkpoint_tag=epoch_7 \
+  resume_step=1768071 \
+  resume_epoch=7 \
+  reset_ema_on_resume=false \
+  upcast_optimizer_state_on_resume=false \
+  project_name=DFM5 \
+  run_name="DFM8-XL clean full from DFM6-DFM7 epoch5" \
+  wandb_run_id=dfm8-xl-from-dfm6-dfm7-epoch5-clean-full \
+  wandb_resume=allow
+```
+
+DFM9 contains `93,929,976,190` tokens per epoch. At global batch size `262144`,
+the coarse token-ratio estimate is about `358,314` optimizer steps, placing the
+next epoch boundary near global step `2,126,385`; the actual packed-batch count
+and resulting checkpoint step are authoritative.
+
+### Scheduled After DFM8 L Epoch 3
+
+Update, 2026-08-10. Confidence: high from direct sampler iteration and atomic
+inspection/mutation of the active scheduler plan.
+
+The continuation is queued in
+`logs/scheduler/dfm8_L_campaign_epoch2_20260803/plan.tsv` as an eight-segment
+train/evaluate campaign. Direct sampler iteration showed that the DFM8 L third
+epoch starts at step `537300` and contains `268645` optimizer steps, so its
+exact endpoint is `805945`. This supersedes the legacy plan's incorrect
+`806365` estimate.
+
+The first DFM9 row, `dfm9-xl-train-1800000`, therefore depends on terminal
+completion of `campaign-train-806365`, rather than on the stale `step_806365`
+checkpoint or its evaluation teardown. The L process naturally exhausts the
+dataset and fully writes `epoch_3` at step `805945`; only the scheduler's
+subsequent check for the nonexistent `step_806365` is expected to mark that
+legacy row failed. Using terminal dependency semantics lets DFM9 start after
+the completed epoch despite that stale verification target. The old DFM8 L
+continuation remains behind `campaign-teardown-806365` and cannot race DFM9
+for the GPUs.
+
+Direct iteration of the DFM9 `epoch_7` multipack sampler with eight ranks,
+`16384` tokens per rank/microbatch, and GAS 2 produced `718837` complete
+microbatches. This is `359418` optimizer steps plus one trailing microbatch that
+cannot form a GAS-2 update. Starting at DFM8 XL step `1768071` therefore gives
+the exact optimizer endpoint `2127489`.
+
+The scheduler campaign stops and evaluates at steps `1800000`, `1850000`,
+`1900000`, `1950000`, `2000000`, `2050000`, `2100000`, and the exact epoch
+endpoint `2127489`. Each block includes standard, DFM, and EuroEval tasks,
+checkpoint export, merging, W&B sync/averaging, a terminal GPU-eval barrier,
+and persistent-vLLM teardown. The next training segment starts after that
+teardown; CPU-side merges and finalization do not unnecessarily hold the GPUs.
+
+The final scheduler segment injects `stop_after_step=2127489` and verifies the
+complete sharded `step_2127489` checkpoint under
+`checkpoints/dfm9/XL-from-dfm8-epoch7`. This checkpoint has the same trained
+weights as natural exhaustion of DFM9 sampled epoch `epoch_7`; because the
+scheduler stops immediately after the final optimizer update, its tag is a
+step tag rather than the standalone command's natural `epoch_8` tag.
+
+Progress/LR endpoint correction, 2026-08-11. Confidence: high from code
+inspection, Hydra composition, and atomic inspection of all queued training
+rows. The default `pretrain.py` total was `epochs * current_dataset_steps`,
+which is wrong when a run starts at a nonzero global step and switches to a new
+dataset: it displayed approximately eight DFM9 epochs instead of the DFM8
+global starting step plus one DFM9 epoch. `PretrainConfig` now has an optional
+`training_total_steps` field. When supplied, it is the global `tqdm` denominator
+and cosine-LR endpoint; when omitted, legacy behavior is unchanged. All eight
+DFM9 scheduler training rows specify `training_total_steps=2127489`. The first
+row was already running when this correction was installed, so its in-process
+bar retains the old denominator until step `1800000`; every subsequent segment
+will display the correct `.../2127489` total. This run uses
+`lr_min_ratio=1`, so the old denominator did not alter its constant learning
+rate.
+
+Evaluation x-axis values are computed as
+`7 + (checkpoint_step - 1768071) / 359418`, giving fractional epochs for the
+50K checkpoints and exactly `8.0` at the final checkpoint. Non-judged vLLM
+jobs use utilization `0.9`; `generative_talemaader` uses the established
+`unsloth/gemma-4-E4B-it` judge with batch `32`, 32 connections, and vLLM
+utilization `0.65`.
+
+The queued command logs directly into the existing W&B run
+`peter-sk-sdu/DFM5/dfm8-xl-from-dfm6-dfm7-epoch5-clean-full` with
+`wandb_resume=allow`. The checkpoint's authoritative training step remains
+`1768071`; do not raise `resume_step` merely to match W&B. Direct API inspection
+on 2026-08-10 found that later eval/backfill records had advanced the run's
+internal history step to `1768093`. With the default five-step logging interval,
+W&B may reject continuation records at steps `1768075`, `1768080`, `1768085`,
+and `1768090`, then accepts training metrics from `1768095` onward. This small
+logging gap is preferable to skipping 22 training steps or misaligning model,
+optimizer, and data-loader state.
 
 ## Open Questions
 

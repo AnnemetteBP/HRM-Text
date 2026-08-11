@@ -1,10 +1,14 @@
+---
+type: Reference
+title: LLM Wiki v2 Gist
+description: Superseded design inspiration for the repository's original lightweight wiki.
+resource: https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2
+tags: [documentation, knowledge-management, legacy]
+status: deprecated
+last_updated: 2026-05-20
+confidence: medium
+---
 # Source Note: LLM Wiki v2 Gist
-
-Last updated: 2026-05-20  
-Confidence: medium  
-Scope: External design inspiration for this repo wiki.
-
-Source: https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2
 
 ## Takeaways Applied Here
 
@@ -24,4 +28,3 @@ Source: https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2
 - automatic session crystallization
 
 This repo currently implements the minimal viable version: Markdown wiki, index, schema, and update rule.
-

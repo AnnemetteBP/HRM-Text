@@ -1,8 +1,13 @@
+---
+type: Dataset Catalog
+title: Dataset Entities
+description: Inventory of datasets, source policy, and conversion decisions.
+tags: [datasets, catalog, conversion]
+status: stable
+last_updated: 2026-06-01
+confidence: medium
+---
 # Dataset Entities
-
-Last updated: 2026-06-01  
-Confidence: medium  
-Scope: Dataset inventory and conversion policy.
 
 ## Raw Continuation
 

@@ -1,0 +1,60 @@
+# Script Entities Concepts
+
+* [OKF Collection Refactoring](refactor-okf-collections.md) - Semantic heading and chronology splitter used for the OKF migration.
+
+* [`scripts/validate_okf.py`](scripts-validateokf-py.md) - Part of Script Entities: `scripts/validate_okf.py`.
+* [`eval_scheduler/`](evalscheduler.md) - Part of Script Entities: `eval_scheduler/`.
+* [`scripts/generate_dfm5_l_eval_comparison_report.py`](scripts-generatedfm5levalcomparisonreport-py.md) - Part of Script Entities: `scripts/generate_dfm5_l_eval_comparison_report.py`.
+* [`scripts/synthesize_anonymized_sapient_exclusions.py`](scripts-synthesizeanonymizedsapientexclusions-py.md) - Part of Script Entities: `scripts/synthesize_anonymized_sapient_exclusions.py`.
+* [`scripts/run_sapient_anonymization_vllm_8gpu.sh`](scripts-runsapientanonymizationvllm8gpu-sh.md) - Part of Script Entities: `scripts/run_sapient_anonymization_vllm_8gpu.sh`.
+* [`scripts/prepare_posttrain_transform_refine.py`](scripts-prepareposttraintransformrefine-py.md) - Part of Script Entities: `scripts/prepare_posttrain_transform_refine.py`.
+* [`scripts/run_posttrain_synthetic_generation_vllm.sh`](scripts-runposttrainsyntheticgenerationvllm-sh.md) - Part of Script Entities: `scripts/run_posttrain_synthetic_generation_vllm.sh`.
+* [`scripts/run_posttrain_transform_refine_v3_missing_generation.sh`](scripts-runposttraintransformrefinev3missinggeneration-sh.md) - Part of Script Entities: `scripts/run_posttrain_transform_refine_v3_missing_generation.sh`.
+* [`scripts/run_posttrain_transform_refine_to_1m_vllm.sh`](scripts-runposttraintransformrefineto1mvllm-sh.md) - Part of Script Entities: `scripts/run_posttrain_transform_refine_to_1m_vllm.sh`.
+* [`export/transformations-*/recreate_dataset.py`](export-transformations-recreatedataset-py.md) - Part of Script Entities: `export/transformations-*/recreate_dataset.py`.
+* [`scripts/resume_posttrain_transform_refine_to_1m_after_generation.sh`](scripts-resumeposttraintransformrefineto1maftergeneration-sh.md) - Part of Script Entities: `scripts/resume_posttrain_transform_refine_to_1m_after_generation.sh`.
+* [`scripts/monitor_posttrain_to_1m_recovery.py`](scripts-monitorposttrainto1mrecovery-py.md) - Part of Script Entities: `scripts/monitor_posttrain_to_1m_recovery.py`.
+* [`scripts/run_dfm4_xl_ddp_lite_eval_700k.sh`](scripts-rundfm4xlddpliteeval700k-sh.md) - Part of Script Entities: `scripts/run_dfm4_xl_ddp_lite_eval_700k.sh`.
+* [`scripts/build_expert_exports.py`](scripts-buildexpertexports-py.md) - Part of Script Entities: `scripts/build_expert_exports.py`.
+* [`scripts/audit_reordering_datasets.py`](scripts-auditreorderingdatasets-py.md) - Part of Script Entities: `scripts/audit_reordering_datasets.py`.
+* [`scripts/run_export_audits_8gpu_vllm.sh`](scripts-runexportaudits8gpuvllm-sh.md) - Part of Script Entities: `scripts/run_export_audits_8gpu_vllm.sh`.
+* [`scripts/rebalance_export_audits.py`](scripts-rebalanceexportaudits-py.md) - Part of Script Entities: `scripts/rebalance_export_audits.py`.
+* [`scripts/filter_all_export_audits.py`](scripts-filterallexportaudits-py.md) - Part of Script Entities: `scripts/filter_all_export_audits.py`.
+* [`scripts/audit_dbc_article_datasets.py`](scripts-auditdbcarticledatasets-py.md) - Part of Script Entities: `scripts/audit_dbc_article_datasets.py`.
+* [`scripts/transformers_openai_server.py`](scripts-transformersopenaiserver-py.md) - Part of Script Entities: `scripts/transformers_openai_server.py`.
+* [`scripts/download_training_datasets.py`](scripts-downloadtrainingdatasets-py.md) - Part of Script Entities: `scripts/download_training_datasets.py`.
+* [`scripts/build_filtered_source_tree.py`](scripts-buildfilteredsourcetree-py.md) - Part of Script Entities: `scripts/build_filtered_source_tree.py`.
+* [`scripts/convert_filtered_sources.py`](scripts-convertfilteredsources-py.md) - Part of Script Entities: `scripts/convert_filtered_sources.py`.
+* [`scripts/prepare_40b_sapient_plus_danish.py`](scripts-prepare40bsapientplusdanish-py.md) - Part of Script Entities: `scripts/prepare_40b_sapient_plus_danish.py`.
+* [`scripts/reproduce_original_sapient_l.sh`](scripts-reproduceoriginalsapientl-sh.md) - Part of Script Entities: `scripts/reproduce_original_sapient_l.sh`.
+* [`scripts/build_tokenized_original_plus_mixed_tree.py`](scripts-buildtokenizedoriginalplusmixedtree-py.md) - Part of Script Entities: `scripts/build_tokenized_original_plus_mixed_tree.py`.
+* [`scripts/generate_dfm2_dynaword_tasks.py`](scripts-generatedfm2dynawordtasks-py.md) - Part of Script Entities: `scripts/generate_dfm2_dynaword_tasks.py`.
+* [`scripts/build_tokenized_dfm2_tree.py`](scripts-buildtokenizeddfm2tree-py.md) - Part of Script Entities: `scripts/build_tokenized_dfm2_tree.py`.
+* [`scripts/generate_dfm3_common_pile_tasks.py`](scripts-generatedfm3commonpiletasks-py.md) - Part of Script Entities: `scripts/generate_dfm3_common_pile_tasks.py`.
+* [`scripts/build_tokenized_dfm3_tree.py`](scripts-buildtokenizeddfm3tree-py.md) - Part of Script Entities: `scripts/build_tokenized_dfm3_tree.py`.
+* [`scripts/prepare_dfm3_english_recovery.sh`](scripts-preparedfm3englishrecovery-sh.md) - Part of Script Entities: `scripts/prepare_dfm3_english_recovery.sh`.
+* [`scripts/generate_dfm4_tasks.py`](scripts-generatedfm4tasks-py.md) - Part of Script Entities: `scripts/generate_dfm4_tasks.py`.
+* [`scripts/build_tokenized_dfm4_tree.py`](scripts-buildtokenizeddfm4tree-py.md) - Part of Script Entities: `scripts/build_tokenized_dfm4_tree.py`.
+* [`scripts/prepare_dfm4_paragraph_and_summarization.sh`](scripts-preparedfm4paragraphandsummarization-sh.md) - Part of Script Entities: `scripts/prepare_dfm4_paragraph_and_summarization.sh`.
+* [`data_io/sample_tokenized.py`](dataio-sampletokenized-py.md) - Part of Script Entities: `data_io/sample_tokenized.py`.
+* [`scripts/cleanup_failed_training_run.sh`](scripts-cleanupfailedtrainingrun-sh.md) - Part of Script Entities: `scripts/cleanup_failed_training_run.sh`.
+* [`scripts/debug_nan_training_step.py`](scripts-debugnantrainingstep-py.md) - Part of Script Entities: `scripts/debug_nan_training_step.py`.
+* [`scripts/merge_original_l_wandb_history.py`](scripts-mergeoriginallwandbhistory-py.md) - Part of Script Entities: `scripts/merge_original_l_wandb_history.py`.
+* [`scripts/hrm_openai_server.py`](scripts-hrmopenaiserver-py.md) - Part of Script Entities: `scripts/hrm_openai_server.py`.
+* [`scripts/log_dfm_evals_to_wandb.py`](scripts-logdfmevalstowandb-py.md) - Part of Script Entities: `scripts/log_dfm_evals_to_wandb.py`.
+* [`scripts/sync_completed_dfm_evals.py`](scripts-synccompleteddfmevals-py.md) - Part of Script Entities: `scripts/sync_completed_dfm_evals.py`.
+* [`scripts/run_dfm_evals_on_checkpoints.sh`](scripts-rundfmevalsoncheckpoints-sh.md) - Part of Script Entities: `scripts/run_dfm_evals_on_checkpoints.sh`.
+* [`scripts/report_eval_progress.py`](scripts-reportevalprogress-py.md) - Part of Script Entities: `scripts/report_eval_progress.py`.
+* [`scripts/prepare_posttrain_transform_refine.py`](scripts-prepareposttraintransformrefine-py-2.md) - Part of Script Entities: `scripts/prepare_posttrain_transform_refine.py`.
+* [`scripts/build_tokenized_posttrain_transform_refine_tree.py`](scripts-buildtokenizedposttraintransformrefinetree-py.md) - Part of Script Entities: `scripts/build_tokenized_posttrain_transform_refine_tree.py`.
+* [`scripts/prepare_posttrain_transform_refine.sh`](scripts-prepareposttraintransformrefine-sh.md) - Part of Script Entities: `scripts/prepare_posttrain_transform_refine.sh`.
+* [`scripts/run_posttrain_synthetic_generation_vllm.sh`](scripts-runposttrainsyntheticgenerationvllm-sh-2.md) - Part of Script Entities: `scripts/run_posttrain_synthetic_generation_vllm.sh`.
+* [`scripts/run_posttrain_transform_refine_v3_missing_generation.sh`](scripts-runposttraintransformrefinev3missinggeneration-sh-2.md) - Part of Script Entities: `scripts/run_posttrain_transform_refine_v3_missing_generation.sh`.
+* [`scripts/report_posttrain_synthetic_generation_progress.py`](scripts-reportposttrainsyntheticgenerationprogress-py.md) - Part of Script Entities: `scripts/report_posttrain_synthetic_generation_progress.py`.
+* [`scripts/schedule_checkpoint_evals.sh`](scripts-schedulecheckpointevals-sh.md) - Part of Script Entities: `scripts/schedule_checkpoint_evals.sh`.
+* [`scripts/summarize_eval_attempt_telemetry.py`](scripts-summarizeevalattempttelemetry-py.md) - Part of Script Entities: `scripts/summarize_eval_attempt_telemetry.py`.
+* [EuroEval Local Checkpoint Evaluation](euroeval-local-checkpoint-evaluation.md) - Part of Script Entities: EuroEval Local Checkpoint Evaluation.
+* [`scripts/queue_epoch_euroevals_on_free_gpus.sh`](scripts-queueepocheuroevalsonfreegpus-sh.md) - Part of Script Entities: `scripts/queue_epoch_euroevals_on_free_gpus.sh`.
+* [`scripts/queue_valeu_da_rerun_then_dfm4.sh`](scripts-queuevaleudarerunthendfm4-sh.md) - Part of Script Entities: `scripts/queue_valeu_da_rerun_then_dfm4.sh`.
+* [`scripts/rebalance_export_audits.py`](scripts-rebalanceexportaudits-py-2.md) - Part of Script Entities: `scripts/rebalance_export_audits.py`.
+* [`scripts/smoke_dfm6_eval_contracts.py`](scripts-smokedfm6evalcontracts-py.md) - Part of Script Entities: `scripts/smoke_dfm6_eval_contracts.py`.

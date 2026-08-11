@@ -1,8 +1,13 @@
+---
+type: Runbook
+title: Download, Convert, Tokenize, Sample
+description: Verified commands and operational guidance for the local data pipeline.
+tags: [data, download, conversion, tokenization, sampling]
+status: stable
+last_updated: 2026-06-01
+confidence: high
+---
 # Download, Convert, Tokenize, Sample
-
-Last updated: 2026-06-01
-Confidence: high
-Scope: Concrete commands for the local data pipeline.
 
 ## Download
 
@@ -673,7 +678,8 @@ For the original Sapient L reproduction run, use `config/data/original_sapient.y
 data/sampled_original_sapient
 ```
 
-Do not reuse `data/tokenized_mixed` or `data/sampled` for the original Sapient reproduction run. See [[original-l-reproduction]].
+Do not reuse `data/tokenized_mixed` or `data/sampled` for the original Sapient
+reproduction run. See [Original L Reproduction](/pages/original-l-reproduction.md).
 
 For the third `original ∪ mixed` dataset, use a separate symlinked tokenized view and sampled output:
 

@@ -1,8 +1,13 @@
+---
+type: Session Digest
+title: HRM-Text Setup and Data Pipeline
+description: Session summary covering installation, FlashAttention, and initial data-pipeline work.
+tags: [session, setup, flashattention, data]
+status: stable
+last_updated: 2026-05-20
+confidence: high
+---
 # Session Digest: HRM-Text Setup And Data Pipeline
-
-Last updated: 2026-05-20  
-Confidence: high  
-Scope: Summary of work performed in this session.
 
 ## FlashAttention
 
@@ -57,4 +62,3 @@ Allowed bytes:      248,502,793,134
 
 - Conversion is the active next step.
 - Converter now supports `--workers` for parallel per-file conversion.
-

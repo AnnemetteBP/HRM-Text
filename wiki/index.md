@@ -1,32 +1,21 @@
-# HRM-Text Working Wiki
+---
+okf_version: "0.2"
+---
+# HRM-Text Knowledge Bundle
 
-This wiki is the durable memory for the HRM-Text adaptation and data-preparation work in this checkout.
+Repository knowledge for data construction, model training, evaluation,
+runtime operations, and architectural adaptations.
 
-## Operating Pages
+## Start Here
 
-- [[schema]]: wiki maintenance schema, page types, and update rules.
-- [[pages/current-state]]: current project state and next commands.
-- [[pages/flashattention-b200]]: FlashAttention 4 adaptation for B200.
-- [[pages/data-mix-policy]]: dataset selection, licensing/provenance/GDPR decisions.
-- [[pages/dfm6-plan]]: DFM6 migration plan covering tokenizer/template, data mix, tool-calling, evals, and risk controls.
-- [[pages/dfm7-plan]]: forward-looking DFM7 plan items, including math answer-format and prompt-contract policy.
-- [[pages/dfm8-plan]]: DFM8 planning notes for Danish education data, math answer-contract cleanup, and post-DFM7 data fixes.
-- [[pages/dfm9-plan]]: DFM9 plan for closing factual-knowledge eval gaps via FLAN cap raising.
-- [[pages/source-filtering]]: source filter policy and allow/deny patterns.
-- [[pages/download-convert-tokenize]]: concrete pipeline commands.
-- [[pages/original-l-reproduction]]: Sapient original-mix L-size reproduction run plan.
-- [[pages/model-architecture]]: current HRM two-level architecture and scheduling.
-- [[pages/open-issues]]: known blockers and unresolved decisions.
+* [Current State](pages/current-state.md) - Active operations, verified local state, and recent recovery commands.
+* [Open Issues](pages/open-issues.md) - Known blockers, risks, and unresolved work.
+* [OKF Maintenance Playbook](schema.md) - Authoring, confidence, lifecycle, linking, and validation rules.
+* [Bundle Update Log](log.md) - Structural and substantial knowledge-bundle changes.
 
-## Session Digests
+## Knowledge Groups
 
-- [[sessions/2026-05-20-hrm-text-setup]]: installation, FA4, dataset download/filter/conversion work.
-
-## Entity Notes
-
-- [[entities/datasets]]: dataset inventory and conversion policy.
-- [[entities/scripts]]: local scripts and their roles.
-
-## Retrieval Notes
-
-For now, this wiki uses explicit links and this index. If it grows past roughly 100 pages, add a real search layer rather than relying on a single index.
+* [Pages](pages/) - Policies, plans, runbooks, technical references, and operational journals.
+* [Entities](entities/) - Dataset and software catalogs.
+* [Sessions](sessions/) - Chronological session digests.
+* [Sources](sources/) - External references and legacy design sources.

@@ -1,14 +1,18 @@
 # Agent Operating Notes
 
-This repo uses a lightweight LLM wiki under [`wiki/`](wiki/index.md). Before doing substantial work, read:
+This repo uses an Open Knowledge Format (OKF) v0.2 bundle under
+[`wiki/`](wiki/index.md). Before doing substantial work, read:
 
 1. [`wiki/index.md`](wiki/index.md) for the page map.
-2. [`wiki/schema.md`](wiki/schema.md) for how to update the wiki.
+2. [`wiki/schema.md`](wiki/schema.md) for OKF authoring and maintenance rules.
 3. The task-relevant page under [`wiki/pages/`](wiki/pages/).
 
-## Wiki Update Rule
+## Knowledge Update Rule
 
-When you make or discover durable project knowledge, update the wiki in the same turn. Durable knowledge includes:
+When you make or discover durable project knowledge, update the OKF bundle in
+the same turn. Keep this file brief; frontmatter, confidence, lifecycle,
+linking, refactoring, indexing, and validation rules live in
+[`wiki/schema.md`](wiki/schema.md). Durable knowledge includes:
 
 - dataset/source policy decisions
 - commands that worked or failed
@@ -16,12 +20,6 @@ When you make or discover durable project knowledge, update the wiki in the same
 - model architecture adaptations
 - source-filter changes
 - known risks or blockers
-
-Use confidence markers:
-
-- `Confidence: high` for verified local commands, inspected files, or direct tool output.
-- `Confidence: medium` for source-card metadata or reasoned integration decisions.
-- `Confidence: low` for estimates and unverified assumptions.
 
 If new information contradicts an existing page, do not silently overwrite it. Mark the old claim as superseded and add the new claim with date/context.
 
