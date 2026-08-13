@@ -1,8 +1,13 @@
+---
+type: Policy
+title: Source Filtering
+description: Rules and implementation for filtering downloaded sources before conversion and tokenization.
+tags: [data, filtering, licensing, provenance]
+status: stable
+last_updated: 2026-06-12
+confidence: high
+---
 # Source Filtering
-
-Last updated: 2026-06-12
-Confidence: high  
-Scope: Filtering downloaded sources before conversion/tokenization.
 
 ## Files
 

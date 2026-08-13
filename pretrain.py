@@ -71,6 +71,7 @@ class PretrainConfig(pydantic.BaseModel):
     global_batch_size: int
     epochs: int
     gradient_accumulation_steps: int = pydantic.Field(default=1, ge=1)
+    training_total_steps: Optional[int] = pydantic.Field(default=None, ge=1)
 
     lr: float
     lr_min_ratio: float
@@ -341,8 +342,10 @@ def init_train(config: PretrainConfig, rank: int, world_size: int, device: Optio
 
     # Train state
     # Estimated optimizer steps. Each epoch is iterated separately and drops its
-    # own incomplete final effective batch.
-    total_steps = config.epochs * int(train_metadata.total_length // config.global_batch_size)
+    # own incomplete final effective batch. A global override is needed when a
+    # run resumes at a nonzero step on a different dataset.
+    estimated_total_steps = config.epochs * int(train_metadata.total_length // config.global_batch_size)
+    total_steps = config.training_total_steps or estimated_total_steps
     train_state = TrainState(
         model=model,
         carry=carry,
@@ -996,6 +999,11 @@ def launch(hydra_config: DictConfig):
         )
         val_iter = iter(val_loader)
     resume_state = load_train_checkpoint(config, train_state, rank=RANK, local_batch_size=local_batch_size)
+    if train_state.step > train_state.total_steps:
+        raise ValueError(
+            f"Loaded checkpoint step {train_state.step} exceeds training_total_steps "
+            f"{train_state.total_steps}"
+        )
     start_epoch = 1
     skip_batches = 0
     batch_in_epoch_exact = True

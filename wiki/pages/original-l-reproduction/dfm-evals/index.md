@@ -1,0 +1,47 @@
+# dfm-evals Concepts
+
+* [Runtime Update 2026-05-24](chronology-runtime-update-2026-05-24.md) - Chronological record from dfm-evals: Runtime Update 2026-05-24.
+* [Superseded on (2026-05-24)](chronology-superseded-on-2026-05-24.md) - Chronological record from dfm-evals: Superseded on (2026-05-24).
+* [Parallel dfm-evals launch, verified on (2026-05-24)](chronology-parallel-dfm-evals-launch-verified-on-2026-05-24.md) - Chronological record from dfm-evals: Parallel dfm-evals launch, verified on (2026-05-24).
+* [Manual dfm-evals sync, verified on (2026-05-24)](chronology-manual-dfm-evals-sync-verified-on-2026-05-24.md) - Chronological record from dfm-evals: Manual dfm-evals sync, verified on (2026-05-24).
+* [Runtime Update 2026-05-24](chronology-runtime-update-2026-05-24-2.md) - Chronological record from dfm-evals: Runtime Update 2026-05-24.
+* [Second manual dfm-evals sync, verified on (2026-05-24)](chronology-second-manual-dfm-evals-sync-verified-on-2026-05-24.md) - Chronological record from dfm-evals: Second manual dfm-evals sync, verified on (2026-05-24).
+* [Third manual dfm-evals sync, verified on (2026-05-24)](chronology-third-manual-dfm-evals-sync-verified-on-2026-05-24.md) - Chronological record from dfm-evals: Third manual dfm-evals sync, verified on (2026-05-24).
+* [Incremental sync update, verified locally on (2026-05-24)](chronology-incremental-sync-update-verified-locally-on-2026-05-24.md) - Chronological record from dfm-evals: Incremental sync update, verified locally on (2026-05-24).
+* [Process correction, verified on (2026-05-24)](chronology-process-correction-verified-on-2026-05-24.md) - Chronological record from dfm-evals: Process correction, verified on (2026-05-24).
+* [Current-run incremental watcher, verified on (2026-05-24)](chronology-current-run-incremental-watcher-verified-on-2026-05-24.md) - Chronological record from dfm-evals: Current-run incremental watcher, verified on (2026-05-24).
+* [Completion update, verified on (2026-05-24)](chronology-completion-update-verified-on-2026-05-24.md) - Chronological record from dfm-evals: Completion update, verified on (2026-05-24).
+* [W&B workspace panel update, verified on (2026-05-24)](chronology-w-b-workspace-panel-update-verified-on-2026-05-24.md) - Chronological record from dfm-evals: W&B workspace panel update, verified on (2026-05-24).
+* [Superseded/context update (2026-05-24)](chronology-superseded-context-update-2026-05-24.md) - Chronological record from dfm-evals: Superseded/context update (2026-05-24).
+* [Suite update, verified on (2026-05-24)](chronology-suite-update-verified-on-2026-05-24.md) - Chronological record from dfm-evals: Suite update, verified on (2026-05-24).
+* [Single-task scheduling note, verified on (2026-05-24)](chronology-single-task-scheduling-note-verified-on-2026-05-24.md) - Chronological record from dfm-evals: Single-task scheduling note, verified on (2026-05-24).
+* [Original+mixed checkpoint eval launch, verified on (2026-05-25)](chronology-original-mixed-checkpoint-eval-launch-verified-on-2026-05-25.md) - Chronological record from dfm-evals: Original+mixed checkpoint eval launch, verified on (2026-05-25).
+* [W&B sync caveat for active original+mixed run, verified on (2026-05-25)](chronology-w-b-sync-caveat-for-active-original-mixed-run-verified-on-2026-05-25.md) - Chronological record from dfm-evals: W&B sync caveat for active original+mixed run, verified on (2026-05-25).
+* [Follow-up on (2026-05-25)](chronology-follow-up-on-2026-05-25.md) - Chronological record from dfm-evals: Follow-up on (2026-05-25).
+* [Superseded on (2026-05-25)](chronology-superseded-on-2026-05-25.md) - Chronological record from dfm-evals: Superseded on (2026-05-25).
+* [PIQA scorer correction, verified on (2026-05-25)](chronology-piqa-scorer-correction-verified-on-2026-05-25.md) - Chronological record from dfm-evals: PIQA scorer correction, verified on (2026-05-25).
+* [W&B sync update, verified on (2026-05-25)](chronology-w-b-sync-update-verified-on-2026-05-25.md) - Chronological record from dfm-evals: W&B sync update, verified on (2026-05-25).
+* [IFEval-DA sharding update, verified on (2026-05-25)](chronology-ifeval-da-sharding-update-verified-on-2026-05-25.md) - Chronological record from dfm-evals: IFEval-DA sharding update, verified on (2026-05-25).
+* [Original+mixed epoch-2 dfm-evals launch, verified on (2026-05-25)](chronology-original-mixed-epoch-2-dfm-evals-launch-verified-on-2026-05-25.md) - Chronological record from dfm-evals: Original+mixed epoch-2 dfm-evals launch, verified on (2026-05-25).
+* [Epoch-2 completion, verified locally and through W&B sync logs on (2026-05-25)](chronology-epoch-2-completion-verified-locally-and-through-w-b-sync-logs-on-2026-05-25.md) - Chronological record from dfm-evals: Epoch-2 completion, verified locally and through W&B sync logs on (2026-05-25).
+* [Standard eval W&B sync, verified on (2026-05-25)](chronology-standard-eval-w-b-sync-verified-on-2026-05-25.md) - Chronological record from dfm-evals: Standard eval W&B sync, verified on (2026-05-25).
+* [CP2 standard MATH completion, verified on (2026-05-26)](chronology-cp2-standard-math-completion-verified-on-2026-05-26.md) - Chronological record from dfm-evals: CP2 standard MATH completion, verified on (2026-05-26).
+* [Original+mixed CP3 queued-eval scheduler, launched on (2026-05-26)](chronology-original-mixed-cp3-queued-eval-scheduler-launched-on-2026-05-26.md) - Chronological record from dfm-evals: Original+mixed CP3 queued-eval scheduler, launched on (2026-05-26).
+* [Incremental CP3 standard eval sync, verified on (2026-05-26)](chronology-incremental-cp3-standard-eval-sync-verified-on-2026-05-26.md) - Chronological record from dfm-evals: Incremental CP3 standard eval sync, verified on (2026-05-26).
+* [Original+mixed CP3 IFEval-DA completion, verified on (2026-05-26)](chronology-original-mixed-cp3-ifeval-da-completion-verified-on-2026-05-26.md) - Chronological record from dfm-evals: Original+mixed CP3 IFEval-DA completion, verified on (2026-05-26).
+* [English summarization eval, added on (2026-05-27)](chronology-english-summarization-eval-added-on-2026-05-27.md) - Chronological record from dfm-evals: English summarization eval, added on (2026-05-27).
+* [Danish summarization eval, added on (2026-05-27)](chronology-danish-summarization-eval-added-on-2026-05-27.md) - Chronological record from dfm-evals: Danish summarization eval, added on (2026-05-27).
+* [Summarization eval scheduler launch, verified on (2026-05-27)](chronology-summarization-eval-scheduler-launch-verified-on-2026-05-27.md) - Chronological record from dfm-evals: Summarization eval scheduler launch, verified on (2026-05-27).
+* [Generation retention for summarization vs translation evals, verified on (2026-05-27)](chronology-generation-retention-for-summarization-vs-translation-evals-verified-on-2026-05-27.md) - Chronological record from dfm-evals: Generation retention for summarization vs translation evals, verified on (2026-05-27).
+* [BERTScore note, updated on (2026-05-27)](chronology-bertscore-note-updated-on-2026-05-27.md) - Chronological record from dfm-evals: BERTScore note, updated on (2026-05-27).
+* [Stored-generation BERTScore run, verified on (2026-05-27)](chronology-stored-generation-bertscore-run-verified-on-2026-05-27.md) - Chronological record from dfm-evals: Stored-generation BERTScore run, verified on (2026-05-27).
+* [Stored-generation BERTScore W&B sync, verified on (2026-05-27)](chronology-stored-generation-bertscore-w-b-sync-verified-on-2026-05-27.md) - Chronological record from dfm-evals: Stored-generation BERTScore W&B sync, verified on (2026-05-27).
+* [Summarization under dfm-evals, added on (2026-05-27)](chronology-summarization-under-dfm-evals-added-on-2026-05-27.md) - Chronological record from dfm-evals: Summarization under dfm-evals, added on (2026-05-27).
+* [Summarization W&B sync, verified on (2026-05-27)](chronology-summarization-w-b-sync-verified-on-2026-05-27.md) - Chronological record from dfm-evals: Summarization W&B sync, verified on (2026-05-27).
+* [Lite eval queue, verified on (2026-06-03)](chronology-lite-eval-queue-verified-on-2026-06-03.md) - Chronological record from dfm-evals: Lite eval queue, verified on (2026-06-03).
+* [Clarification added (2026-06-04)](chronology-clarification-added-2026-06-04.md) - Chronological record from dfm-evals: Clarification added (2026-06-04).
+* [True CP4 no-EMA lite eval, launched (2026-06-04)](chronology-true-cp4-no-ema-lite-eval-launched-2026-06-04.md) - Chronological record from dfm-evals: True CP4 no-EMA lite eval, launched (2026-06-04).
+* [Runtime issue and mitigation (2026-06-04)](chronology-runtime-issue-and-mitigation-2026-06-04.md) - Chronological record from dfm-evals: Runtime issue and mitigation (2026-06-04).
+* [CP4 EMA vs true no-EMA lite comparison (2026-06-04)](chronology-cp4-ema-vs-true-no-ema-lite-comparison-2026-06-04.md) - Chronological record from dfm-evals: CP4 EMA vs true no-EMA lite comparison (2026-06-04).
+* [CP1 true no-EMA lite eval, launched (2026-06-04)](chronology-cp1-true-no-ema-lite-eval-launched-2026-06-04.md) - Chronological record from dfm-evals: CP1 true no-EMA lite eval, launched (2026-06-04).
+* [Original-plus-mixed lite eval queue, verified on (2026-06-04)](chronology-original-plus-mixed-lite-eval-queue-verified-on-2026-06-04.md) - Chronological record from dfm-evals: Original-plus-mixed lite eval queue, verified on (2026-06-04).

@@ -1,8 +1,13 @@
+---
+type: Issue Register
+title: Open Issues
+description: Known blockers, technical risks, and future improvements.
+tags: [issues, risks, backlog]
+status: stable
+last_updated: 2026-06-01
+confidence: medium
+---
 # Open Issues
-
-Last updated: 2026-06-01
-Confidence: medium  
-Scope: Known blockers, risks, and future improvements.
 
 ## Full Training Validation
 
