@@ -98,3 +98,11 @@ Recommended order:
 Every distributed path needs one-step forward, loss, gradient, optimizer,
 EMA, save/resume, and HF-export parity tests on packed prefix/causal examples
 before throughput measurements are accepted.
+
+## Positional-extension decision, 2026-08-26
+
+Use vanilla RoPE for the next longer-context training experiment. The earlier
+YaRN comparison included an incorrectly exported checkpoint and therefore does
+not establish that YaRN caused the observed regression. YaRN remains a possible
+later controlled comparison, but it must use correctly exported checkpoints
+and otherwise matched training and evaluation settings.

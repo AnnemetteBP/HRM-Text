@@ -600,3 +600,5 @@
 - Measured 41984 MiB peak allocated and 49970 MiB reserved per GPU, versus
   143027 MiB and 165168 MiB without checkpointing; recorded the approximately
   1.8x observed step-time cost of the current uncompiled checkpointed path.
+- Kept vanilla RoPE for the next longer-context experiment because the prior
+  YaRN comparison was confounded by an incorrectly exported checkpoint.
