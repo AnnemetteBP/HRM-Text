@@ -605,3 +605,7 @@
 - Added and measured L-only selective checkpointing on DFM8 XXL: 90228 MiB
   allocated, 105344 MiB reserved, and 5.59 seconds per optimizer step. The
   production campaign resumes from step 153500 without checkpointing.
+- Audited multi-node readiness: core rank/device/data/DCP handling is present,
+  but scheduler launch, carry/world-size handling, accumulation synchronization,
+  and hybrid sharding remain production gaps. FSDP is the safe existing choice
+  for XXL; hybrid within-node sharding is the recommended multi-node design.

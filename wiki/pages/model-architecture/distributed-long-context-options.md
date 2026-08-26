@@ -114,3 +114,37 @@ YaRN comparison included an incorrectly exported checkpoint and therefore does
 not establish that YaRN caused the observed regression. YaRN remains a possible
 later controlled comparison, but it must use correctly exported checkpoints
 and otherwise matched training and evaluation settings.
+
+## Multi-node readiness, 2026-08-26
+
+The core trainer is structurally multi-node aware: TorchRun initializes NCCL,
+CUDA placement uses `LOCAL_RANK`, sampling uses global `RANK` and `WORLD_SIZE`,
+rank zero owns W&B, and distributed checkpoints use PyTorch DCP. This has not
+yet been validated as an end-to-end production multi-node path.
+
+Known gaps and constraints:
+
+- The evaluation scheduler launches and accounts for one local GPU host; it
+  does not launch or monitor multi-node TorchRun jobs.
+- Checkpoint guards default to eight carry files. Multi-node plans must require
+  `WORLD_SIZE` carry files.
+- Carries are rank-local tensors. DCP can reshard model and optimizer state,
+  but resuming with a different world size is not currently supported safely
+  because carry files and shapes do not get redistributed.
+- Gradient accumulation does not suppress DDP/FSDP synchronization on
+  non-final microbatches, so multi-node communication is repeated for every
+  accumulation microbatch.
+- FSDP2 currently shards over the entire world process group. There is no
+  hybrid-shard device mesh that shards within a node and replicates across
+  nodes.
+- Checkpoint paths must be on a shared filesystem visible under the same path
+  from every node.
+- `global_batch_size / (WORLD_SIZE * GAS)` must remain large enough to hold at
+  least one complete packed training sequence on every rank.
+
+For the current XXL model, choose FSDP rather than replicated DDP if using only
+the implemented paths. A production 2/4/8-node design should add hybrid
+sharding within each fast local GPU island and DDP-style replication across
+nodes, plus accumulation-aware synchronization. DDP is preferable for smaller
+models only when the complete parameters, gradients, optimizer, EMA, and
+activations fit comfortably on every GPU.
