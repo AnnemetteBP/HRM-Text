@@ -56,6 +56,68 @@ HF_DATASETS: tuple[HFDataset, ...] = (
         allow_patterns=("data/**/*.parquet", "README.md", "CHANGELOG.md"),
         note="Raw Danish documents; convert to continuation rows.",
     ),
+    HFDataset(
+        name="alexandra_nordjylland_news",
+        repo_id="alexandrainst/nordjylland-news-summarization",
+        groups=("dfm10", "danish", "instruction", "summarization"),
+        allow_patterns=(
+            "data/train-00000-of-00001-4fb110c0f6314175.parquet",
+            "README.md",
+        ),
+        note="DFM10 uses only the original 75,219-row train file; the synthetic 63,855-row file is already inherited through Oliver Kinch.",
+    ),
+    HFDataset(
+        name="alexandra_scandi_qa",
+        repo_id="alexandrainst/scandi-qa",
+        groups=("dfm10", "danish", "instruction", "qa"),
+        allow_patterns=("data/da/train.jsonl", "README.md"),
+        note="DFM10 uses only Danish train; validation and test remain held out.",
+    ),
+    HFDataset(
+        name="alexandra_multi_zebra_logic",
+        repo_id="alexandrainst/multi-zebra-logic",
+        groups=("dfm10", "danish", "english", "instruction", "reasoning"),
+        allow_patterns=(
+            "dataset_da_huse_2x3_5rh/train-00000-of-00001.parquet",
+            "dataset_da_huse_4x5_5rh/train-00000-of-00001.parquet",
+            "dataset_da_smoerrebroed_2x3_5rh/train-00000-of-00001.parquet",
+            "dataset_da_smoerrebroed_4x5_5rh/train-00000-of-00001.parquet",
+            "dataset_en_houses_2x3_5rh/train-00000-of-00001.parquet",
+            "dataset_en_houses_4x5_5rh/train-00000-of-00001.parquet",
+            "README.md",
+        ),
+        note="DFM10 uses selected Danish and English train configs only; validation and test remain held out.",
+    ),
+    HFDataset(
+        name="alexandra_dane",
+        repo_id="alexandrainst/dane",
+        groups=("dfm10", "danish", "instruction", "ner"),
+        allow_patterns=("dane.py", "README.md"),
+        note="The DFM10 converter downloads the upstream ddt.zip referenced by the dataset loader and reads ddt.train.conllu only.",
+    ),
+    HFDataset(
+        name="alexandra_dacoref",
+        repo_id="alexandrainst/dacoref",
+        groups=("dfm10", "danish", "instruction", "coreference"),
+        allow_patterns=(
+            "data/train-00000-of-00001-ffdeed5775622c14.parquet",
+            "README.md",
+        ),
+        note="DFM10 uses train only; validation and test remain held out.",
+    ),
+    HFDataset(
+        name="zai_deepdive",
+        repo_id="zai-org/DeepDive",
+        groups=("dfm10", "english", "instruction", "agentic", "search"),
+        allow_patterns=(
+            "data/trajectories_sft-00000-of-00001.parquet",
+            "README.md",
+        ),
+        note=(
+            "DFM10 uses only the 858 successful SFT search trajectories. "
+            "QA/RL splits are excluded; trajectories require native-tool conversion."
+        ),
+    ),
 
     # Selected Common Pile components for English factual/commonsense/reading
     # recovery. Keep this explicit; do not reintroduce a broad common_pile*

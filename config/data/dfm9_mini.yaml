@@ -1,0 +1,6 @@
+path: data/sampled_dfm9_mini
+target_only: true
+
+# DFM9-mini: permissively licensed subset of DFM9.
+# Current sample: ~5.689B tokens/epoch, 10 epochs = 56.886B total.
+# See data_io/prefix_config_dfm9_mini.yaml for source inclusion/exclusion.

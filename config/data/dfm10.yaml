@@ -1,0 +1,5 @@
+path: data/sampled_dfm10
+target_only: true
+
+# DFM9 plus Andersen Danish modernization training data (repeat 20).
+# See wiki/pages/dfm10-plan.md.

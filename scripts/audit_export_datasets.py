@@ -34,7 +34,7 @@ import time
 import urllib.error
 import urllib.request
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -47,6 +47,10 @@ DEFAULT_DATASETS = [
     "danish-dynaword-paragraph-reordering",
     "danish-dynaword-prefix-continuation",
     "danish-dynaword-span-filling",
+    "folketingets-dokumenter-denoising",
+    "folketingets-dokumenter-error-correction",
+    "folketingets-dokumenter-prefix-continuation",
+    "folketingets-dokumenter-span-filling",
 ]
 
 NUMBERED_SEGMENT = re.compile(r"(?:^|\n)\[(\d+)\]\s*(.*?)(?=(?:\n\[\d+\]\s*)|\Z)", re.S)
@@ -64,6 +68,8 @@ def dataset_task(dataset: str) -> str:
         return "prefix"
     if dataset.endswith("-denoising"):
         return "denoise"
+    if dataset.endswith("-error-correction"):
+        return "error_correction"
     if dataset.endswith("-span-filling"):
         return "span"
     if dataset.endswith("-paragraph-reordering"):
@@ -72,7 +78,7 @@ def dataset_task(dataset: str) -> str:
 
 
 def dataset_language(dataset: str) -> str:
-    return "da" if dataset.startswith("danish-") else "en"
+    return "da" if dataset.startswith(("danish-", "folketingets-")) else "en"
 
 
 def iter_chat_file(path: Path):
@@ -95,6 +101,14 @@ def stable_sample(key: str, sample_rate: float, seed: int) -> bool:
     digest = hashlib.blake2b(f"{seed}\0{key}".encode("utf-8"), digest_size=8).digest()
     value = int.from_bytes(digest, "big") / float(2**64 - 1)
     return value < sample_rate
+
+
+def stable_partition(key: str, partitions: int, partition_index: int) -> bool:
+    """Assign each row deterministically to exactly one audit worker."""
+    if partitions <= 1:
+        return True
+    digest = hashlib.blake2b(key.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big") % partitions == partition_index
 
 
 def extract_segments(instruction: str) -> list[str]:
@@ -189,6 +203,12 @@ def prompt_for_task(task: str) -> tuple[str, dict[str, str]]:
             common
             + " For denoising, the input should be a corrupted/noisy version of the target and the response should plausibly restore clean text. "
             "Reject if corruption is negligible, destructive beyond recoverability, unrelated to the response, or if the target is not meaningfully cleaner."
+        )
+    elif task == "error_correction":
+        system = (
+            common
+            + " For error correction, the input should be a lightly corrupted Danish text and the response should be the same text with plausible OCR or character errors corrected. "
+            "Reject rows where the corruption is absent, the target changes the meaning, or the text is not recoverable."
         )
     elif task == "span":
         system = (
@@ -302,8 +322,8 @@ def dataset_roots(args: argparse.Namespace) -> list[Path]:
     return roots
 
 
-def collect_jobs(args: argparse.Namespace) -> list[tuple[str, Path, int, str, str]]:
-    jobs: list[tuple[str, Path, int, str, str]] = []
+def iter_jobs(args: argparse.Namespace) -> Iterable[tuple[str, Path, int, str, str]]:
+    selected = 0
     for root in dataset_roots(args):
         dataset = root.name
         for path in sorted((root / "data").glob(args.glob)):
@@ -311,25 +331,67 @@ def collect_jobs(args: argparse.Namespace) -> list[tuple[str, Path, int, str, st
                 row_id = f"{dataset}/{path.name}:{line_idx}"
                 if not stable_sample(row_id, args.sample_rate, args.seed):
                     continue
-                jobs.append((dataset, path, line_idx, instruction, response))
-                if args.max_records is not None and len(jobs) >= args.max_records:
-                    return jobs
-    return jobs
+                if not stable_partition(row_id, args.partitions, args.partition_index):
+                    continue
+                yield dataset, path, line_idx, instruction, response
+                selected += 1
+                if args.max_records is not None and selected >= args.max_records:
+                    return
+
+
+def collect_jobs(args: argparse.Namespace) -> list[tuple[str, Path, int, str, str]]:
+    """Materialize jobs for compatibility; the audit path streams them."""
+    return list(iter_jobs(args))
 
 
 def audit(args: argparse.Namespace) -> None:
     args.audit_root.mkdir(parents=True, exist_ok=True)
     audit_path = args.audit_root / "export_judge.audit.jsonl"
     summary_path = args.audit_root / "summary.json"
-    if audit_path.exists() and not args.force:
+    if audit_path.exists() and not args.force and not args.resume:
         raise SystemExit(f"exists: {audit_path} (use --force)")
 
-    jobs = collect_jobs(args)
+    existing_ids: set[str] = set()
+    existing_rows: list[dict[str, Any]] = []
+    if args.resume and audit_path.exists():
+        raw = audit_path.read_bytes()
+        lines = raw.splitlines(keepends=True)
+        valid_bytes = 0
+        for line_number, line in enumerate(lines, start=1):
+            if not line.strip():
+                valid_bytes += len(line)
+                continue
+            try:
+                row = json.loads(line)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                is_trailing_partial = line_number == len(lines) and not line.endswith((b"\n", b"\r"))
+                if not is_trailing_partial:
+                    raise SystemExit(f"Malformed audit JSON at {audit_path}:{line_number}: {exc}") from exc
+                print(f"Discarding interrupted trailing audit record at {audit_path}:{line_number}")
+                break
+            existing_rows.append(row)
+            valid_bytes += len(line)
+        if valid_bytes != len(raw):
+            with audit_path.open("r+b") as existing:
+                existing.truncate(valid_bytes)
+        elif raw and not raw.endswith((b"\n", b"\r")):
+            with audit_path.open("ab") as existing:
+                existing.write(b"\n")
+        for row in existing_rows:
+            row_id = row.get("row_id")
+            if isinstance(row_id, str):
+                existing_ids.add(row_id)
+
+    jobs = (
+        job
+        for job in iter_jobs(args)
+        if f"{job[0]}/{job[1].name}:{job[2]}" not in existing_ids
+    )
     counts: Counter[str] = Counter()
     by_dataset: dict[str, Counter[str]] = {}
     by_task: dict[str, Counter[str]] = {}
 
-    def record(row: dict[str, Any], out) -> None:
+    def update_counts(row: dict[str, Any]) -> None:
         counts["audited"] += 1
         counts["keep" if row["keep"] else "drop"] += 1
         if not row["keep"]:
@@ -340,26 +402,48 @@ def audit(args: argparse.Namespace) -> None:
         by_dataset[dataset]["keep" if row["keep"] else "drop"] += 1
         by_task.setdefault(task, Counter())["audited"] += 1
         by_task[task]["keep" if row["keep"] else "drop"] += 1
+
+    for row in existing_rows:
+        update_counts(row)
+
+    def record(row: dict[str, Any], out) -> None:
+        update_counts(row)
         out.write(json.dumps(row, ensure_ascii=False) + "\n")
         out.flush()
 
-    with audit_path.open("w", encoding="utf-8") as out:
+    with audit_path.open("a" if args.resume else "w", encoding="utf-8") as out:
         if args.concurrency == 1:
             iterator = (judge_row(args, dataset, path.name, line_idx, instruction, response) for dataset, path, line_idx, instruction, response in jobs)
             for idx, row in enumerate(iterator, start=1):
                 record(row, out)
-                if idx % args.progress_interval == 0 or idx == len(jobs):
-                    print(f"judged {idx}/{len(jobs)}")
+                if idx % args.progress_interval == 0:
+                    print(f"judged {idx}")
         else:
             with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
-                futures = [
-                    pool.submit(judge_row, args, dataset, path.name, line_idx, instruction, response)
-                    for dataset, path, line_idx, instruction, response in jobs
-                ]
-                for idx, fut in enumerate(as_completed(futures), start=1):
-                    record(fut.result(), out)
-                    if idx % args.progress_interval == 0 or idx == len(futures):
-                        print(f"judged {idx}/{len(futures)}")
+                pending = {}
+
+                def fill_pending() -> None:
+                    while len(pending) < args.concurrency:
+                        try:
+                            dataset, path, line_idx, instruction, response = next(jobs)
+                        except StopIteration:
+                            return
+                        future = pool.submit(
+                            judge_row, args, dataset, path.name, line_idx, instruction, response
+                        )
+                        pending[future] = None
+
+                fill_pending()
+                idx = 0
+                while pending:
+                    done, _ = wait(pending, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        del pending[future]
+                        record(future.result(), out)
+                        idx += 1
+                        if idx % args.progress_interval == 0:
+                            print(f"judged {idx}")
+                    fill_pending()
 
     def summarize(counter: Counter[str]) -> dict[str, Any]:
         return {**dict(counter), "keep_rate": (counter["keep"] / counter["audited"]) if counter["audited"] else None}
@@ -377,7 +461,12 @@ def audit(args: argparse.Namespace) -> None:
         "by_task": {name: summarize(counter) for name, counter in sorted(by_task.items())},
         "audit_path": str(audit_path),
     }
-    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    summary_tmp = summary_path.with_suffix(f"{summary_path.suffix}.tmp")
+    summary_tmp.write_text(
+        json.dumps(summary, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    summary_tmp.replace(summary_path)
     print(json.dumps(summary, indent=2, ensure_ascii=False, sort_keys=True))
 
 
@@ -457,6 +546,8 @@ def main() -> None:
     audit_parser.add_argument("--model", required=True)
     audit_parser.add_argument("--api-key", default="dummy")
     audit_parser.add_argument("--sample-rate", type=float, default=1.0)
+    audit_parser.add_argument("--partitions", type=int, default=1, help="Number of disjoint audit workers.")
+    audit_parser.add_argument("--partition-index", type=int, default=0, help="Zero-based disjoint audit worker index.")
     audit_parser.add_argument("--max-records", type=int, default=None)
     audit_parser.add_argument("--concurrency", type=int, default=8)
     audit_parser.add_argument("--retries", type=int, default=3)
@@ -468,6 +559,7 @@ def main() -> None:
     audit_parser.add_argument("--max-response-chars", type=int, default=7000)
     audit_parser.add_argument("--progress-interval", type=int, default=100)
     audit_parser.add_argument("--force", action="store_true")
+    audit_parser.add_argument("--resume", action="store_true", help="append decisions and skip existing row IDs")
 
     filter_parser = sub.add_parser("filter", parents=[common])
     filter_parser.add_argument("--audit", type=Path, action="append", required=True, help="Audit JSONL file. Repeatable.")
@@ -479,6 +571,8 @@ def main() -> None:
     if args.command == "audit":
         if not 0 <= args.sample_rate <= 1:
             raise SystemExit("--sample-rate must be between 0 and 1")
+        if args.partitions < 1 or not 0 <= args.partition_index < args.partitions:
+            raise SystemExit("--partition-index must be in [0, --partitions)")
         if args.concurrency <= 0:
             raise SystemExit("--concurrency must be positive")
         audit(args)
