@@ -15,7 +15,8 @@ DAG and writes the self-contained document
 `legal/reports/dfm9-source-rights-dependency-appendix.tex`.
 
 The appendix now opens with the audit framework used to reach the source-level
-decisions. Copyright/database-rights and GDPR are independent gates. The
+decisions. Copyright/database rights, GDPR, and the EU AI Act are three
+independent gates; satisfying one does not cure a failure under another. The
 copyright path prefers direct licences, public-domain status, assigned rights,
 permissions, and agreements before a purpose-limited DSM Article 3 research
 TDM basis or a source-specific Article 4 basis. The GDPR path follows EDPB

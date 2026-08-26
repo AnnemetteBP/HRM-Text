@@ -4,10 +4,20 @@ title: hrm-cu132 FA4 and Triton Recovery
 description: Verified environment repair for FlashAttention 4 and Triton compiler discovery.
 tags: [environment, flash-attention, triton, training]
 status: stable
-last_updated: 2026-08-24
+last_updated: 2026-08-26
 confidence: high
 ---
 # `hrm-cu132` FA4 and Triton Recovery
+
+Update, 2026-08-26. Confidence: high from direct imports and package metadata.
+The recovery state below is currently superseded: `hrm-cu132` again contains
+`nvidia-cutlass-dsl==4.6.0`, whose FA4 import fails because
+`cutlass.cute.core.ThrMma` is absent, and its `flashinfer-python==0.6.16.post3`
+does not match `flashinfer-cubin==0.6.13`. Do not use it for the resumed DFM8
+XXL campaign without repairing and revalidating it. The original `hrm`
+environment currently has matching CUTLASS DSL `4.5.2`, matching FlashInfer
+`0.6.12`, ANTLR `4.9.3`, a working FA4 import, Ninja, and access to the system
+CUDA 13.2 toolkit at `/usr/local/cuda`.
 
 The `hrm-cu132` environment had two independent problems. CUTLASS DSL `4.6.0`
 did not expose `cutlass.cute.core.ThrMma`, which the installed FlashAttention 4

@@ -166,6 +166,22 @@ are never used to terminate processes. The merged audit is published only when
 every logical partition produced an output file.
 Confidence: high from the successful startup and live request logs.
 
+**Resumed 2026-08-26:** the authoritative resumable state is
+`logs/dfm10_folketing_audit_8gpu_vllm/workers/partition_{0..7}`. Legacy
+`workers/gpu{0..7}` directories were renamed in place to the current logical
+partition convention; no decision files were copied, regenerated, or dropped.
+At resume time the eight partitions contained 8,715,947 decisions in total,
+with 393,513--1,638,249 decisions per partition. The audit was restarted on all
+eight GPUs with the `audit` conda environment, E4B vLLM judge, 0.90 GPU-memory
+utilization, 64 server sequences, 64 client requests per partition, and
+row-level `--resume`. The launcher PID is recorded in
+`logs/dfm10_folketing_audit_8gpu_vllm/resume_all.pid`, and startup/output logs
+are under the same audit root. A resumed worker first reads its existing IDs
+and scans all four compressed candidate files before GPU inference starts; zero
+GPU utilization during this bounded scan is expected and is not a stall.
+Confidence: high from process inspection, source file offsets, server health
+checks, and preserved JSONL line counts.
+
 The raw generated candidates are not an approved training corpus by
 themselves; a filtered `keep=true` tree must be built before sampling.
 

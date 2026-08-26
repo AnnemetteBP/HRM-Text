@@ -394,6 +394,12 @@ child environment. It atomically reserves every GPU passed to
 `--resume-from-tag` is set, verifies and injects the source checkpoint
 path/tag while removing stale manual resume-step/epoch/batch overrides.
 
+For a final segment whose exact data-loader exhaustion step is only an
+estimate, pass `--completion-checkpoint-tag epoch_N`. The scheduler still
+injects the estimated `stop_after_step`, but accepts a clean training exit when
+the fully written epoch checkpoint verifies first. Without this option,
+training segments retain strict exact-step completion.
+
 The dependency graph deliberately forks:
 
 ```text

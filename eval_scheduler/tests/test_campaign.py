@@ -219,6 +219,65 @@ def test_training_command_replaces_stop_target(monkeypatch, tmp_path: Path) -> N
     assert popen.call_args.kwargs["env"]["CUDA_VISIBLE_DEVICES"] == "3,5"
 
 
+def test_training_accepts_natural_epoch_completion(monkeypatch, tmp_path: Path) -> None:
+    process = MagicMock()
+    process.wait.return_value = 0
+    monkeypatch.setattr(runtime.subprocess, "Popen", MagicMock(return_value=process))
+    monkeypatch.setattr(
+        runtime,
+        "training_checkpoint_ready",
+        MagicMock(side_effect=[(False, "missing step"), (False, "missing step")]),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "checkpoint_ready",
+        MagicMock(side_effect=[(False, "missing epoch"), (True, "ready")]),
+    )
+    training = Job(
+        job_id="train",
+        action=Action.TRAIN_UNTIL_STEP,
+        family="training",
+        name="epoch_1",
+        log_dir=str(tmp_path / "logs"),
+        metadata={
+            "command": "torchrun pretrain.py",
+            "stop_after_step": 110,
+            "ckpt_path": str(tmp_path / "checkpoints"),
+            "ckpt_tag": "step_110",
+            "completion_checkpoint_tag": "epoch_1",
+            "workdir": str(tmp_path),
+        },
+    )
+
+    assert runtime.run_training_until_step(training, (0, 1)) == 0
+    log = (tmp_path / "logs" / "train_until_step_110.log").read_text()
+    assert "checkpoint_state_epoch_1.json" in log
+
+
+def test_training_skips_when_natural_epoch_checkpoint_already_exists(
+    monkeypatch, tmp_path: Path
+) -> None:
+    popen = MagicMock()
+    monkeypatch.setattr(runtime.subprocess, "Popen", popen)
+    monkeypatch.setattr(runtime, "checkpoint_ready", MagicMock(return_value=(True, "ready")))
+    training = Job(
+        job_id="train",
+        action=Action.TRAIN_UNTIL_STEP,
+        family="training",
+        name="epoch_1",
+        metadata={
+            "command": "torchrun pretrain.py",
+            "stop_after_step": 110,
+            "ckpt_path": str(tmp_path / "checkpoints"),
+            "ckpt_tag": "step_110",
+            "completion_checkpoint_tag": "epoch_1",
+        },
+    )
+
+    assert runtime.run_training_until_step(training, (0, 1)) == 0
+    popen.assert_not_called()
+
+
 def test_replace_hydra_overrides_handles_added_and_plain_keys() -> None:
     argv = [
         "torchrun",

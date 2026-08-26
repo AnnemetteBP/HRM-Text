@@ -414,6 +414,10 @@ def add_training(
     log_dir: Path = typer.Option(..., help="Segment log directory."),
     deps: str = typer.Option("", help="Comma-separated prerequisite job ids, normally an eval teardown row."),
     resume_from_tag: str | None = typer.Option(None, help="Verified checkpoint tag to inject as the resume source."),
+    completion_checkpoint_tag: str | None = typer.Option(
+        None,
+        help="Alternative checkpoint accepted when training exhausts an epoch before the estimated stop step.",
+    ),
     workdir: Path = typer.Option(Path.cwd(), help="Working directory for the training command."),
     checkpoint_carry_ranks: int = typer.Option(8, min=1, help="Required carry files in the completed checkpoint."),
     min_gpu_free_mib: int = typer.Option(0, min=0, help="Required effective free memory on every scheduler GPU."),
@@ -441,6 +445,7 @@ def add_training(
                     "min_gpu_free_mib": min_gpu_free_mib,
                     "workdir": str(workdir),
                     "resume_from_tag": resume_from_tag,
+                    "completion_checkpoint_tag": completion_checkpoint_tag,
                 },
             )
         ],

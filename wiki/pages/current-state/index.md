@@ -1,5 +1,7 @@
 # Current State Concepts
 
+* [DFM9 XXL-32 20K EuroEval](2026-08-26-dfm9-xxl32-20k-euroeval.md) - Completed and synced task metrics, failed VaLEU boundary, and early-checkpoint interpretation.
+* [DFM8 XXL Step 150.7K Loss Excursion](2026-08-26-dfm8-xxl-loss-excursion.md) - Source attribution and interpretation of the isolated self-recovering training instability.
 * [2026-08-26 Eval Monitor Live Progress Sources](2026-08-26-eval-monitor-inspect-progress.md) - Exact Inspect-journal progress for DFM tasks and native rolling ETAs for tqdm-based evaluators.
 * [Mimir EU AI Act Documentation Gap](mimir-eu-ai-act-documentation-gap.md) - Provisional scope and Article 53 documentation gap assessment for the Mimir v1 research release.
 * [2026-07-11 DFM8 Pre-Training Gate](2026-07-11-dfm8-pre-training-gate.md) - Part of Current State: 2026-07-11 DFM8 Pre-Training Gate.

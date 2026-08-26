@@ -498,10 +498,21 @@ def split_command_environment(argv: list[str]) -> tuple[dict[str, str], list[str
 def run_training_until_step(job: Job, gpus: tuple[int, ...]) -> int:
     target_step = int(job.metadata["stop_after_step"])
     ckpt_tag = str(job.metadata.get("ckpt_tag") or f"step_{target_step}")
+    completion_checkpoint_tag = str(
+        job.metadata.get("completion_checkpoint_tag") or ""
+    )
     if ckpt_tag != f"step_{target_step}":
         raise SchedulerError(
             f"training target checkpoint must be step_{target_step}, got {ckpt_tag}"
         )
+
+    if completion_checkpoint_tag:
+        completion_metadata = dict(job.metadata)
+        completion_metadata["ckpt_tag"] = completion_checkpoint_tag
+        completion_job = job.with_updates(metadata=completion_metadata)
+        completion_ready, _reason = checkpoint_ready(completion_job)
+        if completion_ready:
+            return 0
 
     ready, _reason = training_checkpoint_ready(job, target_step)
     if ready:
@@ -567,8 +578,20 @@ def run_training_until_step(job: Job, gpus: tuple[int, ...]) -> int:
 
         ready, reason = training_checkpoint_ready(job, target_step)
         if not ready:
-            log.write(f"{now()}\tcheckpoint verification failed\t{reason}\n")
-            return 4
+            if not completion_checkpoint_tag:
+                log.write(f"{now()}\tcheckpoint verification failed\t{reason}\n")
+                return 4
+            completion_metadata = dict(job.metadata)
+            completion_metadata["ckpt_tag"] = completion_checkpoint_tag
+            completion_job = job.with_updates(metadata=completion_metadata)
+            completion_ready, completion_reason = checkpoint_ready(completion_job)
+            if not completion_ready:
+                log.write(
+                    f"{now()}\tcheckpoint verification failed\t"
+                    f"step target: {reason}; completion checkpoint: {completion_reason}\n"
+                )
+                return 4
+            ckpt_tag = completion_checkpoint_tag
         sidecar = Path(str(job.metadata["ckpt_path"])) / f"checkpoint_state_{ckpt_tag}.json"
         log.write(f"{now()}\tcheckpoint ready\t{sidecar}\n")
     return 0

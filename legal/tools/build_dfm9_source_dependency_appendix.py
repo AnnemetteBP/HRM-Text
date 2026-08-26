@@ -328,16 +328,18 @@ def build() -> str:
         rf"\textbf{{Top-level copyright register SHA-256:}} {nolinkurl(digest(REGISTER))}\\",
         rf"\textbf{{Manual-decision register SHA-256:}} {nolinkurl(digest(MANUAL_DECISIONS))}",
         r"\section{Copyright and data-protection audit framework}",
-        r"\subsection{Two independent legal gates}",
+        r"\subsection{Three independent legal gates}",
         (
-            r"The project treats copyright and database rights on the one hand, and data "
-            r"protection on the other, as independent gates. A copyright licence or text-and-data-"
-            r"mining (TDM) exception does not supply a GDPR legal basis, and a GDPR legal basis "
-            r"does not authorise acts restricted by copyright or database rights. Passing one "
-            r"review therefore never cures a failure in the other. The operational starting point "
+            r"The project treats (1) copyright and database rights, (2) data protection, and (3) "
+            r"the EU AI Act as three independent legal gates. A copyright licence or text-and-data-"
+            r"mining (TDM) exception does not supply a GDPR legal basis or satisfy AI Act duties; a "
+            r"GDPR legal basis does not authorise acts restricted by copyright or establish AI Act "
+            r"compliance; and an AI Act exclusion, exemption, or classification does not cure a "
+            r"copyright or GDPR failure. Passing one review therefore never cures a failure in "
+            r"another. The operational starting point "
             r"is to identify the exact effective source, revision, acquisition route, retained "
             r"fields, transformations, repetitions, and upstream dependencies before assigning "
-            r"either status."
+            r"each status."
         ),
         r"\subsection{Copyright and TDM decision path}",
         (
@@ -412,7 +414,7 @@ def build() -> str:
         ),
         r"\subsection{EU AI Act scope and open-source release strategy}",
         (
-            r"The EU AI Act is a third, independent compliance layer."
+            r"The EU AI Act is the third independent gate."
             r"\footnote{Regulation (EU) 2024/1689: "
             r"\url{https://eur-lex.europa.eu/eli/reg/2024/1689/oj}. Commission GPAI scope "
             r"guidelines: \url{https://digital-strategy.ec.europa.eu/en/library/guidelines-scope-obligations-providers-general-purpose-ai-models-under-ai-act}.} "
@@ -436,9 +438,7 @@ def build() -> str:
             r"\url{https://huggingface.co/danish-foundation-models/DFM-Mimir}.} "
             r"Apache-2.0 permits access, use, modification, and distribution without a non-"
             r"commercial or research-only purpose restriction and therefore supports the Article "
-            r"53(2) free/open-source conditions. This verified release fact supersedes the older "
-            r"scope-dossier assumption that MIMIR License v1.0, a non-commercial/research-only "
-            r"licence, governed the release. The model licence grants only rights controlled by the "
+            r"53(2) free/open-source conditions. The model licence grants only rights controlled by the "
             r"provider: it does not relicense third-party training works, remove their attribution "
             r"or non-commercial conditions, or authorise infringing model outputs."
         ),
@@ -512,7 +512,8 @@ def build() -> str:
         ),
         r"\end{enumerate}",
         (
-            r"Memorisation matters to both gates. Verbatim or identifying extraction can increase "
+            r"Memorisation directly affects the copyright and GDPR gates and also informs AI Act "
+            r"risk, transparency, and release controls. Verbatim or identifying extraction can increase "
             r"copyright risk in outputs and can show that personal data remain practically "
             r"extractable or associated with training subjects, weakening an anonymity claim. "
             r"Conversely, a negative finite audit cannot prove non-infringement, erase an unlawful "

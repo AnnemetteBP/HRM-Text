@@ -16,3 +16,4 @@
 * [HRM-Text XL Training FLOPs](hrm-xl-training-flops.md) - Recurrence-aware upper-bound calculation for XL training compute.
 * [XL Parameter and Export Size](xl-parameter-and-export-size.md) - Parameter-count and export-size reference for the XL model.
 * [DFM Mimir Hugging Face Space Demo](dfm-mimir-space-demo.md) - ZeroGPU deployment, gated-model OAuth, and inference contract for the public Mimir demo.
+* [Distributed Long-Context Implementation Options](distributed-long-context-options.md) - Main-branch difficulty, risks, and recommended ordering for activation and model-parallel approaches.

@@ -24,3 +24,4 @@
 * [DFM8 L Resume On 2026-08-01](dfm8-l-resume-on-2026-08-01.md) - Part of DFM8 Plan: DFM8 L Resume On 2026-08-01.
 * [DFM8 L Alternating Training/Evaluation Campaign](dfm8-l-alternating-training-evaluation-campaign.md) - Part of DFM8 Plan: DFM8 L Alternating Training/Evaluation Campaign.
 * [DFM8 L Second-Epoch Campaign](dfm8-l-second-epoch-campaign.md) - Part of DFM8 Plan: DFM8 L Second-Epoch Campaign.
+* [DFM8 XXL Epoch 1 Resume](dfm8-xxl-epoch1-resume-2026-08-26.md) - Verified continuation from step 151K through the first DFM8 epoch.

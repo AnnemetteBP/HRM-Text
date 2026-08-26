@@ -24,6 +24,7 @@
 * [DFM9 Plan](dfm9-plan.md) - DFM9 factual-knowledge, code, and instruction expansion.
 * [DFM9 Plan Concepts](dfm9-plan/) - Focused DFM9 measurements, implementation records, and continuation operations.
 * [DFM10 Plan](dfm10-plan.md) - DFM9 plus train-only Andersen and Alexandra Institute additions.
+* [DFM10 Source Quality Audit](dfm10-source-quality-audit.md) - Deterministic E4B inspection of every inherited and new DFM10 source.
 * [Original L Reproduction](original-l-reproduction.md) - Sapient original-mix L reproduction runbook.
 
 ## Model and Runtime

@@ -2,6 +2,31 @@
 
 ## 2026-08-26
 
+* **Distributed long-context implementation matrix**: Documented main-branch
+  complexity and risk for activation checkpointing, TP, CP, generic pipeline
+  parallelism, and tied recurrent L/H pipelines.
+* **DFM8 XXL loss excursion**: Attributed the isolated step-150.7K loss spike
+  against exact sampled rows, ruled out a source-family or sequence-length
+  distribution shock, and recorded its healthy self-recovery and telemetry
+  gaps.
+* **DFM8 XXL epoch-one resume**: Repaired the stopped scheduler campaign to
+  resume from the complete 151K ephemeral checkpoint, retain W&B run
+  `DFM5/40j5y877`, evaluate 200K and 250K without long-context tasks, and
+  recognize natural `epoch_1` completion. Added a delayed GPU-release watcher
+  and recorded the verified `hrm` versus currently broken `hrm-cu132` state.
+* **Review hardening fixes**: Made Folketing audit partitions independent of
+  physical GPU IDs and cleanup process-owned, keyed long-context caches by
+  example cap, and prepared transactional/fail-closed long-context pipeline
+  fixes with numerical Transformers YaRN parity tests on the long-context
+  branch.
+* **DFM9 XXL-32 20K EuroEval assessment**: Recorded 18 completed and synced
+  task results, the intentional VaLEU-da skip, the all-invalid VaLEU-en
+  failure, and the zero/near-chance pattern indicating early output collapse.
+* **Laerebogen alignment spot audit**: Reviewed a reproducible uniform sample
+  of ten converted assistant-turn examples. Eight latest answers were aligned,
+  one was partially aligned with material factual errors, and one was
+  misaligned; four serialized histories contained cross-topic conversation
+  splices.
 * **DFM9 rights and memorisation framework**: Expanded the generated DFM9
   source-rights appendix with the copyright/TDM and GDPR decision process, the
   status and interpretation of EDPB Opinion 28/2024 and the 2026 consultation
@@ -542,3 +567,12 @@
 - Compared short-context averages at epoch 8 versus 2.15M: standard
   `0.72830 -> 0.65960` and DFM `0.62751 -> 0.54625`. Synced the 2.15M suite row
   to `DFM5/dfm9-xl-8k` and recorded the 4K-versus-YaRN baseline caveat.
+## 2026-08-26 - DFM10 source-level quality audit
+
+- Added a deterministic 178-source inventory and exact tokenized-example
+  sampler covering inherited DFM8/DFM9 data and DFM10 additions.
+- Added an eight-server E4B audit with disjoint resumable partitions, task-aware
+  language/coherence/training-value judgments, locked validation, and atomic
+  publication of one JSONL result.
+- Queued execution behind the active Folketing acceptance audit because its
+  eight E4B servers leave insufficient headroom for a second server set.

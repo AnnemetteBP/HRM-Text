@@ -111,6 +111,14 @@ def stable_partition(key: str, partitions: int, partition_index: int) -> bool:
     return int.from_bytes(digest, "big") % partitions == partition_index
 
 
+def stable_secondary_partition(key: str, partitions: int, partition_index: int) -> bool:
+    """Independently repartition rows within an existing logical partition."""
+    if partitions <= 1:
+        return True
+    digest = hashlib.blake2b(f"audit-tail\0{key}".encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big") % partitions == partition_index
+
+
 def extract_segments(instruction: str) -> list[str]:
     matches = NUMBERED_SEGMENT.findall(instruction)
     return [clean_text(text, max_chars=700) for _, text in matches if clean_text(text)]
@@ -333,6 +341,10 @@ def iter_jobs(args: argparse.Namespace) -> Iterable[tuple[str, Path, int, str, s
                     continue
                 if not stable_partition(row_id, args.partitions, args.partition_index):
                     continue
+                if not stable_secondary_partition(
+                    row_id, args.secondary_partitions, args.secondary_partition_index
+                ):
+                    continue
                 yield dataset, path, line_idx, instruction, response
                 selected += 1
                 if args.max_records is not None and selected >= args.max_records:
@@ -353,6 +365,9 @@ def audit(args: argparse.Namespace) -> None:
 
     existing_ids: set[str] = set()
     existing_rows: list[dict[str, Any]] = []
+    for skip_path in args.skip_id_file:
+        with skip_path.open("r", encoding="utf-8") as skip_file:
+            existing_ids.update(line.strip() for line in skip_file if line.strip())
     if args.resume and audit_path.exists():
         raw = audit_path.read_bytes()
         lines = raw.splitlines(keepends=True)
@@ -548,6 +563,25 @@ def main() -> None:
     audit_parser.add_argument("--sample-rate", type=float, default=1.0)
     audit_parser.add_argument("--partitions", type=int, default=1, help="Number of disjoint audit workers.")
     audit_parser.add_argument("--partition-index", type=int, default=0, help="Zero-based disjoint audit worker index.")
+    audit_parser.add_argument(
+        "--secondary-partitions",
+        type=int,
+        default=1,
+        help="Optional independent subdivision within the selected primary partition.",
+    )
+    audit_parser.add_argument(
+        "--secondary-partition-index",
+        type=int,
+        default=0,
+        help="Zero-based index within --secondary-partitions.",
+    )
+    audit_parser.add_argument(
+        "--skip-id-file",
+        type=Path,
+        action="append",
+        default=[],
+        help="Newline-delimited row IDs already audited elsewhere. Repeatable.",
+    )
     audit_parser.add_argument("--max-records", type=int, default=None)
     audit_parser.add_argument("--concurrency", type=int, default=8)
     audit_parser.add_argument("--retries", type=int, default=3)
@@ -573,6 +607,8 @@ def main() -> None:
             raise SystemExit("--sample-rate must be between 0 and 1")
         if args.partitions < 1 or not 0 <= args.partition_index < args.partitions:
             raise SystemExit("--partition-index must be in [0, --partitions)")
+        if args.secondary_partitions < 1 or not 0 <= args.secondary_partition_index < args.secondary_partitions:
+            raise SystemExit("--secondary-partition-index must be in [0, --secondary-partitions)")
         if args.concurrency <= 0:
             raise SystemExit("--concurrency must be positive")
         audit(args)
