@@ -104,12 +104,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source",
         type=Path,
-        default=Path("data/eval_cache/long_context/v7_longalign_en_gen512.jsonl"),
+        default=Path("data/eval_cache/long_context/v8_longalign_en_gen512.jsonl"),
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/eval_cache/long_context/v8_longalign_en_gen512.jsonl"),
+        default=Path("data/eval_cache/long_context/v9_longalign_en_max5000_gen512.jsonl"),
     )
     parser.add_argument(
         "--tokenizer-path",

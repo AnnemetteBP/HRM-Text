@@ -873,3 +873,10 @@ failure was deterministic model output invalidity (20 of 53 labels invalid),
 not infrastructure; VaLEU is excluded from checkpoint averages. The retries
 remain headroom-gated while an unrelated eight-GPU transform-audit workload is
 active and will dispatch automatically after those GPUs are released.
+
+Long-context cache identity fix, 2026-08-26. Confidence: high from unit tests.
+Prepared LongBench and LongAlign cache filenames now include the effective
+`max_examples` cap as well as task, language, generation limit, and cache
+version. A ten-row smoke cache therefore cannot be reused by a later 5,000-row
+production evaluation. Cache and tokenizer defaults are resolved relative to
+the repository containing `dfm-evals`, rather than a fixed checkout path.

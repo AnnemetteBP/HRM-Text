@@ -155,11 +155,15 @@ vLLM is run with its default FlashInfer backend, `FLASHINFER_DISABLE_VERSION_CHE
 and GPU utilization 0.90. The one-GPU E4B smoke test succeeded, including a
 valid chat completion. The launcher supports a comma-separated `GPUS` subset
 so it can coexist with unrelated vLLM services. Each selected GPU runs one
-persistent server and its matching disjoint worker; `PARTITIONS=8` keeps
-partition IDs stable across waves. The active resume wave uses GPUs 4-7 under
-`logs/dfm10_folketing_audit_8gpu_vllm/`, with concurrency 64, three request
-retries, and 512 maximum judge tokens. GPUs 0-3 remain reserved for unrelated
-vLLM services and will be processed in a later wave.
+persistent server.
+
+**Superseded 2026-08-26:** earlier subset runs mapped physical GPU IDs directly
+to partition IDs and required a later wave for unselected partitions. The
+launcher now assigns logical partitions independently of GPU IDs and processes
+all `PARTITIONS` in deterministic waves over the selected GPUs. Cleanup tracks
+only server and worker PIDs created by the current invocation; stale PID files
+are never used to terminate processes. The merged audit is published only when
+every logical partition produced an output file.
 Confidence: high from the successful startup and live request logs.
 
 The raw generated candidates are not an approved training corpus by

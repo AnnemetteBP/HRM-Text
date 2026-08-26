@@ -41,6 +41,9 @@ DATASETS=(
 mkdir -p "$AUDIT_ROOT"/{servers,workers,pids,cache}
 exec > >(tee -a "$AUDIT_ROOT/launcher.log") 2>&1
 
+SERVER_PIDS=()
+WORKER_PIDS=()
+
 if [[ "$WAIT_FOR_TRAINING" == "1" ]]; then
   echo "Waiting for HRM training processes to exit before claiming GPUs..."
   while pgrep -af '(^|/)(torchrun|pretrain\.py)( |$)|cfg_pretrain_' >/dev/null; do
@@ -49,9 +52,12 @@ if [[ "$WAIT_FOR_TRAINING" == "1" ]]; then
 fi
 
 cleanup() {
-  for pidfile in "$AUDIT_ROOT"/pids/server_${PID_PREFIX}gpu*.pid; do
-    [[ -s "$pidfile" ]] || continue
-    pid="$(<"$pidfile")"
+  local pid
+  for pid in "${WORKER_PIDS[@]:-}"; do
+    pkill -TERM -P "$pid" 2>/dev/null || true
+    kill "$pid" 2>/dev/null || true
+  done
+  for pid in "${SERVER_PIDS[@]:-}"; do
     kill "$pid" 2>/dev/null || true
   done
 }
@@ -77,6 +83,7 @@ start_server() {
       --enforce-eager \
       >"$AUDIT_ROOT/servers/gpu${gpu}.log" 2>&1 &
   echo "$!" >"$AUDIT_ROOT/pids/server_${PID_PREFIX}gpu${gpu}.pid"
+  SERVER_PIDS+=("$!")
 }
 
 wait_server() {
@@ -100,39 +107,64 @@ for gpu in "${GPU_LIST[@]}"; do
   echo "server ready: GPU${gpu} port=$((PORT_BASE + gpu))"
 done
 
-for gpu in "${GPU_LIST[@]}"; do
-  worker_root="$AUDIT_ROOT/workers/gpu${gpu}"
-  log="$AUDIT_ROOT/workers/gpu${gpu}.log"
-  resume_arg="--resume"
-  [[ "$RESUME" == "1" ]] || resume_arg="--force"
-  "$CLIENT_PYTHON" scripts/audit_export_datasets.py audit \
-    --dataset-root data/dfm10_folketing_transform_sources/folketingets-dokumenter-denoising \
-    --dataset-root data/dfm10_folketing_transform_sources/folketingets-dokumenter-error-correction \
-    --dataset-root data/dfm10_folketing_transform_sources/folketingets-dokumenter-prefix-continuation \
-    --dataset-root data/dfm10_folketing_transform_sources/folketingets-dokumenter-span-filling \
-    --audit-root "$worker_root" \
-    --base-url "http://127.0.0.1:$((PORT_BASE + gpu))/v1" \
-    --model "$SERVED_MODEL_NAME" \
-    --partitions "$PARTITIONS" --partition-index "$gpu" \
-    --concurrency "$CONCURRENCY" --retries "${RETRIES:-3}" \
-    --max-tokens "${MAX_TOKENS:-512}" \
-    --progress-interval "${PROGRESS_INTERVAL:-100}" \
-    "$resume_arg" >"$log" 2>&1 &
+run_gpu_partitions() {
+  local gpu="$1" ordinal="$2" partition worker_root log resume_arg
+  for ((partition=ordinal; partition<PARTITIONS; partition+=${#GPU_LIST[@]})); do
+    worker_root="$AUDIT_ROOT/workers/partition_${partition}"
+    log="$AUDIT_ROOT/workers/partition_${partition}.log"
+    resume_arg="--resume"
+    [[ "$RESUME" == "1" ]] || resume_arg="--force"
+    "$CLIENT_PYTHON" scripts/audit_export_datasets.py audit \
+      --dataset-root data/dfm10_folketing_transform_sources/folketingets-dokumenter-denoising \
+      --dataset-root data/dfm10_folketing_transform_sources/folketingets-dokumenter-error-correction \
+      --dataset-root data/dfm10_folketing_transform_sources/folketingets-dokumenter-prefix-continuation \
+      --dataset-root data/dfm10_folketing_transform_sources/folketingets-dokumenter-span-filling \
+      --audit-root "$worker_root" \
+      --base-url "http://127.0.0.1:$((PORT_BASE + gpu))/v1" \
+      --model "$SERVED_MODEL_NAME" \
+      --partitions "$PARTITIONS" --partition-index "$partition" \
+      --concurrency "$CONCURRENCY" --retries "${RETRIES:-3}" \
+      --max-tokens "${MAX_TOKENS:-512}" \
+      --progress-interval "${PROGRESS_INTERVAL:-100}" \
+      "$resume_arg" >"$log" 2>&1
+  done
+}
+
+for ordinal in "${!GPU_LIST[@]}"; do
+  gpu="${GPU_LIST[$ordinal]}"
+  run_gpu_partitions "$gpu" "$ordinal" &
+  WORKER_PIDS+=("$!")
   echo "$!" >"$AUDIT_ROOT/pids/worker_${PID_PREFIX}gpu${gpu}.pid"
 done
 
 status=0
-for gpu in "${GPU_LIST[@]}"; do
-  if wait "$(<"$AUDIT_ROOT/pids/worker_${PID_PREFIX}gpu${gpu}.pid")"; then
-    echo "audit partition complete: GPU${gpu}"
+for ordinal in "${!GPU_LIST[@]}"; do
+  gpu="${GPU_LIST[$ordinal]}"
+  if wait "${WORKER_PIDS[$ordinal]}"; then
+    echo "audit partition group complete: GPU${gpu}"
   else
-    echo "audit partition failed: GPU${gpu}" >&2
+    echo "audit partition group failed: GPU${gpu}" >&2
     status=1
   fi
 done
 
 if (( status == 0 )); then
-  cat "$AUDIT_ROOT"/workers/gpu*/export_judge.audit.jsonl >"$AUDIT_ROOT/export_judge.audit.jsonl"
+  missing=0
+  for ((partition=0; partition<PARTITIONS; partition++)); do
+    if [[ ! -f "$AUDIT_ROOT/workers/partition_${partition}/export_judge.audit.jsonl" ]]; then
+      echo "missing completed partition ${partition}" >&2
+      missing=1
+    fi
+  done
+  if (( missing != 0 )); then
+    exit 1
+  fi
+  : >"$AUDIT_ROOT/export_judge.audit.jsonl.tmp"
+  for ((partition=0; partition<PARTITIONS; partition++)); do
+    cat "$AUDIT_ROOT/workers/partition_${partition}/export_judge.audit.jsonl" \
+      >>"$AUDIT_ROOT/export_judge.audit.jsonl.tmp"
+  done
+  mv "$AUDIT_ROOT/export_judge.audit.jsonl.tmp" "$AUDIT_ROOT/export_judge.audit.jsonl"
   echo "merged audit: $AUDIT_ROOT/export_judge.audit.jsonl"
 fi
 exit "$status"
