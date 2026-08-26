@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import time
+import zipfile
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
@@ -20,6 +21,9 @@ from .runtime import dependencies_satisfied
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 TQDM_TEXT_RE = re.compile(r"(?P<pct>\d+)%\|.*?\|\s+(?P<done>\d+)/(?P<total>\d+)\s+\[")
+TQDM_ETA_RE = re.compile(
+    r"\d+%\|.*?\|\s+\d+/\d+\s+\[[^\]<]*<(?P<eta>\d+(?::\d{2}){1,2}),"
+)
 TRAINING_RATE_RE = re.compile(
     r"(?P<done>\d+)/(?P<total>\d+)\s+\[[^\]]*?,\s*"
     r"(?:(?P<it_per_second>\d+(?:\.\d+)?)it/s|(?P<seconds_per_it>\d+(?:\.\d+)?)s/it)\]"
@@ -113,6 +117,28 @@ def parse_tqdm_entries(path: Path) -> list[tuple[int, int, int]]:
     return entries
 
 
+def parse_duration(value: str) -> float | None:
+    try:
+        parts = [int(part) for part in value.split(":")]
+    except ValueError:
+        return None
+    if len(parts) == 2:
+        minutes, seconds = parts
+        return float(minutes * 60 + seconds)
+    if len(parts) == 3:
+        hours, minutes, seconds = parts
+        return float(hours * 3600 + minutes * 60 + seconds)
+    return None
+
+
+def tqdm_reported_eta(path: Path) -> float | None:
+    text = strip_ansi(tail_text(path).replace("\r", "\n"))
+    matches = list(TQDM_ETA_RE.finditer(text))
+    if not matches:
+        return None
+    return parse_duration(matches[-1].group("eta"))
+
+
 def tqdm_progress(path: Path) -> Progress:
     entries = parse_tqdm_entries(path)
     if not entries:
@@ -120,7 +146,7 @@ def tqdm_progress(path: Path) -> Progress:
     _, done, total = entries[-1]
     if total <= 0:
         return Progress(None, f"{done}/{total}")
-    return Progress(done / total, f"{done}/{total}")
+    return Progress(done / total, f"{done}/{total}", tqdm_reported_eta(path))
 
 
 def step_from_checkpoint_tag(tag: object) -> int | None:
@@ -309,6 +335,40 @@ def server_completion_progress(job: Job) -> Progress:
     return Progress(fraction, detail)
 
 
+def inspect_eval_progress(job: Job) -> Progress | None:
+    """Read exact live sample progress from Inspect's journaled eval archive."""
+    inspect_dir = Path(job.log_dir) / "inspect"
+    try:
+        eval_paths = sorted(inspect_dir.glob("*.eval"), key=lambda path: path.stat().st_mtime)
+    except OSError:
+        return None
+    if not eval_paths:
+        return None
+
+    try:
+        with zipfile.ZipFile(eval_paths[-1]) as archive:
+            start = json.loads(archive.read("_journal/start.json"))
+            total = start.get("eval", {}).get("dataset", {}).get("samples")
+            sample_names = {
+                name
+                for name in archive.namelist()
+                if name.startswith("samples/") and name.endswith(".json")
+            }
+    except (OSError, KeyError, json.JSONDecodeError, zipfile.BadZipFile):
+        # Inspect periodically rewrites the central directory. A concurrent
+        # monitor read can briefly observe an incomplete archive.
+        return None
+
+    done = len(sample_names)
+    if not isinstance(total, int) or total <= 0:
+        return Progress(None, f"samples {done}/?")
+    done = min(done, total)
+    if done >= total:
+        # Generation is complete, but Inspect may still be scoring/exporting.
+        return Progress(0.999, f"samples {done}/{total} finalizing")
+    return Progress(done / total, f"samples {done}/{total}")
+
+
 def dfm_total_from_logs_json(path: Path) -> int | None:
     if not path.exists():
         return None
@@ -464,6 +524,9 @@ def job_progress(job: Job) -> Progress:
         failure = dfm_failure_progress(job)
         if failure is not None:
             return failure
+        progress = inspect_eval_progress(job)
+        if progress is not None:
+            return progress
         # dfm-evals itself is not consistently machine-readable, but the local
         # OpenAI server gives useful completion counts for generation-heavy tasks.
         progress = server_completion_progress(job)

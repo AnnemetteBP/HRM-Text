@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from eval_scheduler import monitor, runtime
+from eval_scheduler import monitor, plan, runtime
 from eval_scheduler.model import Action, Job, JobStatus
 
 
@@ -27,6 +28,45 @@ def job(
     )
 
 
+def plan_config(tmp_path: Path, model_dir: Path) -> plan.PlanConfig:
+    return plan.PlanConfig(
+        plan_dir=tmp_path / "plan",
+        ckpt_path=str(tmp_path / "checkpoint"),
+        ckpt_tag="step_100",
+        eval_epoch=1.0,
+        log_root=str(tmp_path / "standard"),
+        dfm_log_root=str(tmp_path / "dfm"),
+        euroeval_log_root=str(tmp_path / "euroeval"),
+        wandb_project="test",
+        wandb_run_id="test-run",
+        wandb_run_name="test run",
+        model_prefix="test-model",
+        include_checkpoint_wait=False,
+        include_hf_export=False,
+        hrm_hf_export_dir=str(model_dir),
+    )
+
+
+def test_long_context_jobs_are_omitted_for_4k_exports(tmp_path: Path) -> None:
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    (model_dir / "config.json").write_text(json.dumps({"max_position_embeddings": 4096}))
+
+    jobs = plan.make_plan(plan_config(tmp_path, model_dir))
+
+    assert not [job for job in jobs if job.family == "long_context"]
+
+
+def test_long_context_jobs_are_included_for_8k_exports(tmp_path: Path) -> None:
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    (model_dir / "config.json").write_text(json.dumps({"max_position_embeddings": 8192}))
+
+    jobs = plan.make_plan(plan_config(tmp_path, model_dir))
+
+    assert [job for job in jobs if job.family == "long_context"]
+
+
 def test_terminal_barrier_accepts_failed_and_unreachable_eval_jobs() -> None:
     jobs = [
         job("export", action=Action.EXPORT_HF, status=JobStatus.FAILED),
@@ -41,6 +81,31 @@ def test_terminal_barrier_accepts_failed_and_unreachable_eval_jobs() -> None:
     ]
 
     assert runtime.dependencies_satisfied(jobs[-1], jobs)
+
+
+def test_resolve_dfm_shard_archive_prefers_matching_checkpoint(tmp_path: Path) -> None:
+    wanted = tmp_path / "step_100" / "inspect" / "wanted.eval"
+    stale = tmp_path / "step_50" / "inspect" / "stale.eval"
+    wanted.parent.mkdir(parents=True)
+    stale.parent.mkdir(parents=True)
+    wanted.touch()
+    stale.touch()
+
+    assert runtime.resolve_dfm_shard_archive(tmp_path, ckpt_tag="step_100", step="100") == wanted.resolve()
+
+
+def test_resolve_dfm_shard_archive_rejects_ambiguous_legacy_outputs(tmp_path: Path) -> None:
+    for name in ("first", "second"):
+        path = tmp_path / name / "inspect" / f"{name}.eval"
+        path.parent.mkdir(parents=True)
+        path.touch()
+
+    try:
+        runtime.resolve_dfm_shard_archive(tmp_path, ckpt_tag="epoch_8", step="2150000")
+    except runtime.SchedulerError as exc:
+        assert "Ambiguous stale" in str(exc)
+    else:
+        raise AssertionError("ambiguous archives were accepted")
 
 
 def test_terminal_barrier_waits_for_runnable_retry() -> None:
@@ -250,3 +315,66 @@ def test_monitor_training_eta_supports_seconds_per_iteration(tmp_path: Path) -> 
     assert progress.text == "step 110/200"
     assert progress.fraction == 0.1
     assert progress.eta_seconds == 180
+
+
+def test_monitor_uses_tqdm_reported_eta(tmp_path: Path) -> None:
+    log = tmp_path / "task.log"
+    log.write_text(
+        "generation:  25%|██▌       | 20/80 [00:33<01:38,  1.68s/it]\n"
+    )
+
+    progress = monitor.tqdm_progress(log)
+
+    assert progress.fraction == 0.25
+    assert progress.text == "20/80"
+    assert progress.eta_seconds == 98
+
+
+def test_monitor_reads_live_inspect_archive_progress(tmp_path: Path) -> None:
+    inspect_dir = tmp_path / "inspect"
+    inspect_dir.mkdir()
+    archive_path = inspect_dir / "task.eval"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr(
+            "_journal/start.json",
+            json.dumps({"eval": {"dataset": {"samples": 4}}}),
+        )
+        archive.writestr("samples/10_epoch_1.json", "{}")
+        archive.writestr("samples/11_epoch_1.json", "{}")
+
+    evaluation = Job(
+        job_id="dfm",
+        action=Action.EVAL_DFM,
+        family="dfm",
+        name="task",
+        log_dir=str(tmp_path),
+    )
+
+    progress = monitor.job_progress(evaluation)
+
+    assert progress.fraction == 0.5
+    assert progress.text == "samples 2/4"
+
+
+def test_monitor_marks_complete_inspect_generation_as_finalizing(tmp_path: Path) -> None:
+    inspect_dir = tmp_path / "inspect"
+    inspect_dir.mkdir()
+    with zipfile.ZipFile(inspect_dir / "task.eval", "w") as archive:
+        archive.writestr(
+            "_journal/start.json",
+            json.dumps({"eval": {"dataset": {"samples": 1}}}),
+        )
+        archive.writestr("samples/10_epoch_1.json", "{}")
+
+    evaluation = Job(
+        job_id="dfm",
+        action=Action.EVAL_DFM_IFEVAL,
+        family="dfm_ifeval",
+        name="ifeval-da",
+        log_dir=str(tmp_path),
+    )
+
+    progress = monitor.job_progress(evaluation)
+
+    assert progress.fraction == 0.999
+    assert progress.text == "samples 1/1 finalizing"

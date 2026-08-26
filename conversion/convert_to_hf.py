@@ -166,6 +166,23 @@ def load_config(ckpt_path: Path) -> tuple[V1DatasetMeta, PretrainConfig, dict]:
     return metadata, model_cfg, model_cfg.arch.model_dump() | metadata.model_dump() | model_cfg.data.model_dump()
 
 
+def _build_rope_parameters(cfg: dict, rope_theta: float) -> dict:
+    scaling_type = cfg.get("H_rope_scaling_type", cfg.get("rope_scaling_type", "none"))
+    scaling_factor = float(cfg.get("H_rope_scaling_factor", cfg.get("rope_scaling_factor", 1.0)))
+    if scaling_type in {None, "none", "default"}:
+        return {"rope_type": "default", "rope_theta": rope_theta}
+    if scaling_factor < 1.0:
+        raise ValueError(f"RoPE scaling factor must be >= 1, got {scaling_factor}")
+    max_seq_len = int(cfg["max_seq_len"])
+    original_max_positions = int(round(max_seq_len / scaling_factor))
+    return {
+        "rope_type": scaling_type,
+        "factor": scaling_factor,
+        "original_max_position_embeddings": original_max_positions,
+        "rope_theta": rope_theta,
+    }
+
+
 def build_hf_config(cfg: dict, tokenizer) -> dict:
     hidden_size = cfg["hidden_size"]
     rope_theta = cfg.get("rope_theta", 10000.0)
@@ -194,7 +211,9 @@ def build_hf_config(cfg: dict, tokenizer) -> dict:
         "max_position_embeddings": cfg["max_seq_len"],
         "rms_norm_eps": cfg.get("norm_eps", 1e-6),
         "rope_theta": rope_theta,
-        "rope_parameters": {"rope_type": "default", "rope_theta": rope_theta},
+        "rope_parameters": _build_rope_parameters(cfg, rope_theta),
+        "L_sliding_window": cfg.get("L_sliding_window"),
+        "H_sliding_window": cfg.get("H_sliding_window"),
         "attention_bias": False,
         "attention_dropout": 0.0,
         "mlp_bias": False,

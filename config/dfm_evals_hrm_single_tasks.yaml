@@ -1,4 +1,97 @@
 sets:
+  hrm_danish_andersen_modernization:
+    description: "Single-task HRM Danish suite: zero-shot Andersen modernization."
+    tasks:
+      - name: dfm_evals/andersen-modernization
+        args:
+          - -T
+          - data_path=/work/dfm/andersen/pairs_chunked_val.jsonl
+          - -T
+          - max_gen_toks=1536
+    args:
+      - --model
+      - "{{target_model}}"
+      - --temperature
+      - "0"
+
+  hrm_long_context_ruler_smoke:
+    description: "Long-context smoke suite: 4K RULER NIAH and variable-tracking checks."
+    tasks:
+      - name: dfm_evals/ruler
+        args:
+          - -T
+          - variant=niah_single_1
+          - -T
+          - num_samples=4
+          - -T
+          - max_seq_length=4096
+          - -T
+          - tokenizer_backend=auto
+          - -T
+          - tokenizer_model={{target_model}}
+          - -T
+          - context_buffer_tokens=256
+      - name: dfm_evals/ruler
+        args:
+          - -T
+          - variant=vt
+          - -T
+          - num_samples=4
+          - -T
+          - max_seq_length=4096
+          - -T
+          - tokenizer_backend=auto
+          - -T
+          - tokenizer_model={{target_model}}
+          - -T
+          - context_buffer_tokens=256
+    args:
+      - --model
+      - "{{target_model}}"
+      - --temperature
+      - "0"
+
+  hrm_long_context_ruler_8k:
+    description: "Full 8K RULER suite: 13 variants with 32 deterministic samples each."
+    tasks:
+      - name: dfm_evals/ruler
+        args: [-T, variant=niah_single_1]
+      - name: dfm_evals/ruler
+        args: [-T, variant=niah_single_2]
+      - name: dfm_evals/ruler
+        args: [-T, variant=niah_single_3]
+      - name: dfm_evals/ruler
+        args: [-T, variant=niah_multikey_1]
+      - name: dfm_evals/ruler
+        args: [-T, variant=niah_multikey_2]
+      - name: dfm_evals/ruler
+        args: [-T, variant=niah_multikey_3]
+      - name: dfm_evals/ruler
+        args: [-T, variant=niah_multivalue]
+      - name: dfm_evals/ruler
+        args: [-T, variant=niah_multiquery]
+      - name: dfm_evals/ruler
+        args: [-T, variant=vt]
+      - name: dfm_evals/ruler
+        args: [-T, variant=cwe]
+      - name: dfm_evals/ruler
+        args: [-T, variant=fwe]
+      - name: dfm_evals/ruler
+        args: [-T, variant=qa_1]
+      - name: dfm_evals/ruler
+        args: [-T, variant=qa_2]
+    args:
+      - --model
+      - "{{target_model}}"
+      - --temperature
+      - "0"
+      - -T
+      - num_samples=32
+      - -T
+      - max_seq_length=8192
+      - -T
+      - context_buffer_tokens=256
+
   hrm_danish_danish_citizen_tests:
     description: "Single-task HRM Danish suite: Danish citizen tests."
     tasks:
@@ -134,6 +227,122 @@ sets:
       - "{{target_model}}"
       - --sample-shuffle
       - "4242"
+      - --temperature
+      - "0"
+
+  hrm_long_context_govreport:
+    description: "Long-context English GovReport subset with 24K-30K character documents."
+    tasks:
+      - name: dfm_evals/govreport_long
+        args:
+          - -T
+          - min_report_chars=24000
+          - -T
+          - max_report_chars=30000
+          - -T
+          - max_samples=512
+          - -T
+          - max_gen_toks=512
+    args:
+      - --model
+      - "{{target_model}}"
+      - --temperature
+      - "0"
+
+  hrm_long_context_longbench_en:
+    description: "Long-context English LongBench and LongBench-E examples."
+    tasks:
+      - name: dfm_evals/longbench_en
+        args:
+          - -T
+          - max_examples=5000
+    args:
+      - --model
+      - "{{target_model}}"
+      - --temperature
+      - "0"
+
+  hrm_long_context_longalign_en:
+    description: "Long-context English LongAlign instruction examples."
+    tasks:
+      - name: dfm_evals/longalign
+        args:
+          - -T
+          - language=en
+          - -T
+          - max_examples=5000
+    args:
+      - --model
+      - "{{target_model}}"
+      - --temperature
+      - "0"
+
+  hrm_long_context_longalign_da:
+    description: "Long-context Danish LongAlign examples, if present."
+    tasks:
+      - name: dfm_evals/longalign
+        args:
+          - -T
+          - language=da
+          - -T
+          - max_examples=5000
+    args:
+      - --model
+      - "{{target_model}}"
+      - --temperature
+      - "0"
+
+  hrm_long_context_marathon:
+    description: "Marathon long-context multiple-choice format probe."
+    tasks:
+      - name: dfm_evals/marathon
+        args:
+          - -T
+          - max_examples=5000
+    args:
+      - --model
+      - "{{target_model}}"
+      - --temperature
+      - "0"
+
+  hrm_long_context_qmsum:
+    description: "Long-context English QMSum meeting summarization."
+    tasks:
+      - name: dfm_evals/qmsum_cleaned
+        args:
+          - -T
+          - max_examples=5000
+    args:
+      - --model
+      - "{{target_model}}"
+      - --temperature
+      - "0"
+
+  hrm_long_context_danish_summarization_eur_lex:
+    description: "Long-context Danish EUR-Lex summarization."
+    tasks:
+      - name: dfm_evals/danish_summarization_eur_lex
+        args:
+          - -T
+          - max_examples=5000
+    args:
+      - --model
+      - "{{target_model}}"
+      - --temperature
+      - "0"
+
+  hrm_long_context_danish_summarization:
+    description: "Long-context Danish NordjyllandNews summarization subset."
+    tasks:
+      - name: dfm_evals/danish_summarization
+        args:
+          - -T
+          - dataset_config=nordjylland
+          - -T
+          - max_examples=5000
+    args:
+      - --model
+      - "{{target_model}}"
       - --temperature
       - "0"
 

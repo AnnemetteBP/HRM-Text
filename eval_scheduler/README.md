@@ -140,6 +140,22 @@ job runs after `wait_checkpoint`, writes the EMA HF export with
 successfully without rewriting the export. Disable this with
 `--no-include-hf-export` only when the export is managed externally.
 
+The 8K RULER, GovReport-long, and extra long-context rows are capability
+gated. They are emitted only when a local HF export declares
+`max_position_embeddings >= 8192`, the checkpoint's sampled-data metadata
+declares `max_seq_len >= 8192`, or an external model is explicitly configured
+with `--vllm-max-model-len >= 8192`. A 4K checkpoint therefore receives the
+ordinary evaluation graph without invalid 8K rows; `plan create` reports why
+the long-context rows were omitted.
+
+The current long-context headline is an engineering comparison suite, not a
+clean public benchmark aggregate. In particular, Marathon's public HF test
+conversion has no gold answer and is scored for answer-format compliance only;
+the Danish EUR-Lex and Nordjylland summarization probes use their available
+training splits; and the Danish LongAlign cache is very small. Keep these
+metrics for continuity, but label them accordingly in reports and do not
+interpret the headline as uncontaminated held-out accuracy.
+
 Append another upcoming checkpoint to the same plan:
 
 ```bash
@@ -411,8 +427,13 @@ the segment.
   that leave rows stuck as `running`.
 - `status` is intentionally terse. `monitor` is the operator view: it reads
   `plan.tsv`, `status.tsv`, GPU memory/utilization, and active task logs. It
-  reports standard tqdm progress, dfm-evals server completion counts, and
-  EuroEval nested pass/sample progress such as `pass 3/10 samples 137/343`.
+  reports standard tqdm progress, live Inspect archive sample progress for
+  dfm-evals, and EuroEval nested pass/sample progress such as
+  `pass 3/10 samples 137/343`. Standard and batched-EuroEval tasks use tqdm's
+  rolling ETA when it is present instead of including server startup in a
+  wall-time extrapolation. DFM tasks read the exact sample total and completed
+  sample members from the journaled `.eval` archive while the text log is still
+  buffered; HTTP completion counts and historical totals remain fallbacks.
   For `train_until_step` rows, it reports progress from the resume checkpoint
   to the forced target and derives ETA from the latest tqdm `it/s` or `s/it`
   rate rather than from the full-epoch progress fraction.
@@ -424,9 +445,11 @@ the segment.
   current status, e.g. `blocked_by [eval-00123:running]`.
 - For dfm-evals jobs, `monitor` also reads Inspect `logs.json` and the
   dfm-evals text log when available to infer sample totals, and surfaces early
-  configuration failures such as missing judge placeholders. Some dfm-evals
-  jobs still show `progress unknown` during model/metric setup before the task
-  header or server requests exist.
+  configuration failures such as missing judge placeholders. Before Inspect
+  creates its journal, the task correctly remains at `progress unknown`; once
+  the journal exists it reports `samples X/Y`, including generation-heavy,
+  judged, translation, summarization, code, and IFEval tasks. At `Y/Y`, the
+  monitor says `finalizing` because scoring/export can still be active.
 - Managed judge ports are deterministically folded into the valid
   `20000-59999` range. Do not construct them as an unbounded
   `port_base + GPU/shard offset`: uvicorn can silently wrap values above 65535

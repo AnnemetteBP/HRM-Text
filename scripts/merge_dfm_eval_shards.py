@@ -167,15 +167,52 @@ def mcc(pairs: list[tuple[str, str | None]], labels: list[str]) -> float:
 
 
 def task_metrics(task: str, samples: list[dict[str, Any]]) -> dict[str, float]:
+    if task == "ruler_8k":
+        metrics = numeric_metrics(samples, "ruler_scorer", flatten_dict=False)
+        variants = sorted(
+            {
+                str((sample.get("metadata") or {}).get("variant"))
+                for sample in samples
+                if (sample.get("metadata") or {}).get("variant")
+            }
+        )
+        for variant in variants:
+            subset = [
+                sample
+                for sample in samples
+                if str((sample.get("metadata") or {}).get("variant")) == variant
+            ]
+            variant_metrics = numeric_metrics(subset, "ruler_scorer", flatten_dict=False)
+            for key, value in variant_metrics.items():
+                metrics[f"variant/{variant}/{key}"] = value
+        return metrics
     match task:
+        case "andersen_modernization":
+            return numeric_metrics(samples, "gleu", flatten_dict=False) | numeric_metrics(
+                samples, "chrf3pp", flatten_dict=False
+            )
         case "wmt24pp_en_da":
             return numeric_metrics(samples, "chrf3pp", flatten_dict=False)
         case "multi_wiki_qa":
             return numeric_metrics(samples, "multi_wiki_qa_scorer")
         case "gec_dala":
             return numeric_metrics(samples, "gec_dala_scorer")
-        case "govreport" | "nordjyllandnews":
+        case "govreport" | "govreport_long" | "nordjyllandnews":
             return numeric_metrics(samples, "summarization")
+        case (
+            "ruler_smoke"
+            | "ruler_8k"
+            | "longbench_en"
+            | "longalign_en"
+            | "longalign_da"
+            | "marathon"
+            | "qmsum_cleaned"
+            | "danish_summarization_eur_lex"
+            | "danish_summarization"
+        ):
+            return numeric_metrics(samples, "ruler_scorer", flatten_dict=False) | numeric_metrics(
+                samples, "long_context_scorer", flatten_dict=False
+            )
         case "piqa":
             return accuracy_from_values(samples, "piqa_scorer")
         case "danish_citizen_tests":

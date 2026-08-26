@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
+
+import yaml
 
 from .catalog import (
     DFM_DEFAULT,
     DFM_HEAVY_FIRST,
     EUROEVAL_GROUPS,
+    LONG_CONTEXT_EXTRA_TASKS,
     STANDARD_DEFAULT,
     STANDARD_HEAVY_FIRST,
     BatchDefaults,
@@ -72,6 +76,12 @@ class PlanConfig:
     euroeval_max_concurrent_calls: int | None = None
     include_average: bool = True
     include_report: bool = True
+    # Long-context evaluation is part of the standard plan. Keep the fields
+    # separate so callers can disable a costly subgroup explicitly.
+    include_ruler_smoke: bool = False
+    include_ruler_8k: bool = False
+    include_govreport_long: bool = True
+    include_long_context_extras: bool = True
     log_wandb: bool = True
     judge_model: str | None = None
     judge_base_url: str | None = None
@@ -84,6 +94,41 @@ class PlanConfig:
     judged_vllm_gpu_memory_utilization: float | None = 0.18
     judged_min_gpu_free_mib: int | None = None
     govreport_max_report_chars: int | None = 9000
+
+
+def long_context_capability(config: PlanConfig) -> tuple[bool, str]:
+    """Determine whether a plan's model artifacts support an 8K server."""
+    model_paths = [
+        config.hrm_hf_export_dir,
+        config.standard_hf_export_dir,
+        config.external_model,
+    ]
+    for value in model_paths:
+        if not value:
+            continue
+        model_path = Path(value)
+        config_path = model_path / "config.json"
+        if config_path.is_file():
+            model_config = json.loads(config_path.read_text(encoding="utf-8"))
+            positions = int(model_config.get("max_position_embeddings", 0))
+            if positions >= 8192:
+                return True, f"HF export declares {positions} positions"
+
+    checkpoint_config = Path(config.ckpt_path) / "all_config.yaml"
+    if checkpoint_config.is_file():
+        checkpoint = yaml.safe_load(checkpoint_config.read_text(encoding="utf-8")) or {}
+        data_path = ((checkpoint.get("data") or {}).get("path"))
+        if data_path:
+            metadata_path = Path(str(data_path)) / "metadata.json"
+            if metadata_path.is_file():
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                positions = int(metadata.get("max_seq_len", 0))
+                if positions >= 8192:
+                    return True, f"checkpoint dataset declares {positions} positions"
+
+    if config.external_model and config.vllm_max_model_len >= 8192:
+        return True, f"external model explicitly configured for {config.vllm_max_model_len} positions"
+    return False, "no local model or checkpoint metadata declares at least 8192 positions"
 
 
 def common_metadata(config: PlanConfig) -> dict[str, object]:
@@ -206,6 +251,8 @@ def make_plan(config: PlanConfig) -> list[Job]:
     ifeval_job_ids: list[str] = []
     standard_merge_ids: list[str] = []
     dfm_merge_ids: list[str] = []
+    long_context_merge_ids: list[str] = []
+    long_context_capable, _long_context_reason = long_context_capability(config)
     euroeval_job_by_group: dict[str, str] = {}
     standard_merge_by_task: dict[str, str] = {}
     dfm_merge_by_task: dict[str, str] = {}
@@ -428,6 +475,211 @@ def make_plan(config: PlanConfig) -> list[Job]:
         dfm_merge_ids.append(merge.job_id)
         dfm_merge_by_task[task] = merge.job_id
 
+    long_context_task_metrics: dict[str, str] = {}
+    if config.include_ruler_smoke:
+        task = "ruler_smoke"
+        job = add(
+            Job(
+                job_id=job_id("eval", counter),
+                action=Action.EVAL_DFM,
+                family="long_context",
+                name=task,
+                shard=0,
+                shards=1,
+                initial_batch=config.batch_defaults.dfm,
+                max_retries=config.max_retries,
+                deps=eval_deps,
+                log_dir=f"{config.dfm_log_root}/{task}/shard_0_of_1/{config.ckpt_tag}",
+                metadata=metadata
+                | {
+                    "metric_prefix": "long_context",
+                    "dfm_context_length": 4096,
+                    "vllm_max_model_len": 4096,
+                    "dfm_max_gen_toks": 64,
+                },
+            )
+        )
+        merge = add(
+            Job(
+                job_id=job_id("merge", counter),
+                action=Action.MERGE_DFM,
+                family="long_context",
+                name=task,
+                deps=(job.job_id,),
+                log_dir=f"{config.dfm_log_root}/{task}",
+                metadata=metadata
+                | {
+                    "shards": 1,
+                    "metric_prefix": "long_context",
+                },
+            )
+        )
+        long_context_merge_ids.append(merge.job_id)
+        long_context_task_metrics[task] = "long_context/ruler_smoke/ruler_scorer/mean"
+
+    if config.include_ruler_8k and long_context_capable:
+        if config.vllm_max_model_len < 8192:
+            raise ValueError("The 8K RULER suite requires --vllm-max-model-len >= 8192.")
+        tokenizer_model = config.hrm_hf_export_dir or config.external_model
+        if not tokenizer_model:
+            raise ValueError("The 8K RULER suite requires an HF export/model for exact token budgeting.")
+        task = "ruler_8k"
+        task_job_ids: list[str] = []
+        for shard in range(8):
+            job = add(
+                Job(
+                    job_id=job_id("eval", counter),
+                    action=Action.EVAL_DFM,
+                    family="long_context",
+                    name=task,
+                    shard=shard,
+                    shards=8,
+                    initial_batch=config.batch_defaults.dfm,
+                    max_retries=config.max_retries,
+                    deps=eval_deps,
+                    log_dir=f"{config.dfm_log_root}/{task}/shard_{shard}_of_8/{config.ckpt_tag}",
+                    metadata=metadata
+                    | {
+                        "metric_prefix": "long_context",
+                        "dfm_context_length": 8192,
+                        "vllm_max_model_len": 8192,
+                        "dfm_max_gen_toks": 128,
+                        "dfm_task_args": [
+                            "tokenizer_backend=tokenizers",
+                            f"tokenizer_model={tokenizer_model}",
+                        ],
+                    },
+                )
+            )
+            task_job_ids.append(job.job_id)
+        merge = add(
+            Job(
+                job_id=job_id("merge", counter),
+                action=Action.MERGE_DFM,
+                family="long_context",
+                name=task,
+                deps=tuple(task_job_ids),
+                log_dir=f"{config.dfm_log_root}/{task}",
+                metadata=metadata | {"shards": 8, "metric_prefix": "long_context"},
+            )
+        )
+        long_context_merge_ids.append(merge.job_id)
+        long_context_task_metrics[task] = "long_context/ruler_8k/ruler_scorer/mean"
+
+    if config.include_govreport_long and long_context_capable:
+        task = "govreport_long"
+        shard_count = 8
+        task_job_ids: list[str] = []
+        for shard in range(shard_count):
+            job = add(
+                Job(
+                    job_id=job_id("eval", counter),
+                    action=Action.EVAL_DFM,
+                    family="long_context",
+                    name=task,
+                    shard=shard,
+                    shards=shard_count,
+                    initial_batch=config.batch_defaults.dfm,
+                    max_retries=config.max_retries,
+                    deps=eval_deps,
+                    log_dir=f"{config.dfm_log_root}/{task}/shard_{shard}_of_{shard_count}/{config.ckpt_tag}",
+                    metadata=metadata
+                    | {
+                        "metric_prefix": "long_context",
+                        "dfm_context_length": 8192,
+                        "vllm_max_model_len": 8192,
+                        "dfm_max_gen_toks": 512,
+                        "dfm_task_args": [
+                            "min_report_chars=24000",
+                            "max_report_chars=30000",
+                            "max_samples=512",
+                        ],
+                    },
+                )
+            )
+            task_job_ids.append(job.job_id)
+        add(
+            Job(
+                job_id=job_id("merge", counter),
+                action=Action.MERGE_DFM,
+                family="long_context",
+                name=task,
+                deps=tuple(task_job_ids),
+                log_dir=f"{config.dfm_log_root}/{task}",
+                metadata=metadata
+                | {
+                    "shards": shard_count,
+                    "metric_prefix": "long_context",
+                },
+            )
+        )
+        long_context_merge_ids.append(jobs[-1].job_id)
+        long_context_task_metrics[task] = "long_context/govreport_long/bertscore_f1/mean"
+
+    if config.include_long_context_extras and long_context_capable:
+        for task in LONG_CONTEXT_EXTRA_TASKS:
+            job = add(
+                Job(
+                    job_id=job_id("eval", counter),
+                    action=Action.EVAL_DFM,
+                    family="long_context",
+                    name=task,
+                    shard=0,
+                    shards=1,
+                    initial_batch=config.batch_defaults.dfm,
+                    max_retries=config.max_retries,
+                    deps=eval_deps,
+                    log_dir=f"{config.dfm_log_root}/{task}/shard_0_of_1/{config.ckpt_tag}",
+                    metadata=metadata
+                    | {
+                        "metric_prefix": "long_context",
+                        "dfm_context_length": 8192,
+                        "vllm_max_model_len": 8192,
+                        "dfm_max_gen_toks": 512,
+                    },
+                )
+            )
+            merge = add(
+                Job(
+                    job_id=job_id("merge", counter),
+                    action=Action.MERGE_DFM,
+                    family="long_context",
+                    name=task,
+                    deps=(job.job_id,),
+                    log_dir=f"{config.dfm_log_root}/{task}",
+                    metadata=metadata
+                    | {"shards": 1, "metric_prefix": "long_context"},
+                )
+            )
+            long_context_merge_ids.append(merge.job_id)
+            long_context_task_metrics[task] = {
+                "govreport_long": "long_context/govreport_long/bertscore_f1/mean",
+                "longbench_en": "long_context/longbench_en/long_context_scorer/mean",
+                "longalign_en": "long_context/longalign_en/long_context_scorer/mean",
+                "longalign_da": "long_context/longalign_da/long_context_scorer/mean",
+                "marathon": "long_context/marathon/long_context_scorer/mean",
+                "qmsum_cleaned": "long_context/qmsum_cleaned/long_context_scorer/mean",
+                "danish_summarization_eur_lex": "long_context/danish_summarization_eur_lex/long_context_scorer/mean",
+                "danish_summarization": "long_context/danish_summarization/long_context_scorer/mean",
+            }[task]
+
+    if long_context_merge_ids:
+        add(
+            Job(
+                job_id=job_id("average", counter),
+                action=Action.AVERAGE_LONG_CONTEXT,
+                family="long_context",
+                name="long-context-headline",
+                deps=tuple(long_context_merge_ids),
+                log_dir=str(config.plan_dir),
+                metadata=metadata
+                | {
+                    "long_context_root": config.dfm_log_root,
+                    "long_context_prefix": "long_context_headline_v3",
+                    "long_context_task_metrics": long_context_task_metrics,
+                },
+            )
+        )
     if not ifeval_first:
         add_ifeval_jobs()
         add_euroeval_jobs()

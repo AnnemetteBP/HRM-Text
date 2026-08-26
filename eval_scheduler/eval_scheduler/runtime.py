@@ -18,6 +18,8 @@ from threading import Lock
 from typing import Callable, Iterable
 from urllib.request import urlopen
 
+import yaml
+
 from .catalog import dfm_suite, ifeval_suite
 from .locking import PlanLock
 from .model import Action, Job, JobStatus, append_tsv, read_plan, write_plan
@@ -147,7 +149,15 @@ class VLLMServerPool:
 
             # Reserve a compact per-process block that cannot overflow TCP's
             # 16-bit port range when all eight GPUs start concurrently.
-            port = find_free_port(20000 + ((os.getpid() + int(job.metadata["port_base"])) % 4000) * 8 + gpu, host=key.host)
+            # Keep each GPU in its own modulo-8 port lane.  A plain
+            # find-free-port scan is racy when eight servers start together:
+            # two threads can observe the same port before either child binds
+            # it, and the resulting client may reach another server.
+            port = find_free_port(
+                20000 + ((os.getpid() + int(job.metadata["port_base"])) % 4000) * 8 + gpu,
+                host=key.host,
+                stride=8,
+            )
             model_name = f"eval-pool-{key.digest}"
             log_path = self.plan_dir / "server_pool" / f"gpu_{gpu}" / f"{key.digest}.vllm.log"
             process = start_vllm_server(
@@ -569,7 +579,12 @@ def run_export_hf(job: Job, gpu: int) -> int:
     log_path = Path(job.log_dir) / f"export_hf_{job.metadata['ckpt_tag']}.log"
     if (out_dir / "model.safetensors").is_file():
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_path.write_text(f"{now()}\texisting export found\t{out_dir / 'model.safetensors'}\n", encoding="utf-8")
+        try:
+            validate_export_rope_config(job, out_dir)
+        except (KeyError, TypeError, ValueError) as exc:
+            log_path.write_text(f"{now()}\tinvalid existing export\t{exc}\n", encoding="utf-8")
+            return 4
+        log_path.write_text(f"{now()}\texisting export validated\t{out_dir / 'model.safetensors'}\n", encoding="utf-8")
         return 0
 
     tmp_dir = out_dir.with_name(f"{out_dir.name}.tmp.{os.getpid()}")
@@ -594,6 +609,13 @@ def run_export_hf(job: Job, gpu: int) -> int:
             log.write(f"\n{now()}\tmissing converted model.safetensors in {tmp_dir}\n")
         shutil.rmtree(tmp_dir, ignore_errors=True)
         return 4
+    try:
+        validate_export_rope_config(job, tmp_dir)
+    except (KeyError, TypeError, ValueError) as exc:
+        with log_path.open("a") as log:
+            log.write(f"\n{now()}\tinvalid converted export\t{exc}\n")
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        return 4
     if out_dir.exists():
         backup = out_dir.with_name(f"{out_dir.name}.incomplete.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
         shutil.move(str(out_dir), str(backup))
@@ -603,6 +625,36 @@ def run_export_hf(job: Job, gpu: int) -> int:
     with log_path.open("a") as log:
         log.write(f"\n{now()}\texport ready\t{out_dir}\n")
     return 0
+
+
+def validate_export_rope_config(job: Job, export_dir: Path) -> None:
+    checkpoint_cfg = yaml.safe_load((Path(str(job.metadata["ckpt_path"])) / "all_config.yaml").read_text())
+    arch = checkpoint_cfg["arch"]
+    expected_type = arch.get("H_rope_scaling_type", arch.get("rope_scaling_type", "none"))
+    expected_type = "default" if expected_type in {None, "none", "default"} else str(expected_type)
+    expected_factor = float(arch.get("H_rope_scaling_factor", arch.get("rope_scaling_factor", 1.0)))
+    plan_type = job.metadata.get("expected_rope_type")
+    plan_factor = job.metadata.get("expected_rope_factor")
+    if plan_type is not None and str(plan_type) != expected_type:
+        raise ValueError(f"RoPE type mismatch: plan={plan_type}, checkpoint={expected_type}")
+    if plan_factor is not None and float(plan_factor) != expected_factor:
+        raise ValueError(f"RoPE factor mismatch: plan={plan_factor}, checkpoint={expected_factor}")
+
+    export_cfg = json.loads((export_dir / "config.json").read_text())
+    expected_positions = job.metadata.get("expected_max_position_embeddings")
+    if expected_positions is not None and int(export_cfg["max_position_embeddings"]) != int(expected_positions):
+        raise ValueError(
+            "position limit mismatch: "
+            f"plan={expected_positions}, export={export_cfg['max_position_embeddings']}"
+        )
+    rope = export_cfg["rope_parameters"]
+    actual_type = str(rope.get("rope_type", rope.get("type", "default")))
+    if actual_type != expected_type:
+        raise ValueError(f"RoPE type mismatch: checkpoint={expected_type}, export={actual_type}")
+    if expected_type != "default":
+        actual_factor = float(rope["factor"])
+        if actual_factor != expected_factor:
+            raise ValueError(f"RoPE factor mismatch: checkpoint={expected_factor}, export={actual_factor}")
 
 
 def wait_for_server(url: str, expected_model: str | None = None, *, timeout: int = 480) -> None:
@@ -684,10 +736,15 @@ def openai_model_ref(model_name: str) -> str:
     return model_name if model_name.startswith("openai/") else f"openai/{model_name}"
 
 
-def find_free_port(preferred: int, host: str = "127.0.0.1", max_tries: int = 200) -> int:
+def find_free_port(
+    preferred: int,
+    host: str = "127.0.0.1",
+    max_tries: int = 200,
+    stride: int = 1,
+) -> int:
     """Return *preferred* if available, otherwise increment until a free port is found."""
     for offset in range(max_tries):
-        port = preferred + offset
+        port = preferred + offset * stride
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
@@ -735,6 +792,12 @@ def start_vllm_server(job: Job, gpu: int, *, port: int, model_name: str, log: Pa
             "TORCHINDUCTOR_CACHE_DIR": str(cache_root / "torchinductor"),
             "TRITON_CACHE_DIR": str(cache_root / "triton"),
             "CUDA_CACHE_PATH": str(cache_root / "cuda"),
+            # vLLM imports FlashInfer's sampler even when attention is routed
+            # through FlashAttention.  This machine has no matching cubin
+            # package for the installed FlashInfer Python package, so use the
+            # native sampler and bypass only that version guard.
+            "VLLM_USE_FLASHINFER_SAMPLER": "0",
+            "FLASHINFER_DISABLE_VERSION_CHECK": "1",
         }
     )
     if cuda_home:
@@ -750,6 +813,10 @@ def start_vllm_server(job: Job, gpu: int, *, port: int, model_name: str, log: Pa
         f.write(f"{now()}\tCUDA_VISIBLE_DEVICES={gpu}\tcache_root={cache_root}\n")
         if cuda_home:
             f.write(f"{now()}\tCUDA_HOME={cuda_home}\n")
+        f.write(
+            f"{now()}\tVLLM_USE_FLASHINFER_SAMPLER=0\t"
+            "FLASHINFER_DISABLE_VERSION_CHECK=1\n"
+        )
     return subprocess.Popen(argv, stdout=log.open("a"), stderr=subprocess.STDOUT, env=env)
 
 
@@ -1181,15 +1248,13 @@ def run_dfm(
         judge_base_url = managed_judge_base_url or job.metadata.get("judge_base_url")
         if judge_base_url:
             argv.extend(["--judge-base-url", str(judge_base_url)])
+        argv.extend(["--mode", "set", "--"])
+        # RULER smoke is already a complete two-task suite. It generates a
+        # deterministic in-memory dataset and does not accept DFM shard args.
+        if job.name != "ruler_smoke":
+            argv.extend(["-T", f"num_shards={shards}", "-T", f"shard_index={shard}"])
         argv.extend(
             [
-                "--mode",
-                "set",
-                "--",
-                "-T",
-                f"num_shards={shards}",
-                "-T",
-                f"shard_index={shard}",
                 *dfm_template_overrides(job),
                 "--log-dir",
                 str(inspect_dir),
@@ -1910,12 +1975,42 @@ def run_merge_standard(job: Job) -> int:
     return run_command(argv, log_path=Path(job.log_dir) / "merge_and_wandb_sync.log")
 
 
+def resolve_dfm_shard_archive(shard_root: Path, *, ckpt_tag: str, step: str) -> Path:
+    """Resolve one completed Inspect archive without mixing stale runs."""
+    preferred_dirs = [shard_root / ckpt_tag / "inspect"]
+    step_tag = step if step.startswith("step_") else f"step_{step}"
+    if step_tag != ckpt_tag:
+        preferred_dirs.append(shard_root / step_tag / "inspect")
+
+    preferred = {path.resolve() for directory in preferred_dirs for path in directory.glob("*.eval")}
+    if len(preferred) == 1:
+        return preferred.pop()
+    if len(preferred) > 1:
+        raise SchedulerError(f"Multiple DFM eval archives for {ckpt_tag} under {shard_root}: {sorted(preferred)}")
+
+    candidates = {path.resolve() for path in shard_root.rglob("*.eval")}
+    if len(candidates) == 1:
+        return candidates.pop()
+    if not candidates:
+        raise SchedulerError(f"Missing DFM eval archive for {ckpt_tag} under {shard_root}")
+    raise SchedulerError(f"Ambiguous stale DFM eval archives under {shard_root}: {sorted(candidates)}")
+
+
 def run_merge_dfm(job: Job) -> int:
     shards = int(job.metadata["shards"])
     root = Path(job.metadata["dfm_log_root"])
     paths: list[str] = []
     for shard in range(shards):
-        paths.extend(str(p) for p in (root / job.name / f"shard_{shard}_of_{shards}" / str(job.metadata["ckpt_tag"]) / "inspect").glob("*.eval"))
+        shard_root = root / job.name / f"shard_{shard}_of_{shards}"
+        paths.append(
+            str(
+                resolve_dfm_shard_archive(
+                    shard_root,
+                    ckpt_tag=str(job.metadata["ckpt_tag"]),
+                    step=eval_step(job),
+                )
+            )
+        )
     argv = [
         python_bin(job),
         "scripts/merge_dfm_eval_shards.py",
@@ -1929,7 +2024,7 @@ def run_merge_dfm(job: Job) -> int:
         "--output",
         str(root / job.name / "merged_metrics.json"),
         "--prefix",
-        "dfm_eval",
+        str(job.metadata.get("metric_prefix", "dfm_eval")),
         *wandb_args(job),
     ]
     return run_command(argv, log_path=Path(job.log_dir) / "merge_and_wandb_sync.log")
@@ -2004,6 +2099,30 @@ def run_average(job: Job) -> int:
     return run_command(argv, log_path=Path(job.log_dir) / f"{job.name}.log")
 
 
+def run_long_context_average(job: Job) -> int:
+    argv = [
+        python_bin(job),
+        "scripts/log_long_context_headline.py",
+        "--root",
+        str(job.metadata["long_context_root"]),
+        "--epoch",
+        str(job.metadata["eval_epoch"]),
+        "--step",
+        eval_step(job),
+        "--project",
+        str(job.metadata["wandb_project"]),
+        "--run-id",
+        str(job.metadata["wandb_run_id"]),
+        "--run-name",
+        str(job.metadata["wandb_run_name"]),
+        "--prefix",
+        str(job.metadata.get("long_context_prefix", "long_context_headline_v2")),
+    ]
+    for task, metric_key in job.metadata.get("long_context_task_metrics", {}).items():
+        argv.extend(["--task-metric", f"{task}={metric_key}"])
+    return run_command(argv, log_path=Path(job.log_dir) / "long_context_headline.log")
+
+
 def run_relog_project_averages(job: Job) -> int:
     argv = [
         python_bin(job),
@@ -2073,6 +2192,8 @@ def run_job(
         return run_merge_ifeval(job)
     if job.action == Action.AVERAGE:
         return run_average(job)
+    if job.action == Action.AVERAGE_LONG_CONTEXT:
+        return run_long_context_average(job)
     if job.action == Action.RELOG_PROJECT_AVERAGES:
         return run_relog_project_averages(job)
     if job.action == Action.REPORT:

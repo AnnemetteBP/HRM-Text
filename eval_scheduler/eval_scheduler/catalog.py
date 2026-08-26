@@ -7,6 +7,7 @@ STANDARD_DEFAULT = ["GSM8k", "DROP", "MMLU", "ARC", "HellaSwag", "Winogrande", "
 STANDARD_HEAVY_FIRST = ["MATH", "GSM8k", "DROP", "MMLU", "HellaSwag", "ARC", "Winogrande", "BoolQ"]
 
 DFM_DEFAULT = [
+    "andersen_modernization",
     "danish_citizen_tests",
     "dala",
     "gec_dala",
@@ -68,6 +69,7 @@ DFM_HEAVY_FIRST = [
     "multi_wiki_qa",
     "danish_citizen_tests",
     "dala",
+    "andersen_modernization",
     "piqa",
 ]
 
@@ -118,6 +120,7 @@ def standard_shards(task: str) -> int:
 
 def dfm_shards(task: str) -> int:
     return {
+        "andersen_modernization": 1,
         "danish_citizen_tests": 1,
         "dala": 1,
         "piqa": 1,
@@ -153,6 +156,7 @@ def dfm_shards(task: str) -> int:
 
 def dfm_suite(task: str) -> str:
     suites = {
+        "andersen_modernization": "hrm_danish_andersen_modernization",
         "danish_citizen_tests": "hrm_danish_danish_citizen_tests",
         "dala": "hrm_danish_dala",
         "gec_dala": "hrm_danish_gec_dala",
@@ -161,6 +165,7 @@ def dfm_suite(task: str) -> str:
         "piqa": "hrm_danish_piqa",
         "generative_talemaader": "hrm_danish_generative_talemaader",
         "govreport": "hrm_summarization_govreport",
+        "govreport_long": "hrm_long_context_govreport",
         "nordjyllandnews": "hrm_summarization_nordjyllandnews",
         "humaneval": "hrm_code_humaneval_local",
         "arc_easy": "hrm_mc9_arc_easy",
@@ -183,6 +188,15 @@ def dfm_suite(task: str) -> str:
         "mmlu_pro": "hrm_flex_mmlu_pro",
         "agieval": "hrm_flex_agieval",
         "bbh": "hrm_flex_bbh",
+        "ruler_smoke": "hrm_long_context_ruler_smoke",
+        "ruler_8k": "hrm_long_context_ruler_8k",
+        "longbench_en": "hrm_long_context_longbench_en",
+        "longalign_en": "hrm_long_context_longalign_en",
+        "longalign_da": "hrm_long_context_longalign_da",
+        "marathon": "hrm_long_context_marathon",
+        "qmsum_cleaned": "hrm_long_context_qmsum",
+        "danish_summarization_eur_lex": "hrm_long_context_danish_summarization_eur_lex",
+        "danish_summarization": "hrm_long_context_danish_summarization",
     }
     return suites[task]
 
@@ -197,3 +211,12 @@ def ifeval_suite(shard: int, shards: int) -> str:
     if shards == 32:
         return f"hrm_danish_ifeval_da_shard_{shard}_of_32"
     raise ValueError(f"Unsupported DFM IFEval shard count: {shards}")
+LONG_CONTEXT_EXTRA_TASKS = (
+    "longbench_en",
+    "longalign_en",
+    "longalign_da",
+    "marathon",
+    "qmsum_cleaned",
+    "danish_summarization_eur_lex",
+    "danish_summarization",
+)

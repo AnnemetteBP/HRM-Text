@@ -17,7 +17,7 @@ from .catalog import BatchDefaults
 from .locking import PlanLock
 from .model import Action, Job, JobStatus, read_plan, write_plan
 from .monitor import rich_status_renderable, rich_watch, status_text, watch
-from .plan import PlanConfig, plan_path, save_new_plan, set_batch, summarize_plan
+from .plan import PlanConfig, long_context_capability, plan_path, save_new_plan, set_batch, summarize_plan
 from .runtime import Runner
 
 app = typer.Typer(help="Plan-first HRM evaluation scheduler.")
@@ -110,6 +110,10 @@ def create_plan(
     euroeval_max_concurrent_calls: int | None = typer.Option(None, help="Override EuroEval/LiteLLM max_concurrent_calls."),
     include_average: bool = typer.Option(True, help="Add a headline-average row after merges."),
     include_report: bool = typer.Option(True, help="Add a docs report row after averages."),
+    include_ruler_smoke: bool = typer.Option(False, help="Include the legacy 4K RULER smoke row."),
+    include_ruler_8k: bool = typer.Option(False, help="Include the 416-example, 13-variant 8K RULER suite."),
+    include_govreport_long: bool = typer.Option(True, help="Include the 8K GovReport long-document evaluation."),
+    include_long_context_extras: bool = typer.Option(True, help="Include the capped LongBench, LongAlign, Marathon, QMSum, and Danish 8K evaluations."),
     log_wandb: bool = typer.Option(True, help="Log merged metrics and averages to W&B."),
     judge_model: str | None = typer.Option(None, help="Judge model for judged dfm-evals tasks."),
     judge_base_url: str | None = typer.Option(None, help="Judge base URL for judged dfm-evals tasks."),
@@ -184,6 +188,10 @@ def create_plan(
         euroeval_max_concurrent_calls=euroeval_max_concurrent_calls,
         include_average=include_average,
         include_report=include_report,
+        include_ruler_smoke=include_ruler_smoke,
+        include_ruler_8k=include_ruler_8k,
+        include_govreport_long=include_govreport_long,
+        include_long_context_extras=include_long_context_extras,
         log_wandb=log_wandb,
         judge_model=judge_model,
         judge_base_url=judge_base_url,
@@ -197,6 +205,10 @@ def create_plan(
         judged_min_gpu_free_mib=judged_min_gpu_free_mib,
         govreport_max_report_chars=govreport_max_report_chars,
     )
+    if include_ruler_8k or include_govreport_long or include_long_context_extras:
+        capable, reason = long_context_capability(config)
+        if not capable:
+            typer.echo(f"Omitting 8K long-context evaluations: {reason}", err=True)
     path = save_new_plan(config, force=force, append=append)
     counts = summarize_plan(plan_dir)
     typer.echo(f"Wrote {path}")
