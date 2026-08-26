@@ -14,6 +14,10 @@
   `DFM5/40j5y877`, evaluate 200K and 250K without long-context tasks, and
   recognize natural `epoch_1` completion. Added a delayed GPU-release watcher
   and recorded the verified `hrm` versus currently broken `hrm-cu132` state.
+* **DFM8 XXL pause at 152.5K**: Soft-stopped the scheduler and interrupted
+  training only after the complete eight-rank `ephemeral_step_152500`
+  checkpoint was written. Recorded the intentional `-15` row state and the
+  required resume-row update.
 * **Review hardening fixes**: Made Folketing audit partitions independent of
   physical GPU IDs and cleanup process-owned, keyed long-context caches by
   example cap, and prepared transactional/fail-closed long-context pipeline

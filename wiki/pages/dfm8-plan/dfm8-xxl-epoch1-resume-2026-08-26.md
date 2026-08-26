@@ -55,3 +55,17 @@ watcher records to `start-watch.log`; it waits until every GPU has at least
 178000 MiB free, waits another two minutes, then checks scheduler state, the
 training process, and forward/backward progress. While the independent DFM10
 audit owns the GPUs, only the plan's CPU-side checkpoint waits run.
+
+## Intentional pause at step 152500
+
+On 2026-08-26 the scheduler received a soft stop request. A detached watcher
+then waited for `ephemeral_step_152500` to become complete before terminating
+the active TorchRun process. The checkpoint has a readable state sidecar,
+FSDP/DCP metadata, and all eight rank carry files. No training or scheduler
+runner process remains active, and the plan's `stop.request` remains present.
+
+The scheduler consequently records `campaign-train-200000` as failed with
+status `-15`; this is the expected result of the intentional SIGTERM, not a
+training failure. Before continuing, update that row to resume from
+`ephemeral_step_152500`, reset it to pending, and clear the stop request only
+when training should actually restart.
