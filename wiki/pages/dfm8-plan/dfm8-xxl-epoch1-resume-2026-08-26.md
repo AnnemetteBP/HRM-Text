@@ -94,3 +94,13 @@ MiB reserved, reductions of 70.6% and 69.7%, respectively. The current
 checkpointed path runs at approximately 6.4 seconds per optimizer step after
 warmup, versus 3.53 seconds for the compiled control. The throughput comparison
 includes the current requirement to disable whole-batch compile.
+
+## Selective checkpoint smoke and normal continuation
+
+Training was soft-stopped again after the fully written
+`ephemeral_step_153500` checkpoint. A W&B-disabled eight-step smoke from that
+exact state tested `activation_checkpointing=l_only` with compile disabled and
+no checkpoint writes. It measured 90228 MiB peak allocated, 105344 MiB peak
+reserved, and a 5.59-second median optimizer step. The production campaign is
+then resumed from step 153500 with `activation_checkpointing=none`,
+`compile_train_batch=true`, and normal W&B logging, as requested.

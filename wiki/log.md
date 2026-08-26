@@ -602,3 +602,6 @@
   1.8x observed step-time cost of the current uncompiled checkpointed path.
 - Kept vanilla RoPE for the next longer-context experiment because the prior
   YaRN comparison was confounded by an incorrectly exported checkpoint.
+- Added and measured L-only selective checkpointing on DFM8 XXL: 90228 MiB
+  allocated, 105344 MiB reserved, and 5.59 seconds per optimizer step. The
+  production campaign resumes from step 153500 without checkpointing.

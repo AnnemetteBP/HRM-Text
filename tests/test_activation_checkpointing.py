@@ -4,7 +4,7 @@ import unittest
 import torch
 from torch import nn
 
-from models.activation_checkpointing import apply_full_activation_checkpointing
+from models.activation_checkpointing import apply_activation_checkpointing
 from models.baselines.hrm_nocarry_bp_warmup import HierarchicalReasoningModel
 from models.transformer import TransformerBlock
 
@@ -41,8 +41,8 @@ def make_model(activation_checkpointing: str) -> HierarchicalReasoningModel:
     })
     model.H_level.core.layers = nn.ModuleList([CountingBlock(0.7)])
     model.L_level.core.layers = nn.ModuleList([CountingBlock(0.6)])
-    if activation_checkpointing == "full":
-        apply_full_activation_checkpointing(model)
+    if activation_checkpointing != "none":
+        apply_activation_checkpointing(model, activation_checkpointing)
     model.train()
     return model
 
@@ -81,6 +81,15 @@ class ActivationCheckpointingTest(unittest.TestCase):
             model(None, torch.randn(4, 8), bp_steps=5)
 
         self.assertEqual((model.L_level.core.layers[0].calls, model.H_level.core.layers[0].calls), (6, 2))
+
+    def test_l_only_recomputes_only_differentiable_l_calls(self):
+        model = make_model("l_only")
+        model_input = torch.randn(4, 8, requires_grad=True)
+
+        model(None, model_input, bp_steps=5)[1].sum().backward()
+
+        self.assertEqual(model.L_level.core.layers[0].calls, 9)
+        self.assertEqual(model.H_level.core.layers[0].calls, 2)
 
     def test_full_runs_under_torch_compile(self):
         model = make_model("full")
