@@ -8,7 +8,7 @@ tags:
 - provenance
 - privacy
 status: stable
-last_updated: 2026-06-17
+last_updated: 2026-08-17
 confidence: high
 part_of: /pages/data-mix-policy.md
 ---
@@ -17,6 +17,21 @@ part_of: /pages/data-mix-policy.md
 Part of [Data Mix Policy](/pages/data-mix-policy.md).
 
 Reviewed on 2026-05-21 from Hugging Face dataset metadata, cards, and sample schemas.
+
+## DFM contributor status
+
+Update, 2026-08-17: the project owner confirmed that both Oliver Kinch and
+Synquid work as part of the DFM project. Their authored dataset contributions
+(including transformations, synthetic generations, labels, metadata, and
+instruction wrappers) are therefore authorized DFM contributions. This does
+not replace provenance review for retained upstream text, prompts, or
+conversations.
+
+Consequently, an Oliver/Synquid repository does not need Article 3 merely
+because its added transformation layer lacks a separate public licence. Article
+3 remains relevant only where an incorporated upstream component is not
+otherwise covered. Current examples are Synquid's retained DOLCI puzzle prompts
+and WildChat conversations/prompts.
 
 Include:
 

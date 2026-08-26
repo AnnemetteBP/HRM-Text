@@ -9,7 +9,7 @@ tags:
 - training
 - evaluation
 status: stable
-last_updated: 2026-07-12
+last_updated: 2026-08-17
 confidence: medium
 part_of: /pages/dfm8-plan.md
 ---
@@ -477,3 +477,27 @@ DFM8-specific additions and DFM8-post representation:
 | `dfm8-synthetic-multiturn-danish-english-chat` | 0.366B | yes | 1.099B |
 | `dfm8-synthetic-native-tool-calling` | 0.513B | yes | 2.052B |
 | `dfm8-synthetic-strict-math-answer-contract` | 0.173B | yes | 0.347B |
+
+## Exact Source-Character Count
+
+Update, 2026-08-17. Confidence: high from a complete local source scan with
+tokenization-metadata validation.
+
+The `10,720` unique source files represented in `data/tokenized_dfm8` contain
+`555,385,960,165` Unicode characters across `460,160,973` consumed source
+records. This is a source-payload count, not a token count or filesystem-byte
+count. It includes prompts, responses, reasoning fields, tool schemas, and tool
+calls once per unique source record. It excludes JSON/Parquet container syntax,
+role labels, IDs, chat-template text, and sampling repeats. The corresponding
+compressed/columnar source files occupy `320,919,676,150` bytes.
+
+Reproduce the count from the repo root with:
+
+```bash
+PATH=/home/ucloud/miniforge3/envs/hrm/bin:$PATH \
+  python scripts/count_dfm8_source_chars.py --workers 8
+```
+
+The counter maps each selected tokenized artifact back to the DFM6, DFM7, or
+DFM8 source tree and verifies source size and modification time against the
+metadata captured during tokenization before reading any rows.

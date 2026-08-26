@@ -27,3 +27,4 @@
 * [Controlled Transformation Data Gap](controlled-transformation-data-gap.md) - Part of Data Mix Policy: Controlled Transformation Data Gap.
 * [Post-Training Transform Refine Mix](post-training-transform-refine-mix.md) - Part of Data Mix Policy: Post-Training Transform Refine Mix.
 * [Mixed English/Danish Filtered 2x-Original Cap](mixed-english-danish-filtered-2x-original-cap.md) - Part of Data Mix Policy: Mixed English/Danish Filtered 2x-Original Cap.
+* [LexDK Prefix-Extraction Probe](lexdk-prefix-extraction-probe.md) - Verbatim continuation extraction test using original, unconverted LexDK article prefixes.

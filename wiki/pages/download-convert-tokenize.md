@@ -4,7 +4,7 @@ title: Download, Convert, Tokenize, Sample
 description: Verified commands and operational guidance for the local data pipeline.
 tags: [data, download, conversion, tokenization, sampling]
 status: stable
-last_updated: 2026-06-01
+last_updated: 2026-08-15
 confidence: high
 ---
 # Download, Convert, Tokenize, Sample
@@ -166,6 +166,16 @@ opus/opus_da_en.jsonl.gz
 opus/opus-da_*.jsonl.gz
 opus/opus-en_*.jsonl.gz
 ```
+
+`lexdk` uses exactly one manually supplied source archive:
+`data/downloads/datasets/lexdk/lexdk_articles.jsonl.gz`. It contains `108,718`
+JSONL records with `id`, `text`, `source`, timestamps, and metadata including
+the title and Lex.dk URL. The URL provenance within that archive is chiefly
+`denstoredanske.lex.dk` (`74,939` rows), followed by
+`biografiskleksikon.lex.dk` (`13,566`), `trap.lex.dk` (`11,611`), and smaller
+Lex.dk subject encyclopedias. Seven records lack usable text or title, so the
+LexDK converter emits `108,711` instruction examples. Confidence: high,
+verified from the local source and converter on 2026-08-15.
 
 All other local DBC raw/crawl files are denied by default. After rescanning OPUS on 2026-05-23, the OPUS directory contained one direct paired file, `opus_da_en.jsonl.gz`, with `id`, `da`, `en`, and `source` fields. Rebuilding `data/filtered_sources` with `--force` removed stale old `opus-da_*.jsonl.gz` symlinks and left one OPUS symlink. A smoke conversion of `opus_da_en.jsonl.gz` produced `58,522,188` bidirectional translation rows.
 

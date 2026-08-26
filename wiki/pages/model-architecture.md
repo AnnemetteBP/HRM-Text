@@ -10,7 +10,7 @@ tags:
 - checkpoints
 - inference
 status: stable
-last_updated: '2026-08-11'
+last_updated: '2026-08-15'
 confidence: high
 collection_type: Technical Reference
 ---
@@ -61,3 +61,15 @@ The detailed sections of this collection are maintained as separate OKF concepts
 ## In-Epoch Resume Cursors
 
 [Open the dedicated concept](model-architecture/in-epoch-resume-cursors.md).
+
+## Local-Global Attention Path
+
+[Open the dedicated concept](model-architecture/local-global-attention-path.md).
+
+## Sparse Attention Path
+
+[Open the dedicated concept](model-architecture/sparse-attention-path.md).
+
+## XL Parameter and Export Size
+
+[Open the dedicated concept](model-architecture/xl-parameter-and-export-size.md).

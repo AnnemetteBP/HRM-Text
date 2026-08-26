@@ -1,5 +1,7 @@
 # Current State Concepts
 
+* [2026-08-26 Eval Monitor Live Progress Sources](2026-08-26-eval-monitor-inspect-progress.md) - Exact Inspect-journal progress for DFM tasks and native rolling ETAs for tqdm-based evaluators.
+* [Mimir EU AI Act Documentation Gap](mimir-eu-ai-act-documentation-gap.md) - Provisional scope and Article 53 documentation gap assessment for the Mimir v1 research release.
 * [2026-07-11 DFM8 Pre-Training Gate](2026-07-11-dfm8-pre-training-gate.md) - Part of Current State: 2026-07-11 DFM8 Pre-Training Gate.
 * [2026-07-11 DFM8-XL W&B Preparation](2026-07-11-dfm8-xl-w-b-preparation.md) - Part of Current State: 2026-07-11 DFM8-XL W&B Preparation.
 * [2026-06-18 Clean DFM5-L 650K/700K vLLM Eval Scheduler](2026-06-18-clean-dfm5-l-650k-700k-vllm-eval-scheduler.md) - Part of Current State: 2026-06-18 Clean DFM5-L 650K/700K vLLM Eval Scheduler.
@@ -57,3 +59,5 @@
 * [DFM5 XXS Runtime Observation](dfm5-xxs-runtime-observation.md) - Part of Current State: DFM5 XXS Runtime Observation.
 * [DFM5 XXS Step-50K Full Eval](dfm5-xxs-step-50k-full-eval.md) - Part of Current State: DFM5 XXS Step-50K Full Eval.
 * [DFM5 XXS and Later Evaluation Records](dfm5-xxs-step-50k-full-eval/) - Recovered focused records from the historical aggregate section.
+* [DFM9 8K Resume From Step 2137000](2026-08-25-dfm9-8k-resume.md) - Verified scheduler resume and separate Rich monitor.
+* [vLLM FlashInfer Version Mismatch](2026-08-25-vllm-flashinfer-mismatch.md) - Root cause of persistent vLLM startup status 71.

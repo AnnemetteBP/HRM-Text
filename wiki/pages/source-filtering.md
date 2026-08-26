@@ -4,7 +4,7 @@ title: Source Filtering
 description: Rules and implementation for filtering downloaded sources before conversion and tokenization.
 tags: [data, filtering, licensing, provenance]
 status: stable
-last_updated: 2026-06-12
+last_updated: 2026-08-18
 confidence: high
 ---
 # Source Filtering
@@ -33,6 +33,12 @@ research organisation, the working copyright basis is the DSM Directive Article
 ShareAlike, and benchmark adjacency are not blockers by themselves. GDPR/PII
 risk involving non-public persons remains the hard exclusion criterion.
 
+Refinement, 2026-08-16: this is not a blanket clearance of every source. Use a
+direct licence, public-domain/statutory status, or agreement first; Article 3
+is conditional and applies only to otherwise-uncovered content. The exhaustive
+DFM9 source-level triage and its component-review limitations are recorded in
+[DFM9 Copyright and EU TDM Review](/pages/dfm9-copyright-tdm-review.md).
+
 Denied by exact/pattern rules:
 
 - `sapient_cleaned/data/Platypus/reclor.jsonl`
@@ -51,6 +57,14 @@ Denied by exact/pattern rules:
 Allow overrides run before deny patterns. They remain in the config for
 documentation and for exact source recovery, but broad FLAN/Tasksource are no
 longer denied solely because they are aggregators.
+
+Superseding implementation clarification, 2026-08-18: the filter is
+default-allow after its override and deny checks. The lists below are therefore
+not exhaustive allowlists. DFM9 actually samples 3,644 non-factual FLAN files
+and 161 Tasksource files; some retained Tasksource families are not named in
+the explicit overrides. Copyright treatment for the actual retained files is
+documented in [DFM9 Copyright and EU TDM Review](/pages/dfm9-copyright-tdm-review.md).
+Privacy and personal-data review remains separate.
 
 FLAN allow back:
 

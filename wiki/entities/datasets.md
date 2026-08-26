@@ -4,10 +4,28 @@ title: Dataset Entities
 description: Inventory of datasets, source policy, and conversion decisions.
 tags: [datasets, catalog, conversion]
 status: stable
-last_updated: 2026-06-01
+last_updated: 2026-08-17
 confidence: medium
 ---
 # Dataset Entities
+
+## Local Andersen Modernization
+
+- `/work/dfm/andersen/pairs_chunked_train.jsonl`
+  - Status: include in DFM10 at repeat 20.
+  - Conversion: already formatted as `system`/`user`/`assistant` messages and
+    rendered with the Gemma 4 native chat template.
+  - Rows: 1,068; 1,205,157 unique rendered tokens; about 24.10M tokens per
+    DFM10 epoch after repetition.
+- `/work/dfm/andersen/pairs_chunked_val.jsonl`
+  - Status: evaluation only; never include in training tokenization.
+  - Rows: 119 paragraph chunks.
+  - Evaluation: zero-shot modernization with sentence GLEU and chrF3++.
+  - Caveat: keys are disjoint, but all 71 validation story IDs also occur with
+    different chunks in training.
+
+See [DFM10 Plan](/pages/dfm10-plan.md) for hashes, commands, and verified
+pipeline state.
 
 ## Raw Continuation
 
@@ -64,6 +82,30 @@ confidence: medium
     PII/GDPR risk. Project decision on 2026-06-01: keep it in the mix with the
     existing tight cap and prioritize it for later PII scrubbing rather than
     excluding it now.
+  - Audit-evidence reconstruction, 2026-08-17: the exact aggregate counts are
+    preserved in repository history (introduced by commit `332260d`) and in
+    the DFM4 policy notes, and the scanned 99,688-row source remains available
+    at `data/downloads/datasets/synquid_wildchat_100k_qwen_messages/data/train.jsonl`.
+    No original scan script, regex specification, matched-row manifest, or
+    removal report was found in the repository. A fresh broad-regex check of
+    all user turns reproduced the scale but not the exact historical counts
+    (`64` email-like, `2,067` phone-like, and `1,794` URL rows). Therefore the
+    2026-06-01 result is evidence of risk screening, not a reproducible
+    anonymisation/PII-removal audit or proof that retained rows are PII-free.
+  - Upstream consent evidence: the WildChat paper reports affirmative opt-in
+    before use of its public GPT-3.5/GPT-4 chatbot. Its two-step flow disclosed
+    collection of chats and technical data; use for research, service
+    improvement, and product development; third-party sharing/publication; and
+    retention, followed by a separate confirmation for publication/sharing.
+    The paper's summary does not separately state "training arbitrary
+    third-party models." Treat this as evidence of collection/use/publication
+    consent, but not by itself as a conclusive GDPR determination or
+    unambiguous purpose-specific consent for this project's model training.
+    Project decision, 2026-08-17: accept the documented affirmative consent as
+    express permission for the current research model training. This resolves
+    the source-expression permission question for this use; it does not waive
+    GDPR data-minimisation, PII screening, security, retention, or data-subject
+    rights obligations.
   - Sampling: `data_io/prefix_config_dfm4.yaml` currently caps
     `synquid_wildchat_100k_qwen_messages__` at `50,000` rows per file.
   - Confidence: high for access/schema/local scan; medium for final inclusion.

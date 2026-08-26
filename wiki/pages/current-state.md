@@ -8,13 +8,21 @@ tags:
 - evaluation
 - runtime
 status: stable
-last_updated: '2026-08-11'
+last_updated: '2026-08-26'
 confidence: high
 collection_type: Operational Journal
 ---
 # Current State
 
 The detailed sections of this collection are maintained as separate OKF concepts.
+
+## 2026-08-26 Eval Monitor Live Progress Sources
+
+[Open the dedicated concept](current-state/2026-08-26-eval-monitor-inspect-progress.md).
+
+## `hrm-cu132` FA4 and Triton Recovery
+
+[Open the dedicated concept](hrm-cu132-fa4-triton-recovery.md).
 
 ## 2026-07-11 DFM8 Pre-Training Gate
 

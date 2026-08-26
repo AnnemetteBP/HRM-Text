@@ -8,7 +8,7 @@ tags:
 - catalog
 - operations
 status: stable
-last_updated: 2026-08-11
+last_updated: 2026-08-26
 confidence: high
 part_of: /entities/scripts.md
 ---
@@ -41,6 +41,20 @@ eval_scheduler/eval_scheduler/plan.py
 eval_scheduler/eval_scheduler/runtime.py
 eval_scheduler/eval_scheduler/monitor.py
 ```
+
+Long-context plan safety update, 2026-08-26. Confidence: high from focused
+plan tests. Production 8K rows are now capability-gated: a local HF export must
+declare at least 8192 positions, checkpoint data metadata must declare an 8192
+maximum sequence length, or an external model must be explicitly configured
+for at least 8192 tokens. Ordinary 4K checkpoints omit these rows and retain
+their normal evaluation graph.
+
+The current long-context headline remains an engineering continuity metric,
+not an uncontaminated public aggregate. Marathon is format-only because its
+public test conversion has no gold answer; Danish EUR-Lex and Nordjylland
+summarization use available training splits; and the Danish LongAlign subset is
+very small. These limitations are intentionally documented rather than
+silently changing historical metric semantics.
 
 The editable plan format is `plan.tsv` with header:
 
@@ -824,3 +838,38 @@ The initial judge server became wedged: a direct OpenAI-compatible
 endpoint; a direct request returned in `0.63s`, and a one-sample
 `hrm_danish_generative_talemaader` Inspect run completed in `4s`. After that,
 the 350K Talemaader shards completed and merged successfully.
+
+pip CUDA toolkit sampler-JIT note, 2026-08-15. Confidence: high from the
+DFM9-XL 1.95M incident and a successful local rebuild. FlashAttention 4 may
+load successfully while vLLM's separate FlashInfer top-k/top-p sampler JIT
+fails with `curand.h: No such file or directory`. In `hrm-cu132`, the pip CUDA
+headers and libraries are under
+`$CONDA_PREFIX/lib/python3.13/site-packages/nvidia/cu13/{include,lib}`. Expose
+the include directory through `CPATH`, the library directory through
+`LIBRARY_PATH` and `LD_LIBRARY_PATH`, and `/usr/lib64` through the library
+paths so the JIT can link `libcuda`.
+
+Superseded for fresh `hrm-cu132` activations later on 2026-08-15: install
+`libcurand=10.4.2.66` and `libcurand-dev=10.4.2.66` from the NVIDIA Conda
+channel. They place `curand.h` and `libcurand.so` under the environment's
+standard `targets/x86_64-linux` tree, so custom activation hooks and pip-wheel
+include paths are no longer needed. A fresh-activation NVCC compile/link smoke
+test against `curand.h` and `-lcurand` succeeded.
+
+Campaign-reconciliation note, 2026-08-15. Confidence: high. A terminal barrier
+means that its dependencies reached terminal states, not that every evaluation
+succeeded; a failed evaluation wave can therefore release the next training
+segment. A scheduler handoff can also leave a completed training child marked
+`running`. Only reconcile such a row to `done` after checking the checkpoint
+ready-state file, `.metadata`, and every expected checkpoint shard.
+
+XXL-32 10K repair, 2026-08-17. Confidence: high from failed logs and locked
+plan mutation. Eight `generative_talemaader` rows had judge-server metadata but
+no `judge_model`, so `dfm-evals` rejected the unresolved `{{judge_model}}`
+placeholder before evaluation. They were reset with the usual
+`openai/gemma-4-e4b-judge` identifier and `hrm-cu132` Python paths. The failed
+EuroEval `valeu-en` row was marked skipped rather than retried because its
+failure was deterministic model output invalidity (20 of 53 labels invalid),
+not infrastructure; VaLEU is excluded from checkpoint averages. The retries
+remain headroom-gated while an unrelated eight-GPU transform-audit workload is
+active and will dispatch automatically after those GPUs are released.

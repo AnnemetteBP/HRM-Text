@@ -9,8 +9,8 @@ tags:
 - training
 - evaluation
 status: stable
-last_updated: 2026-07-12
-confidence: medium
+last_updated: 2026-08-17
+confidence: high
 part_of: /pages/dfm8-plan.md
 ---
 # Danish Linguistic Acceptability And GEC Data
@@ -74,3 +74,36 @@ DFM8 handling:
    is small, but include every row at least once when possible. They should
    improve Danish grammar sensitivity, not dominate broad Danish instruction
    following.
+
+## TV2R provenance resolution (2026-08-17)
+
+The earlier claim that the underlying TV2R source was untraced is now
+**superseded** for these two selected derivatives:
+
+- Their 1,914,691 rows expand exactly 492,063 unique clean sentences. DaLA
+  pairs clean/corrupted sentences with `ja`/`nej`; GEC-DaLA maps corrupted
+  sentences back to the clean sentence.
+- The clean sentences trace to the `tv2r` component of Danish Gigaword, carried
+  into Danish DynaWord. The pinned local DynaWord revision is
+  `7e97f781b6843de62827275d5facc0a8799df80c`; it contains 49,134 source
+  documents with stable IDs such as `tv2r_114943`.
+- An exact checked example maps the Giannor sentence beginning `Line Siig,
+  frivillig Sex & Samfund-Ung` to DynaWord article `tv2r_114943`.
+- The pinned DynaWord TV2R card identifies TV 2 Regionerne as content owner and
+  declares CC-BY-SA 4.0. Its embedded prose says CC-BY 4.0, so project policy is
+  to retain the stricter CC-BY-SA treatment rather than resolve the
+  inconsistency in the permissive direction.
+
+The instruction datasets do not preserve the upstream `tv2r_*` article ID.
+Exact per-row article mappings can be reconstructed from clean-text matching,
+but they are not directly joinable from the converted metadata. Preserve TV2R,
+Danish Gigaword, and DynaWord attribution with any dataset/model documentation
+and retain the source revision above.
+
+The earlier concern about the unlicensed Giannor-added layer is also
+**superseded as of 2026-08-17**. The project owner confirmed that Giannor works
+as part of the DFM project, so the sentence selection, synthetic
+corruption/correction metadata, labels, and instruction wrappers are treated as
+DFM project-generated contributions. No Article 3 fallback is required for
+these two datasets; the retained TV2R text remains subject to the source
+attribution and conservative CC-BY-SA treatment described above.
