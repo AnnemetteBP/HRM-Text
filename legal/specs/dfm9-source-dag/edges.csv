@@ -1,0 +1,557 @@
+parent_id,child_id,relation,required_for_clearance,average_tokens_per_epoch,evidence,notes
+component:dfm-dyna:agentic-code,generated:synquid:agentic-code-curation,curation_and_conversion,yes,,,
+component:dfm-dyna:agentic-code,hf:nvidia/Nemotron-SFT-OpenCode-v1,retains_code_prompts_or_responses,yes,,,
+component:dfm-dyna:agentic-code,hf:nvidia/Nemotron-SFT-SWE-v2,retains_code_prompts_or_responses,yes,,,
+component:dfm-dyna:agentic-code,hf:nvidia/OpenCodeInstruct,retains_code_prompts_or_responses,yes,,,
+component:dfm-dyna:apertus,hf:swiss-ai/apertus-sft-mixture,repackages,yes,,,
+component:dfm-dyna:da-refusals,generated:dfm:da-refusals,generated_content,yes,,,
+component:dfm-dyna:danish-verifiable-reasoning,generated:synquid:transformations,translated_or_generated_solution_layer,yes,,,
+component:dfm-dyna:danish-verifiable-reasoning,work:dolci-puzzle-prompts,retains_prompts,yes,,,
+component:dfm-dyna:ifbench-train,generated:synquid:transformations,adds_constraints_and_answers,yes,,,
+component:dfm-dyna:ifbench-train,work:wildchat-human-prompts,retains_prompts,yes,,,
+component:dfm-dyna:mt-da-deepseek,generated:synquid:transformations,generated_conversation_layer,yes,,,
+component:dfm-dyna:mt-da-deepseek,work:dynaword-covered-passages,seed_content,yes,,,
+component:dfm-dyna:translation-100k,generated:oliverkinch:transformations,authored_prompt_layer,yes,,,
+component:dfm-dyna:translation-100k,work:covered-opus-eu-corpora,retains_parallel_text,yes,,,
+component:dfm-dyna:when2call,generated:dfm:when2call,generated_content,yes,,,
+component:dfm-dyna:wiki-instruct-da,generated:synquid:transformations,authored_prompt_layer,yes,,,
+component:dfm-dyna:wiki-instruct-da,work:danish-wikipedia,retains_source_text,yes,,,
+component:dfm-dyna:wildchat-qwen,generated:dfm:wildchat-qwen-responses,replaces_or_extends_assistant_turns,yes,,,
+component:dfm-dyna:wildchat-qwen,work:wildchat-human-prompts,retains_prompts,yes,,,
+hf:HuggingFaceTB/smoltalk2,generated:smoltalk2:multi-turn-if,authored_or_generated_contribution,yes,,,
+hf:HuggingFaceTB/smoltalk2,generated:smoltalk2:qwen-regenerated,authored_or_generated_contribution,yes,,,
+hf:HuggingFaceTB/smoltalk2,generated:smoltalk2:smolagents-toolcalling,authored_or_generated_contribution,yes,,,
+hf:HuggingFaceTB/smoltalk2,hf:CohereForAI/aya_dataset,seed_or_retained_content,yes,,,
+hf:HuggingFaceTB/smoltalk2,hf:HuggingFaceTB/smoltalk,seed_or_retained_content,yes,,,
+hf:HuggingFaceTB/smoltalk2,hf:LipengCS/Table-GPT,seed_or_retained_content,yes,,,
+hf:HuggingFaceTB/smoltalk2,hf:NousResearch/hermes-function-calling-v1,seed_or_retained_content,yes,,,
+hf:HuggingFaceTB/smoltalk2,hf:Salesforce/xlam-function-calling-60k,seed_or_retained_content,yes,,,
+hf:HuggingFaceTB/smoltalk2,hf:THUDM/LongAlign-10k,seed_or_retained_content,yes,,,
+hf:HuggingFaceTB/smoltalk2,hf:allenai/tulu-3-sft-personas-instruction-following,seed_or_retained_content,yes,,,
+hf:HuggingFaceTB/smoltalk2,hf:open-r1/Mixture-of-Thoughts,seed_or_retained_content,yes,,,
+hf:HuggingFaceTB/smoltalk2,hf:open-r1/s1K-1.1,seed_or_retained_content,yes,,,
+hf:HuggingFaceTB/smoltalk2,hf:open-thoughts/OpenThoughts3-1.2M,seed_or_retained_content,yes,,,
+hf:HuggingFaceTB/smoltalk2,hf:teknium/OpenHermes-2.5,seed_or_retained_content,yes,,,
+hf:allenai/WildChat-1M,work:wildchat-human-prompts,contains_human_conversations,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:AI-MO/NuminaMath-TIR,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:CohereForAI/aya_dataset,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:HuggingFaceH4/no_robots,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:LipengCS/Table-GPT,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:OpenAssistant/oasst1,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:ai2-adapt-dev/flan_v2_converted,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/SciRIFF,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/WildChat-1M,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/coconot,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/open_math_2_50k_r1-original,retains_prompts_or_responses,yes,,,
+hf:allenai/open_math_2_50k_r1-original,hf:nvidia/OpenMathInstruct-2,retains_problems_and_prior_solutions,yes,,local parquet fields and NVIDIA card,"8988 GSM8K plus 40841 augmented_gsm8k rows"
+hf:allenai/open_math_2_50k_r1-original,model:deepseek-r1-family,generated_response_layer,yes,,AllenAI regenerated_model_type field and DeepSeek model card,
+hf:allenai/verifiable-reasoning-filtered-gpt-41,code:rlve-gym,procedurally_generates_prompts_and_verifiers,yes,,row ID/category match to RLVE environment identifiers,
+hf:allenai/verifiable-reasoning-filtered-gpt-41,work:rlve-external-problem-sources,adapts_problem_families,yes,,prompt-level audit plus RLVE environment source comments,"127865 of 284820 rows map to 122 externally cited variants; 4921 additional rows belong to four unmatched variants. Prompt audit finds 45 close/constrained and 15 expressive/source-specific variants."
+hf:allenai/verifiable-reasoning-filtered-o4-mini,code:rlve-gym,procedurally_generates_prompts_and_verifiers,yes,,row ID/category match to RLVE environment identifiers,
+hf:allenai/verifiable-reasoning-filtered-o4-mini,work:rlve-external-problem-sources,adapts_problem_families,yes,,prompt-level audit plus RLVE environment source comments,"106059 of 241265 rows map to 122 externally cited variants; 4107 additional rows belong to four unmatched variants. Prompt audit finds 45 close/constrained and 15 expressive/source-specific variants."
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/tulu-3-hard-coded,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/tulu-3-personas-algebra,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/tulu-3-sft-personas-code,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/tulu-3-sft-personas-instruction-following,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/tulu-3-sft-personas-math-filtered,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/tulu-3-sft-personas-math-grade-filtered,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/wildguardmix,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:allenai/wildjailbreak,retains_prompts_or_responses,yes,,,
+hf:allenai/tulu-3-sft-olmo-2-mixture-0225,hf:theblackcat102/evol-codealpaca-v1,retains_prompts_or_responses,yes,,,
+hf:danish-foundation-models/dfm-dyna-instruct,component:dfm-dyna:agentic-code,contains_component,yes,34769924,,
+hf:danish-foundation-models/dfm-dyna-instruct,component:dfm-dyna:apertus,contains_component,yes,3033512464,,
+hf:danish-foundation-models/dfm-dyna-instruct,component:dfm-dyna:da-refusals,contains_component,yes,17706,,
+hf:danish-foundation-models/dfm-dyna-instruct,component:dfm-dyna:danish-verifiable-reasoning,contains_component,yes,9064406,,
+hf:danish-foundation-models/dfm-dyna-instruct,component:dfm-dyna:ifbench-train,contains_component,yes,1262590,,
+hf:danish-foundation-models/dfm-dyna-instruct,component:dfm-dyna:mt-da-deepseek,contains_component,yes,8883200,,
+hf:danish-foundation-models/dfm-dyna-instruct,component:dfm-dyna:translation-100k,contains_component,yes,98008752,,
+hf:danish-foundation-models/dfm-dyna-instruct,component:dfm-dyna:when2call,contains_component,yes,3797583,,
+hf:danish-foundation-models/dfm-dyna-instruct,component:dfm-dyna:wiki-instruct-da,contains_component,yes,164686585,,
+hf:danish-foundation-models/dfm-dyna-instruct,component:dfm-dyna:wildchat-qwen,contains_component,yes,189868452,,
+hf:giannor/dala_tv2r_it,work:tv2r-covered-text,retains_source_text,yes,,,
+hf:giannor/gec_dala_tv2r_it,work:tv2r-covered-text,retains_source_text,yes,,,
+hf:oliverkinch/autodata-da-sft,work:dynaword-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:oliverkinch/da-instruct-dynaword,work:dynaword-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:oliverkinch/da-instruct-dynaword-contemporary,work:dynaword-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:oliverkinch/da-instruct-dynaword-contemporary-hq,work:dynaword-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:oliverkinch/da-instruct-dynaword-hq,work:dynaword-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:oliverkinch/dynaword-bt,work:dynaword-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:schneiderkamplab/common-pile-denoising,work:common-pile-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:schneiderkamplab/common-pile-paragraph-reordering,work:common-pile-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:schneiderkamplab/common-pile-prefix-continuation,work:common-pile-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:schneiderkamplab/common-pile-span-filling,work:common-pile-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:schneiderkamplab/danish-dynaword-denoising,work:dynaword-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:schneiderkamplab/danish-dynaword-paragraph-reordering,work:dynaword-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:schneiderkamplab/danish-dynaword-prefix-continuation,work:dynaword-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:schneiderkamplab/danish-dynaword-span-filling,work:dynaword-covered-passages,retains_or_transforms_source_passages,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-code-debugging,generated:dfm8:synthetic-pipeline,generated_and_audited_layer,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-code-debugging,work:common-pile-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-code-debugging,work:dynaword-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-constrained-format-following,generated:dfm8:synthetic-pipeline,generated_and_audited_layer,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-constrained-format-following,work:common-pile-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-constrained-format-following,work:dynaword-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-danish-summarization-rewrite-controls,generated:dfm8:synthetic-pipeline,generated_and_audited_layer,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-danish-summarization-rewrite-controls,work:common-pile-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-danish-summarization-rewrite-controls,work:dynaword-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-multiturn-danish-english-chat,generated:dfm8:synthetic-pipeline,generated_and_audited_layer,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-multiturn-danish-english-chat,work:common-pile-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-multiturn-danish-english-chat,work:dynaword-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-native-tool-calling,generated:dfm8:synthetic-pipeline,generated_and_audited_layer,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-native-tool-calling,work:common-pile-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-native-tool-calling,work:dynaword-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-strict-math-answer-contract,generated:dfm8:synthetic-pipeline,generated_and_audited_layer,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-strict-math-answer-contract,work:common-pile-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/dfm8-synthetic-strict-math-answer-contract,work:dynaword-covered-passages,possible_seed_family,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-dialog-fsopt-data-qrecc,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-dialog-fsopt-data-qrecc,work:sapient-upstream:qrecc,task_provenance_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-dialog-fsopt-data-qrecc-ii,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-dialog-fsopt-data-qrecc-ii,work:sapient-upstream:qrecc,task_provenance_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-dialog-zsopt-data-qrecc,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-dialog-zsopt-data-qrecc,work:sapient-upstream:qrecc,task_provenance_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-dialog-zsopt-data-qrecc-ii,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-dialog-zsopt-data-qrecc-ii,work:sapient-upstream:qrecc,task_provenance_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-aeslc-1.0.0,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-aeslc-1.0.0,work:sapient-upstream:aeslc-1.0.0,task_provenance_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-opinion-abstracts-idebate,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-opinion-abstracts-idebate,work:sapient-upstream:opinion-abstracts-idebate,historical_seed_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-opinion-abstracts-rotten-tomatoes,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-opinion-abstracts-rotten-tomatoes,work:sapient-upstream:opinion-abstracts-rotten-tomatoes,historical_seed_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-fsopt-data-aeslc-1.0.0,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-fsopt-data-aeslc-1.0.0,work:sapient-upstream:aeslc-1.0.0,task_provenance_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-fsopt-data-opinion-abstracts-idebate,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-fsopt-data-opinion-abstracts-idebate,work:sapient-upstream:opinion-abstracts-idebate,historical_seed_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-fsopt-data-opinion-abstracts-rotten-tomatoes,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-fsopt-data-opinion-abstracts-rotten-tomatoes,work:sapient-upstream:opinion-abstracts-rotten-tomatoes,historical_seed_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-aeslc-1.0.0,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-aeslc-1.0.0,work:sapient-upstream:aeslc-1.0.0,task_provenance_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-opinion-abstracts-idebate,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-opinion-abstracts-idebate,work:sapient-upstream:opinion-abstracts-idebate,historical_seed_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-opinion-abstracts-rotten-tomatoes,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-opinion-abstracts-rotten-tomatoes,work:sapient-upstream:opinion-abstracts-rotten-tomatoes,historical_seed_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-zsopt-data-aeslc-1.0.0,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-zsopt-data-aeslc-1.0.0,work:sapient-upstream:aeslc-1.0.0,task_provenance_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-zsopt-data-opinion-abstracts-idebate,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-zsopt-data-opinion-abstracts-idebate,work:sapient-upstream:opinion-abstracts-idebate,historical_seed_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-flan-zsopt-data-opinion-abstracts-rotten-tomatoes,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-flan-zsopt-data-opinion-abstracts-rotten-tomatoes,work:sapient-upstream:opinion-abstracts-rotten-tomatoes,historical_seed_for_low_overlap_synthetic_recreation,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1309-amazonreview-summary-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1309-amazonreview-summary-classification,work:sapient-upstream:task1309-amazonreview-summary-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1370-newscomm-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1370-newscomm-classification,work:sapient-upstream:task1370-newscomm-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1371-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1371-newscomm-translation,work:sapient-upstream:task1371-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1373-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1373-newscomm-translation,work:sapient-upstream:task1373-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1374-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1374-newscomm-translation,work:sapient-upstream:task1374-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1375-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1375-newscomm-translation,work:sapient-upstream:task1375-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1376-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1376-newscomm-translation,work:sapient-upstream:task1376-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1377-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1377-newscomm-translation,work:sapient-upstream:task1377-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task264-paper-reviews-accept-reject,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task264-paper-reviews-accept-reject,work:sapient-upstream:task264-paper-reviews-accept-reject,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task265-paper-reviews-language-identification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task265-paper-reviews-language-identification,work:sapient-upstream:task265-paper-reviews-language-identification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task266-paper-reviews-reviewer-perspective,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task266-paper-reviews-reviewer-perspective,work:sapient-upstream:task266-paper-reviews-reviewer-perspective,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task589-amazonfood-summary-text-generation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task589-amazonfood-summary-text-generation,work:sapient-upstream:task589-amazonfood-summary-text-generation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task590-amazonfood-summary-correction-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task590-amazonfood-summary-correction-classification,work:sapient-upstream:task590-amazonfood-summary-correction-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task618-amazonreview-summary-text-generation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task618-amazonreview-summary-text-generation,work:sapient-upstream:task618-amazonreview-summary-text-generation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task634-allegro-reviews-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task634-allegro-reviews-classification,work:sapient-upstream:task634-allegro-reviews-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task635-allegro-reviews-answer-generation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task635-allegro-reviews-answer-generation,work:sapient-upstream:task635-allegro-reviews-answer-generation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task672-amazon-yelp-summarization,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task672-amazon-yelp-summarization,work:sapient-upstream:task672-amazon-yelp-summarization,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task870-msmarco-answer-generation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task870-msmarco-answer-generation,work:sapient-upstream:task870-msmarco-answer-generation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task871-msmarco-question-generation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task871-msmarco-question-generation,work:sapient-upstream:task871-msmarco-question-generation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task902-deceptive-opinion-spam-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task902-deceptive-opinion-spam-classification,work:sapient-upstream:task902-deceptive-opinion-spam-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task903-deceptive-opinion-spam-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task903-deceptive-opinion-spam-classification,work:sapient-upstream:task903-deceptive-opinion-spam-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task906-dialogre-identify-names,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task906-dialogre-identify-names,work:sapient-upstream:task906-dialogre-identify-names,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task907-dialogre-identify-relationships,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task907-dialogre-identify-relationships,work:sapient-upstream:task907-dialogre-identify-relationships,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task908-dialogre-identify-familial-relationships,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task908-dialogre-identify-familial-relationships,work:sapient-upstream:task908-dialogre-identify-familial-relationships,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task909-dialogre-prevalent-speakers,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task909-dialogre-prevalent-speakers,work:sapient-upstream:task909-dialogre-prevalent-speakers,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1309-amazonreview-summary-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1309-amazonreview-summary-classification,work:sapient-upstream:task1309-amazonreview-summary-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1370-newscomm-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1370-newscomm-classification,work:sapient-upstream:task1370-newscomm-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1371-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1371-newscomm-translation,work:sapient-upstream:task1371-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1373-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1373-newscomm-translation,work:sapient-upstream:task1373-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1374-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1374-newscomm-translation,work:sapient-upstream:task1374-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1375-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1375-newscomm-translation,work:sapient-upstream:task1375-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1376-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1376-newscomm-translation,work:sapient-upstream:task1376-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1377-newscomm-translation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1377-newscomm-translation,work:sapient-upstream:task1377-newscomm-translation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task264-paper-reviews-accept-reject,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task264-paper-reviews-accept-reject,work:sapient-upstream:task264-paper-reviews-accept-reject,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task265-paper-reviews-language-identification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task265-paper-reviews-language-identification,work:sapient-upstream:task265-paper-reviews-language-identification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task266-paper-reviews-reviewer-perspective,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task266-paper-reviews-reviewer-perspective,work:sapient-upstream:task266-paper-reviews-reviewer-perspective,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task589-amazonfood-summary-text-generation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task589-amazonfood-summary-text-generation,work:sapient-upstream:task589-amazonfood-summary-text-generation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task590-amazonfood-summary-correction-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task590-amazonfood-summary-correction-classification,work:sapient-upstream:task590-amazonfood-summary-correction-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task618-amazonreview-summary-text-generation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task618-amazonreview-summary-text-generation,work:sapient-upstream:task618-amazonreview-summary-text-generation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task634-allegro-reviews-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task634-allegro-reviews-classification,work:sapient-upstream:task634-allegro-reviews-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task635-allegro-reviews-answer-generation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task635-allegro-reviews-answer-generation,work:sapient-upstream:task635-allegro-reviews-answer-generation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task672-amazon-yelp-summarization,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task672-amazon-yelp-summarization,work:sapient-upstream:task672-amazon-yelp-summarization,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task870-msmarco-answer-generation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task870-msmarco-answer-generation,work:sapient-upstream:task870-msmarco-answer-generation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task871-msmarco-question-generation,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task871-msmarco-question-generation,work:sapient-upstream:task871-msmarco-question-generation,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task902-deceptive-opinion-spam-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task902-deceptive-opinion-spam-classification,work:sapient-upstream:task902-deceptive-opinion-spam-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task903-deceptive-opinion-spam-classification,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task903-deceptive-opinion-spam-classification,work:sapient-upstream:task903-deceptive-opinion-spam-classification,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task906-dialogre-identify-names,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task906-dialogre-identify-names,work:sapient-upstream:task906-dialogre-identify-names,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task907-dialogre-identify-relationships,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task907-dialogre-identify-relationships,work:sapient-upstream:task907-dialogre-identify-relationships,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task908-dialogre-identify-familial-relationships,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task908-dialogre-identify-familial-relationships,work:sapient-upstream:task908-dialogre-identify-familial-relationships,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task909-dialogre-prevalent-speakers,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task909-dialogre-prevalent-speakers,work:sapient-upstream:task909-dialogre-prevalent-speakers,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-platypus-reclor,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-platypus-reclor,work:sapient-upstream:reclor,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-platypus-scibench,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-platypus-scibench,work:sapient-upstream:scibench,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-tasksource-pragmeval-sarcasm,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-tasksource-pragmeval-sarcasm,work:sapient-upstream:pragmeval-sarcasm,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:schneiderkamplab/sapient-synth-tasksource-reclor,generated:dfm:sapient-repair,generated_repair_layer,yes,,,
+hf:schneiderkamplab/sapient-synth-tasksource-reclor,work:sapient-upstream:reclor,retains_upstream_task_expression,no,,legal/reports/dfm9-manual-acceptances-and-overrides.md,MAN-021 makes this a non-blocking provenance edge for the synthetic derivative.
+hf:swiss-ai/apertus-sft-mixture,hf:HuggingFaceTB/smoltalk2,mixture_component,yes,,,Exact row allocation in DFM's repackaged file was flattened; upstream source labels are verified.
+hf:swiss-ai/apertus-sft-mixture,hf:allenai/tulu-3-sft-olmo-2-mixture-0225,mixture_component,yes,,,Exact row allocation in DFM's repackaged file was flattened; upstream source labels are verified.
+hf:allenai/tulu-3-sft-mixture,hf:allenai/coconot,mixture_component,yes,10983,legal/registers/dfm9-tulu3-mixture-component-audit.csv,ai2-adapt-dev/coconot_converted
+hf:allenai/tulu-3-sft-mixture,hf:ai2-adapt-dev/flan_v2_converted,mixture_component,yes,89982,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:HuggingFaceH4/no_robots,mixture_component,yes,9500,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:OpenAssistant/oasst1,mixture_component,yes,7131,legal/registers/dfm9-tulu3-mixture-component-audit.csv,"Card says 7132; local rows contain 7131."
+hf:allenai/tulu-3-sft-mixture,hf:allenai/tulu-3-personas-math,mixture_component,yes,149960,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:allenai/tulu-3-sft-personas-math-grade,mixture_component,yes,49980,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:allenai/tulu-3-sft-personas-code,mixture_component,yes,34999,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:allenai/tulu-3-personas-algebra,mixture_component,yes,20000,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:allenai/tulu-3-sft-personas-instruction-following,mixture_component,yes,29980,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:AI-MO/NuminaMath-TIR,mixture_component,yes,64312,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:allenai/open_math_2_50k_r1-original,mixture_component,yes,50000,legal/registers/dfm9-tulu3-mixture-component-audit.csv,"Present in local rows but omitted from card prose list."
+hf:allenai/tulu-3-sft-mixture,hf:allenai/wildguardmix,mixture_component,yes,50000,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:allenai/wildjailbreak,mixture_component,yes,50000,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:allenai/tulu-3-hard-coded,mixture_component,yes,240,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:CohereForAI/aya_dataset,mixture_component,yes,100000,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:allenai/WildChat-1M,mixture_component,yes,100000,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:LipengCS/Table-GPT,mixture_component,yes,5000,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:allenai/SciRIFF,mixture_component,yes,10000,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:allenai/tulu-3-sft-mixture,hf:theblackcat102/evol-codealpaca-v1,mixture_component,yes,107276,legal/registers/dfm9-tulu3-mixture-component-audit.csv,
+hf:swiss-ai/apertus-sft-mixture,hf:utter-project/EuroBlocks-SFT-Synthetic-1124,mixture_component,yes,,,Exact row allocation in DFM's repackaged file was flattened; upstream source labels are verified.
+hf:synquid/danish-verifiable-reasoning,generated:synquid:transformations,translated_or_generated_solution_layer,yes,,,
+hf:synquid/danish-verifiable-reasoning,work:dolci-puzzle-prompts,retains_prompts,yes,,,
+hf:synquid/ifbench-train,generated:synquid:transformations,adds_constraints_and_answers,yes,,,
+hf:synquid/ifbench-train,work:wildchat-human-prompts,retains_prompts,yes,,,
+hf:synquid/mt-da-deepseek,generated:synquid:transformations,generated_conversation_layer,yes,,,
+hf:synquid/mt-da-deepseek,work:dynaword-covered-passages,seed_content,yes,,,
+hf:synquid/translation-100k,generated:oliverkinch:transformations,authored_prompt_layer,yes,,,
+hf:synquid/translation-100k,work:covered-opus-eu-corpora,retains_parallel_text,yes,,,
+hf:synquid/wiki-instruct-da,generated:synquid:transformations,authored_prompt_layer,yes,,,
+hf:synquid/wiki-instruct-da,work:danish-wikipedia,retains_source_text,yes,,,
+hf:synquid/wildchat-100k-qwen-messages,generated:dfm:wildchat-qwen-responses,replaces_or_extends_assistant_turns,yes,,,
+hf:synquid/wildchat-100k-qwen-messages,work:wildchat-human-prompts,retains_prompts,yes,,,
+hf:utter-project/EuroBlocks-SFT-Synthetic-1124,generated:euroblocks:eurollm-synthetic,generated_component,yes,,,
+hf:utter-project/EuroBlocks-SFT-Synthetic-1124,generated:euroblocks:hardcoded,generated_component,yes,,,
+hf:utter-project/EuroBlocks-SFT-Synthetic-1124,generated:euroblocks:llama-synthetic,generated_component,yes,,,
+hf:utter-project/EuroBlocks-SFT-Synthetic-1124,hf:CohereForAI/aya_dataset,retained_subset,yes,,,
+hf:utter-project/EuroBlocks-SFT-Synthetic-1124,hf:Magpie-Align/Magpie-Llama-3.1-Pro-300K-Filtered,seed_or_derived_subset,yes,,,
+hf:utter-project/EuroBlocks-SFT-Synthetic-1124,hf:Magpie-Align/Magpie-Llama-3.1-Pro-DPO-100K-v0.1,seed_or_derived_subset,yes,,,
+hf:utter-project/EuroBlocks-SFT-Synthetic-1124,hf:Magpie-Align/Magpie-Qwen-Air-300K-Filtered,seed_or_derived_subset,yes,,,
+hf:utter-project/EuroBlocks-SFT-Synthetic-1124,hf:Magpie-Align/Magpie-Reasoning-V1-150K,seed_or_derived_subset,yes,,,
+hf:utter-project/EuroBlocks-SFT-Synthetic-1124,hf:declare-lab/HarmfulQA,seed_or_derived_subset,yes,,,
+generated:euroblocks:llama-synthetic,component:euroblocks:embedded-seeds,retains_seed_expression,yes,,legal/registers/dfm9-euroblocks-seed-risk.csv,5169 source-retaining rows.
+generated:euroblocks:llama-synthetic,component:euroblocks:derived-seeds,derived_from_seed_expression,yes,,legal/registers/dfm9-euroblocks-seed-risk.csv,134819 generated rows.
+hf:HuggingFaceTB/smoltalk,component:smoltalk:apigen,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,
+hf:HuggingFaceTB/smoltalk,component:smoltalk:constraints,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,
+hf:HuggingFaceTB/smoltalk,component:smoltalk:everyday,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,
+hf:HuggingFaceTB/smoltalk,component:smoltalk:explore-rewrite,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,
+hf:HuggingFaceTB/smoltalk,component:smoltalk:magpie,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,
+hf:HuggingFaceTB/smoltalk,component:smoltalk:metamath,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,
+hf:HuggingFaceTB/smoltalk,component:smoltalk:numina,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,
+hf:HuggingFaceTB/smoltalk,component:smoltalk:rewrite,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,
+hf:HuggingFaceTB/smoltalk,component:smoltalk:self-oss,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,
+hf:HuggingFaceTB/smoltalk,component:smoltalk:summarize,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,
+hf:HuggingFaceTB/smoltalk,component:smoltalk:systemchats,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,
+hf:HuggingFaceTB/smoltalk,hf:THUDM/LongAlign-10k,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,3547 train rows.
+hf:HuggingFaceTB/smoltalk,hf:teknium/OpenHermes-2.5,mixture_component,yes,,legal/registers/dfm9-smoltalk-component-audit.csv,95000 train rows.
+hf:THUDM/LongAlign-10k,component:longalign:books,content_group,yes,,legal/registers/dfm9-longalign-content-groups.csv,
+hf:THUDM/LongAlign-10k,component:longalign:corporate,content_group,yes,,legal/registers/dfm9-longalign-content-groups.csv,
+hf:THUDM/LongAlign-10k,component:longalign:education,content_group,yes,,legal/registers/dfm9-longalign-content-groups.csv,
+hf:THUDM/LongAlign-10k,component:longalign:encyclopedia,content_group,yes,,legal/registers/dfm9-longalign-content-groups.csv,
+hf:THUDM/LongAlign-10k,component:longalign:government,content_group,yes,,legal/registers/dfm9-longalign-content-groups.csv,
+hf:THUDM/LongAlign-10k,component:longalign:manuals,content_group,yes,,legal/registers/dfm9-longalign-content-groups.csv,
+hf:THUDM/LongAlign-10k,component:longalign:news-web,content_group,yes,,legal/registers/dfm9-longalign-content-groups.csv,
+hf:THUDM/LongAlign-10k,component:longalign:public-domain-candidates,content_group,yes,,legal/registers/dfm9-longalign-content-groups.csv,
+hf:THUDM/LongAlign-10k,component:longalign:scholarly,content_group,yes,,legal/registers/dfm9-longalign-content-groups.csv,
+hf:THUDM/LongAlign-10k,component:longalign:software-qa,content_group,yes,,legal/registers/dfm9-longalign-content-groups.csv,
+hf:THUDM/LongAlign-10k,component:longalign:unknown,content_group,yes,,legal/registers/dfm9-longalign-content-groups.csv,
+hf:open-r1/Mixture-of-Thoughts,component:mot:code,domain_component,yes,,legal/registers/dfm9-mot-expression-risk.csv,
+hf:open-r1/Mixture-of-Thoughts,component:mot:math,domain_component,yes,,legal/registers/dfm9-mot-expression-risk.csv,
+hf:open-r1/Mixture-of-Thoughts,component:mot:science,domain_component,yes,,legal/registers/dfm9-mot-expression-risk.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:airoboros,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:camelai,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:caseus,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:chatbot-arena,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:cogstack,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:collective,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:cot-alpaca,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:econ,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:evol70,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:evol-v2,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:glaive,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:gpt4-comparison,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:gpteacher,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:lmsys1m,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:metamath,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:platypus,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:slimorca,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:teknium-custom,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+hf:teknium/OpenHermes-2.5,component:openhermes:unnatural,source_block,yes,,legal/registers/dfm9-openhermes-component-audit.csv,
+work:dolci-puzzle-prompts,component:dolci-puzzle:countdownequal,named_prompt_subset,yes,,,
+work:dolci-puzzle-prompts,component:dolci-puzzle:cryptarithmetic,named_prompt_subset,yes,,,
+work:dolci-puzzle-prompts,component:dolci-puzzle:futoshikipuzzle,named_prompt_subset,yes,,,
+work:dolci-puzzle-prompts,component:dolci-puzzle:hitoripuzzle,named_prompt_subset,yes,,,
+work:dolci-puzzle-prompts,component:dolci-puzzle:jugpuzzle,named_prompt_subset,yes,,,
+work:dolci-puzzle-prompts,component:dolci-puzzle:kakurasu,named_prompt_subset,yes,,,
+work:dolci-puzzle-prompts,component:dolci-puzzle:knightsandknaves,named_prompt_subset,yes,,,
+work:dolci-puzzle-prompts,component:dolci-puzzle:numbrix,named_prompt_subset,yes,,,
+work:dolci-puzzle-prompts,component:dolci-puzzle:setsplitting,named_prompt_subset,yes,,,
+work:dolci-puzzle-prompts,component:dolci-puzzle:skyscraperpuzzle,named_prompt_subset,yes,,,
+work:dolci-puzzle-prompts,component:dolci-puzzle:starbattle,named_prompt_subset,yes,,,
+work:dolci-puzzle-prompts,component:dolci-puzzle:zebralogics,named_prompt_subset,yes,,,
+hf:allenai/Dolci-Instruct-SFT,generated:dolci:hardcoded,contains_ai2_authored_prompts,yes,,DOLCI main dataset card,69 rows
+hf:allenai/Dolci-Instruct-SFT,generated:dolci:precise-if,contains_ai2_authored_prompts,yes,,DOLCI main dataset card,136833 rows
+hf:allenai/Dolci-Instruct-SFT,generated:dolci:python-algorithms,contains_ai2_authored_prompts,yes,,DOLCI main dataset card,186345 rows
+hf:allenai/Dolci-Instruct-SFT,generated:dolci:transformations,response_and_mixture_layer,yes,,DOLCI main dataset card,
+hf:allenai/Dolci-Instruct-SFT,generated:dolci:verifiable-reasoning,contains_ai2_authored_prompts,yes,,DOLCI main dataset card,310572 rows
+hf:allenai/Dolci-Instruct-SFT,hf:CohereForAI/aya_dataset,retains_prompts,yes,,DOLCI main dataset card,99987 rows
+hf:allenai/Dolci-Instruct-SFT,hf:LipengCS/Table-GPT,retains_prompts,yes,,DOLCI main dataset card,5000 rows
+hf:allenai/Dolci-Instruct-SFT,hf:OpenAssistant/oasst1,retains_prompts,yes,,DOLCI main dataset card,7132 rows
+hf:allenai/Dolci-Instruct-SFT,hf:ai2-adapt-dev/flan_v2_converted,retains_prompts,yes,,DOLCI main dataset card,89981 rows
+hf:allenai/Dolci-Instruct-SFT,hf:allenai/Dolci-Instruct-SFT-Tool-Use,contains_component,yes,,DOLCI main dataset card,227579 rows
+hf:allenai/Dolci-Instruct-SFT,hf:allenai/SciRIFF,retains_prompts,yes,,DOLCI main dataset card,4557 rows
+hf:allenai/Dolci-Instruct-SFT,hf:allenai/WildChat-1M,retains_human_prompts,yes,,DOLCI main dataset card,302406 rows with upgraded responses
+hf:allenai/Dolci-Instruct-SFT,hf:allenai/coconot,retains_prompts,yes,,DOLCI main dataset card,10957 rows
+hf:allenai/Dolci-Instruct-SFT,hf:allenai/tulu-3-personas-algebra,retains_prompts,yes,,DOLCI main dataset card,19999 rows
+hf:allenai/Dolci-Instruct-SFT,hf:allenai/tulu-3-personas-math,retains_prompts,yes,,DOLCI main dataset card,149958 rows
+hf:allenai/Dolci-Instruct-SFT,hf:allenai/tulu-3-sft-personas-code,retains_prompts,yes,,DOLCI main dataset card,34999 rows
+hf:allenai/Dolci-Instruct-SFT,hf:allenai/tulu-3-sft-personas-math-grade,retains_prompts,yes,,DOLCI main dataset card,49980 rows
+hf:allenai/Dolci-Instruct-SFT,hf:allenai/wildguardmix,retains_prompts,yes,,DOLCI main dataset card,49373 rows
+hf:allenai/Dolci-Instruct-SFT,hf:allenai/wildjailbreak,retains_prompts,yes,,DOLCI main dataset card,49965 rows
+hf:allenai/Dolci-Instruct-SFT,hf:nvidia/OpenMathInstruct-2,retains_prompts,yes,,DOLCI parquet source labels,50000 rows
+hf:allenai/Dolci-Instruct-SFT,hf:open-thoughts/OpenThoughts3-1.2M,retains_prompts,yes,,DOLCI main dataset card,99268 rows
+hf:allenai/Dolci-Instruct-SFT,hf:theblackcat102/evol-codealpaca-v1,retains_prompts,yes,,DOLCI main dataset card,107270 rows
+hf:allenai/Dolci-Instruct-SFT,work:dolci-puzzle-prompts,contains_ai2_authored_puzzles,yes,,DOLCI main dataset card,159882 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,generated:dolci:hardcoded,contains_ai2_authored_prompts,yes,,DOLCI main dataset card,69 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,generated:dolci:precise-if,contains_ai2_authored_prompts,yes,,DOLCI main dataset card,136833 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,generated:dolci:python-algorithms,contains_ai2_authored_prompts,yes,,DOLCI main dataset card,186345 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,generated:dolci:transformations,response_and_mixture_layer,yes,,DOLCI main dataset card,
+hf:allenai/Dolci-Instruct-SFT-No-Tools,generated:dolci:verifiable-reasoning,contains_ai2_authored_prompts,yes,,DOLCI main dataset card,310572 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:CohereForAI/aya_dataset,retains_prompts,yes,,DOLCI main dataset card,99987 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:LipengCS/Table-GPT,retains_prompts,yes,,DOLCI main dataset card,5000 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:OpenAssistant/oasst1,retains_prompts,yes,,DOLCI main dataset card,7132 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:ai2-adapt-dev/flan_v2_converted,retains_prompts,yes,,DOLCI main dataset card,89981 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:allenai/SciRIFF,retains_prompts,yes,,DOLCI main dataset card,4557 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:allenai/WildChat-1M,retains_human_prompts,yes,,DOLCI main dataset card,302406 rows with upgraded responses
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:allenai/coconot,retains_prompts,yes,,DOLCI main dataset card,10957 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:allenai/tulu-3-personas-algebra,retains_prompts,yes,,DOLCI main dataset card,19999 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:allenai/tulu-3-personas-math,retains_prompts,yes,,DOLCI main dataset card,149958 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:allenai/tulu-3-sft-personas-code,retains_prompts,yes,,DOLCI main dataset card,34999 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:allenai/tulu-3-sft-personas-math-grade,retains_prompts,yes,,DOLCI main dataset card,49980 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:allenai/wildguardmix,retains_prompts,yes,,DOLCI main dataset card,49373 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:allenai/wildjailbreak,retains_prompts,yes,,DOLCI main dataset card,49965 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:nvidia/OpenMathInstruct-2,retains_prompts,yes,,DOLCI parquet source labels,50000 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:open-thoughts/OpenThoughts3-1.2M,retains_prompts,yes,,DOLCI main dataset card,99268 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,hf:theblackcat102/evol-codealpaca-v1,retains_prompts,yes,,DOLCI main dataset card,107270 rows
+hf:allenai/Dolci-Instruct-SFT-No-Tools,work:dolci-puzzle-prompts,contains_ai2_authored_puzzles,yes,,DOLCI main dataset card,159882 rows
+hf:allenai/Dolci-Instruct-SFT-Tool-Use,component:dolci-toolu:bfclv3-decontaminated,contains_source_label,yes,,DOLCI parquet dataset_source counts,200000 rows
+hf:allenai/Dolci-Instruct-SFT-Tool-Use,component:dolci-toolu:deepresearch-drv4,contains_source_label,yes,,DOLCI parquet dataset_source counts,5003 rows
+hf:allenai/Dolci-Instruct-SFT-Tool-Use,component:dolci-toolu:s2-m3,contains_source_label,yes,,DOLCI parquet dataset_source counts,8074 rows
+hf:allenai/Dolci-Instruct-SFT-Tool-Use,component:dolci-toolu:s2-m4v2,contains_source_label,yes,,DOLCI parquet dataset_source counts,9085 rows
+hf:allenai/Dolci-Instruct-SFT-Tool-Use,component:dolci-toolu:s2-m5v2,contains_source_label,yes,,DOLCI parquet dataset_source counts,5417 rows
+hf:allenai/Dolci-Instruct-SFT-Tool-Use,generated:dolci:transformations,response_and_mixture_layer,yes,,DOLCI Tool Use card,
+hf:schneiderkamplab/transformations-danish-danish,generated:dfm:transformations,generated_and_audited_layer,yes,,export-upload/transformations-danish-danish/generation_config.json,
+hf:schneiderkamplab/transformations-danish-danish,hf:Lex.dk,retains_seed_expression,yes,,export-upload/transformations-danish-danish/audit_summary.json,4715 rows
+hf:schneiderkamplab/transformations-danish-danish,hf:danish-foundation-models/laerebogen,retains_seed_expression,yes,,export-upload/transformations-danish-danish/audit_summary.json,33837 rows
+hf:schneiderkamplab/transformations-danish-danish,hf:oliverkinch/danmarks-statistik-bt,retains_seed_expression,yes,,export-upload/transformations-danish-danish/audit_summary.json,4604 rows
+hf:schneiderkamplab/transformations-danish-danish,hf:oliverkinch/doab-da-bt,retains_seed_expression,yes,,export-upload/transformations-danish-danish/audit_summary.json,302 rows
+hf:schneiderkamplab/transformations-danish-danish,hf:oliverkinch/instruct-bt,retains_seed_expression,yes,,export-upload/transformations-danish-danish/audit_summary.json,5033 rows
+hf:schneiderkamplab/transformations-danish-danish,hf:oliverkinch/tidsskrift-dk-bt,retains_seed_expression,yes,,export-upload/transformations-danish-danish/audit_summary.json,4843 rows
+hf:schneiderkamplab/transformations-danish-danish,hf:synquid/wiki-instruct-da,retains_seed_expression,yes,,export-upload/transformations-danish-danish/audit_summary.json,8740 rows
+hf:schneiderkamplab/transformations-danish-danish,work:dynaword-covered-passages,retains_seed_expression,yes,,export-upload/transformations-danish-danish/audit_summary.json,146043 rows
+hf:schneiderkamplab/transformations-danish-english,generated:dfm:transformations,generated_and_audited_layer,yes,,export-upload/transformations-danish-english/generation_config.json,
+hf:schneiderkamplab/transformations-danish-english,hf:Lex.dk,retains_seed_expression,yes,,export-upload/transformations-danish-english/audit_summary.json,4725 rows
+hf:schneiderkamplab/transformations-danish-english,hf:danish-foundation-models/laerebogen,retains_seed_expression,yes,,export-upload/transformations-danish-english/audit_summary.json,34378 rows
+hf:schneiderkamplab/transformations-danish-english,hf:oliverkinch/danmarks-statistik-bt,retains_seed_expression,yes,,export-upload/transformations-danish-english/audit_summary.json,5022 rows
+hf:schneiderkamplab/transformations-danish-english,hf:oliverkinch/doab-da-bt,retains_seed_expression,yes,,export-upload/transformations-danish-english/audit_summary.json,302 rows
+hf:schneiderkamplab/transformations-danish-english,hf:oliverkinch/instruct-bt,retains_seed_expression,yes,,export-upload/transformations-danish-english/audit_summary.json,5097 rows
+hf:schneiderkamplab/transformations-danish-english,hf:oliverkinch/tidsskrift-dk-bt,retains_seed_expression,yes,,export-upload/transformations-danish-english/audit_summary.json,4820 rows
+hf:schneiderkamplab/transformations-danish-english,hf:synquid/wiki-instruct-da,retains_seed_expression,yes,,export-upload/transformations-danish-english/audit_summary.json,9132 rows
+hf:schneiderkamplab/transformations-danish-english,work:dynaword-covered-passages,retains_seed_expression,yes,,export-upload/transformations-danish-english/audit_summary.json,147925 rows
+hf:schneiderkamplab/transformations-english-danish,generated:dfm:transformations,generated_and_audited_layer,yes,,export-upload/transformations-english-danish/generation_config.json,
+hf:schneiderkamplab/transformations-english-danish,hf:DBC,retains_seed_expression,yes,,export-upload/transformations-english-danish/audit_summary.json,7671 rows
+hf:schneiderkamplab/transformations-english-danish,hf:Lex.dk,retains_seed_expression,yes,,export-upload/transformations-english-danish/audit_summary.json,283 rows
+hf:schneiderkamplab/transformations-english-danish,hf:ccdv/govreport-summarization,retains_seed_expression,yes,,export-upload/transformations-english-danish/generation_config.json,English seed pool component
+hf:schneiderkamplab/transformations-english-danish,hf:common-pile/arxiv_papers_filtered,retains_seed_expression,yes,,export-upload/transformations-english-danish/generation_config.json,English seed pool component
+hf:schneiderkamplab/transformations-english-danish,hf:laion/Scientific-Summaries,retains_seed_expression,yes,,export-upload/transformations-english-danish/audit_summary.json,Scientific/arXiv aggregate source cluster
+hf:schneiderkamplab/transformations-english-danish,work:facebook-asset-seeds,retains_seed_expression,yes,,export-upload/transformations-english-danish/audit_summary.json,369 rows
+hf:schneiderkamplab/transformations-english-english,generated:dfm:transformations,generated_and_audited_layer,yes,,export-upload/transformations-english-english/generation_config.json,
+hf:schneiderkamplab/transformations-english-english,hf:DBC,retains_seed_expression,yes,,export-upload/transformations-english-english/audit_summary.json,9535 rows
+hf:schneiderkamplab/transformations-english-english,hf:Lex.dk,retains_seed_expression,yes,,export-upload/transformations-english-english/audit_summary.json,352 rows
+hf:schneiderkamplab/transformations-english-english,hf:ccdv/govreport-summarization,retains_seed_expression,yes,,export-upload/transformations-english-english/generation_config.json,English seed pool component
+hf:schneiderkamplab/transformations-english-english,hf:common-pile/arxiv_papers_filtered,retains_seed_expression,yes,,export-upload/transformations-english-english/generation_config.json,English seed pool component
+hf:schneiderkamplab/transformations-english-english,hf:laion/Scientific-Summaries,retains_seed_expression,yes,,export-upload/transformations-english-english/audit_summary.json,Scientific/arXiv aggregate source cluster
+hf:schneiderkamplab/transformations-english-english,work:facebook-asset-seeds,retains_seed_expression,yes,,export-upload/transformations-english-english/audit_summary.json,366 rows
+component:dolci-toolu:bfclv3-decontaminated,generated:dolci:simfc-trajectories,generated_trajectory_layer,yes,,OLMo 3 paper section 5,200000 SimFC rows
+component:dolci-toolu:bfclv3-decontaminated,hf:Salesforce/xlam-function-calling-60k,retains_or_adapts_api_schemas,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,93593 rows contain at least one name-matched xLAM function schema
+component:dolci-toolu:bfclv3-decontaminated,hf:Team-ACE/ToolACE,retains_or_adapts_api_schemas,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,45577 rows contain at least one name-matched ToolACE function schema; lower bound
+component:dolci-toolu:bfclv3-decontaminated,work:dolci:simfc-unassigned-api-schemas,retains_or_adapts_api_schemas,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,92800 rows have no local xLAM or ToolACE schema match
+component:dolci-toolu:s2-m3,generated:dolci:science-qa-trajectories,generated_prompt_and_trajectory_layer,yes,,OLMo 3 paper section 5,8074 rows
+component:dolci-toolu:s2-m3,service:semantic-scholar-response-data,retains_api_response_data,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,1580 rows contain abstract fields
+component:dolci-toolu:s2-m4v2,generated:dolci:science-qa-trajectories,generated_prompt_and_trajectory_layer,yes,,OLMo 3 paper section 5,9085 rows
+component:dolci-toolu:s2-m4v2,service:semantic-scholar-response-data,retains_api_response_data,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,8838 rows contain abstract fields
+component:dolci-toolu:s2-m5v2,generated:dolci:science-qa-trajectories,generated_prompt_and_trajectory_layer,yes,,OLMo 3 paper section 5,5417 rows
+component:dolci-toolu:s2-m5v2,service:semantic-scholar-response-data,retains_api_response_data,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,5304 rows contain abstract fields
+service:semantic-scholar-response-data,work:semantic-scholar-third-party-paper-content,retains_third_party_paper_expression,yes,,Semantic Scholar API License Agreement,Underlying third-party content remains subject to its own terms
+component:dolci-toolu:deepresearch-drv4,generated:dolci:deepresearch-trajectories,generated_trajectory_and_summary_layer,yes,,OLMo 3 paper section 5 and appendix,5003 rows
+component:dolci-toolu:deepresearch-drv4,hf:PersonalAILab/TaskCraft,retains_prompts,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,692 exact prompts
+component:dolci-toolu:deepresearch-drv4,hf:callanwu/WebWalkerQA,retains_prompts,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,49 exact prompts
+component:dolci-toolu:deepresearch-drv4,hf:lmarena-ai/search-arena-24k,retains_prompts,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,2572 exact prompts
+component:dolci-toolu:deepresearch-drv4,hf:allenai/openscilm_queries,retains_prompts,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,1685 exact prompts
+component:dolci-toolu:deepresearch-drv4,work:dolci:deepresearch-residual-prompts,retains_prompts,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,Five rows across four unique prompts
+component:dolci-toolu:deepresearch-drv4,work:dolci:web-search-snippets,retains_search_result_expression,yes,,legal/reports/dfm9-dolci-toolu-component-audit.md,Search snippets remain while fetched webpages were summarized
+hf:allenai/tulu-3-sft-personas-algebra,hf:proj-persona/PersonaHub,conditions_on_personas,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,Approximately 250000 shared personas across the family
+hf:allenai/tulu-3-sft-personas-algebra,generated:tulu3:gpt4o-persona-layer,generated_prompt_and_response_layer,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,20000 rows
+hf:allenai/tulu-3-sft-personas-code,hf:proj-persona/PersonaHub,conditions_on_personas,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,34999 rows
+hf:allenai/tulu-3-sft-personas-code,generated:tulu3:gpt4o-persona-layer,generated_problem_layer,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,34999 Python prompts
+hf:allenai/tulu-3-sft-personas-code,generated:tulu3:claude35-output-layer,generated_solution_layer,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,34999 Python solutions
+hf:allenai/tulu-3-sft-personas-instruction-following,hf:proj-persona/PersonaHub,conditions_on_personas,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,29980 rows
+hf:allenai/tulu-3-sft-personas-instruction-following,work:ifeval-constraint-taxonomy,uses_constraint_taxonomy,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,25 constraint types
+hf:allenai/tulu-3-sft-personas-instruction-following,generated:tulu3:ai2-if-seeds,uses_generation_examples,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,33 Ai2-authored examples
+hf:allenai/tulu-3-sft-personas-instruction-following,generated:tulu3:gpt4o-persona-layer,generated_prompt_and_response_layer,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,29980 rows
+hf:allenai/tulu-3-sft-personas-math,hf:proj-persona/PersonaHub,conditions_on_personas,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,149960 rows
+hf:allenai/tulu-3-sft-personas-math,generated:tulu3:gpt4o-persona-layer,generated_problem_and_solution_layer,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,149960 rows
+hf:allenai/tulu-3-sft-personas-math,generated:tulu3:claude35-output-layer,third_party_output_terms_named_by_subset_card,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,"Subset card names Claude output terms; paper assigns Claude specifically to Python solutions."
+hf:allenai/tulu-3-sft-personas-math-grade,hf:proj-persona/PersonaHub,conditions_on_personas,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,49980 rows
+hf:allenai/tulu-3-sft-personas-math-grade,generated:tulu3:gpt4o-persona-layer,generated_problem_and_solution_layer,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,49980 rows
+hf:allenai/tulu-3-personas-algebra,hf:allenai/tulu-3-sft-personas-algebra,alias_of_audited_release,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,Older Tulu/DOLCI source label
+hf:allenai/tulu-3-personas-math,hf:allenai/tulu-3-sft-personas-math,alias_of_audited_release,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,Older Tulu/DOLCI source label
+hf:allenai/tulu-3-sft-personas-math-filtered,hf:allenai/tulu-3-sft-personas-math,filtered_subset_of,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,80547 majority-vote rows
+hf:allenai/tulu-3-sft-personas-math-grade-filtered,hf:allenai/tulu-3-sft-personas-math-grade,filtered_subset_of,yes,,legal/reports/dfm9-tulu3-persona-family-audit.md,47043 majority-vote rows
+hf:sapientinc/HRM-Text-data-io-cleaned-20260515,component:sapient:platypus,retained_source_family,yes,64438800.0,data/show_analytics_dfm9.md,8 files
+hf:sapientinc/HRM-Text-data-io-cleaned-20260515,component:sapient:synth,retained_source_family,yes,3454133993.8,data/show_analytics_dfm9.md,500 files
+hf:sapientinc/HRM-Text-data-io-cleaned-20260515,component:sapient:amps-mathematica,retained_source_family,yes,398247764.0,data/show_analytics_dfm9.md,137 files
+hf:sapientinc/HRM-Text-data-io-cleaned-20260515,component:sapient:dmmath,retained_source_family,yes,2609114656.8,data/show_analytics_dfm9.md,168 files
+hf:sapientinc/HRM-Text-data-io-cleaned-20260515,component:sapient:flan,retained_source_family,yes,4327889931.6,data/show_analytics_dfm9.md,3644 files
+hf:sapientinc/HRM-Text-data-io-cleaned-20260515,component:sapient:flan-factual,retained_source_family,yes,10199566222.4,data/show_analytics_dfm9.md,266 files
+hf:sapientinc/HRM-Text-data-io-cleaned-20260515,component:sapient:sudoku-extreme,retained_source_family,yes,178000000.0,data/show_analytics_dfm9.md,1 file
+hf:sapientinc/HRM-Text-data-io-cleaned-20260515,component:sapient:tasksource,retained_source_family,yes,148643148.2,data/show_analytics_dfm9.md,161 files
+component:sapient:synth,hf:PleIAs/SYNTH,filtered_conversion_of,yes,,legal/reports/dfm9-sapient-synthetic-math-family-audit.md,
+component:sapient:dmmath,repo:google-deepmind/mathematics_dataset,generated_by_and_converted_from,yes,,legal/reports/dfm9-sapient-synthetic-math-family-audit.md,
+component:sapient:amps-mathematica,dataset:hendrycks/AMPS-mathematica,converted_from,yes,,legal/reports/dfm9-sapient-synthetic-math-family-audit.md,
+component:sapient:sudoku-extreme,hf:sapientinc/sudoku-extreme,converted_from,yes,,legal/reports/dfm9-sapient-synthetic-math-family-audit.md,
+hf:sapientinc/sudoku-extreme,repo:t-dillon/tdoku,retains_benchmark_puzzle_collections,yes,,Sapient dataset card,
+hf:sapientinc/sudoku-extreme,work:enjoysudoku-community-puzzles,retains_community_puzzle_collections,yes,,Sapient dataset card,
+component:sapient:flan-factual,component:sapient-factual:race,retains_task_family,yes,5928810490.0,legal/reports/dfm9-sapient-factual-flan-family-audit.md,72 files
+component:sapient:flan-factual,component:sapient-factual:squad,retains_task_family,yes,818403640.0,legal/reports/dfm9-sapient-factual-flan-family-audit.md,16 files
+component:sapient:flan-factual,component:sapient-factual:quac,retains_task_family,yes,712351845.8,legal/reports/dfm9-sapient-factual-flan-family-audit.md,4 files
+component:sapient:flan-factual,component:sapient-factual:ropes,retains_task_family,yes,710297538.0,legal/reports/dfm9-sapient-factual-flan-family-audit.md,54 files
+component:sapient:flan-factual,component:sapient-factual:drop,retains_task_family,yes,617533186.8,legal/reports/dfm9-sapient-factual-flan-family-audit.md,10 files
+component:sapient:flan-factual,component:sapient-factual:hotpotqa,retains_task_family,yes,595781798.0,legal/reports/dfm9-sapient-factual-flan-family-audit.md,28 files
+component:sapient:flan-factual,component:sapient-factual:wikidialog,retains_task_family,yes,366934118.2,legal/reports/dfm9-sapient-factual-flan-family-audit.md,4 files
+component:sapient:flan-factual,component:sapient-factual:dream,retains_task_family,yes,192229708.0,legal/reports/dfm9-sapient-factual-flan-family-audit.md,28 files
+component:sapient:flan-factual,component:sapient-factual:coqa,retains_task_family,yes,82494160.0,legal/reports/dfm9-sapient-factual-flan-family-audit.md,8 files
+component:sapient:flan-factual,component:sapient-factual:triviaqa,retains_task_family,yes,61108488.2,legal/reports/dfm9-sapient-factual-flan-family-audit.md,8 files
+component:sapient:flan-factual,component:sapient-factual:boolq,retains_task_family,yes,50877384.0,legal/reports/dfm9-sapient-factual-flan-family-audit.md,8 files
+component:sapient:flan-factual,component:sapient-factual:natural-questions,retains_task_family,yes,46898189.4,legal/reports/dfm9-sapient-factual-flan-family-audit.md,4 files
+component:sapient:flan-factual,component:sapient-factual:webquestions,retains_task_family,yes,15845676.0,legal/reports/dfm9-sapient-factual-flan-family-audit.md,22 files
+component:sapient-factual:race,hf:EleutherAI/race,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,
+component:sapient-factual:squad,hf:rajpurkar/squad,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,SQuAD v1 tasks
+component:sapient-factual:squad,hf:rajpurkar/squad_v2,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,SQuAD v2 tasks
+component:sapient-factual:quac,hf:allenai/quac,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,
+component:sapient-factual:ropes,hf:allenai/ropes,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,
+component:sapient-factual:drop,hf:ucinlp/drop,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,
+component:sapient-factual:hotpotqa,hf:hotpotqa/hotpot_qa,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,Includes KILT-labelled HotpotQA transformations
+component:sapient-factual:wikidialog,hf:djaym7/wiki_dialog,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,
+component:sapient-factual:dream,hf:dataset-org/dream,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,
+component:sapient-factual:coqa,hf:stanfordnlp/coqa,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,
+component:sapient-factual:triviaqa,hf:mandarjoshi/trivia_qa,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,
+component:sapient-factual:boolq,hf:google/boolq,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,
+component:sapient-factual:natural-questions,hf:google-research-datasets/natural_questions,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,
+component:sapient-factual:webquestions,hf:stanfordnlp/web_questions,converted_from,yes,,legal/reports/dfm9-sapient-factual-flan-family-audit.md,
+hf:mandarjoshi/trivia_qa,web:triviaqa:sfquiz,retains_questions_from,no,14802302.4,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:odquiz,retains_questions_from,no,8050401.7,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:quizwise,retains_questions_from,no,7891549.9,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:quizballs,retains_questions_from,no,5867137.4,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:businessballs,retains_questions_from,no,4902491.4,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:derbyshire,retains_questions_from,no,3185242.6,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:quizguy,retains_questions_from,no,2640613.5,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:wrexham,retains_questions_from,no,2520997.8,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:jetpunk,retains_questions_from,no,2495209.0,legal/registers/dfm9-triviaqa-source-rights.csv,"Current ai-train=no remains recorded; non-blocking after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:quiz-zone,retains_questions_from,no,2242050.0,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:billturnbull,retains_questions_from,no,2129594.0,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:quiz4free,retains_questions_from,no,1732267.8,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:triviacountry,retains_questions_from,no,1547787.3,legal/registers/dfm9-triviaqa-source-rights.csv,"Current robots prohibition remains recorded; non-blocking after manual Apache-2.0 reliance."
+hf:mandarjoshi/trivia_qa,web:triviaqa:triviabug,retains_questions_from,no,1100843.6,legal/registers/dfm9-triviaqa-source-rights.csv,"Non-blocking provenance after manual Apache-2.0 reliance."
+hf:schneiderkamplab/dfm8-openhermes-da,hf:teknium/OpenHermes-2.5,translated_and_repaired_from,yes,,legal/reports/dfm9-openhermes-component-audit.md,Translation and repair do not erase inherited prompt rights; MAN-016 applies.
+hf:schneiderkamplab/dfm8-openhermes-en,hf:teknium/OpenHermes-2.5,repaired_from,yes,,legal/reports/dfm9-openhermes-component-audit.md,Repair does not erase inherited prompt rights; MAN-016 applies.
+component:sapient:flan,component:sapient-flan:cot,retains_submixture,yes,101174105.0,legal/registers/dfm9-sapient-instruction-family-inventory.csv,36 files.
+component:sapient:flan,component:sapient-flan:flan2021,retains_submixture,yes,291355542.6,legal/registers/dfm9-sapient-instruction-family-inventory.csv,200 files.
+component:sapient:flan,component:sapient-flan:niv2,retains_submixture,yes,2399621335.4,legal/registers/dfm9-sapient-instruction-family-inventory.csv,2860 files.
+component:sapient:flan,component:sapient-flan:t0,retains_submixture,yes,1535738948.6,legal/registers/dfm9-sapient-instruction-family-inventory.csv,548 files.
+component:sapient:tasksource,component:sapient-tasksource:licensed,retains_task_files,yes,78884609.4,legal/registers/dfm9-sapient-instruction-family-inventory.csv,77 files.
+component:sapient:tasksource,component:sapient-tasksource:residual,retains_task_files,yes,69758538.8,legal/registers/dfm9-sapient-instruction-family-inventory.csv,84 files.
+component:sapient:platypus,component:sapient-platypus:arb,retains_task_family,yes,3478980.0,legal/registers/dfm9-sapient-instruction-family-inventory.csv,Five files.
+component:sapient:platypus,component:sapient-platypus:openbookqa,retains_task_family,yes,4443600.0,legal/registers/dfm9-sapient-instruction-family-inventory.csv,One file.
+component:sapient:platypus,component:sapient-platypus:scienceqa,retains_task_family,yes,55947160.0,legal/registers/dfm9-sapient-instruction-family-inventory.csv,One file.
+component:sapient:platypus,component:sapient-platypus:theoremqa,retains_task_family,yes,569060.0,legal/registers/dfm9-sapient-instruction-family-inventory.csv,One file.
+hf:allenai/IF_sft_data_verified,generated:allenai:if-sft-constraint-response-layer,adds_constraints_and_regenerates_responses,yes,,legal/reports/dfm9-tulu-v2-sciriff-if-sft-audit.md,31751 rows.
+hf:allenai/IF_sft_data_verified,hf:allenai/tulu-3-sft-mixture,retains_prompts_from,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,Every local ID exactly matches a Tulu 3 source row.
+hf:allenai/SciRIFF-train-mix,hf:allenai/SciRIFF,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,35000 local rows.
+hf:allenai/SciRIFF-train-mix,hf:allenai/tulu-v2-sft-mixture,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,35714 local rows sampled from Tulu v2.
+hf:allenai/tulu-v2-sft-mixture,component:tulu-v2:flan-v2,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,49123 FLAN v2 plus 49747 CoT rows.
+hf:allenai/tulu-v2-sft-mixture,generated:allenai:tulu-v2-hardcoded,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,140 rows.
+hf:allenai/tulu-v2-sft-mixture,hf:GAIR/lima,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,1018 rows.
+hf:allenai/tulu-v2-sft-mixture,hf:Open-Orca/OpenOrca,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,29683 rows.
+hf:allenai/tulu-v2-sft-mixture,hf:OpenAssistant/oasst1,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,7331 rows.
+hf:allenai/tulu-v2-sft-mixture,hf:WizardLMTeam/WizardLM_evol_instruct_V2_196k,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,29810 rows.
+hf:allenai/tulu-v2-sft-mixture,hf:allenai/SciRIFF,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,7468 science rows.
+hf:allenai/tulu-v2-sft-mixture,hf:anon8231489123/ShareGPT_Vicuna_unfiltered,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,111912 split conversation chunks.
+hf:allenai/tulu-v2-sft-mixture,source:Instruction-Tuning-with-GPT-4/GPT-4-LLM,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,19906 rows.
+hf:allenai/tulu-v2-sft-mixture,source:sahil280114/codealpaca,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,20016 rows.
+hf:allenai/tulu-v2-sft-long-mixture,component:tulu-v2:flan-v2,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,49123 FLAN v2 plus 49747 CoT rows.
+hf:allenai/tulu-v2-sft-long-mixture,generated:allenai:tulu-v2-hardcoded,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,140 rows.
+hf:allenai/tulu-v2-sft-long-mixture,hf:GAIR/lima,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,1018 rows.
+hf:allenai/tulu-v2-sft-long-mixture,hf:Open-Orca/OpenOrca,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,29683 rows.
+hf:allenai/tulu-v2-sft-long-mixture,hf:OpenAssistant/oasst1,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,7331 rows.
+hf:allenai/tulu-v2-sft-long-mixture,hf:WizardLMTeam/WizardLM_evol_instruct_V2_196k,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,29810 rows.
+hf:allenai/tulu-v2-sft-long-mixture,hf:allenai/SciRIFF,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,7468 science rows.
+hf:allenai/tulu-v2-sft-long-mixture,hf:anon8231489123/ShareGPT_Vicuna_unfiltered,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,74312 unsplit conversations.
+hf:allenai/tulu-v2-sft-long-mixture,source:Instruction-Tuning-with-GPT-4/GPT-4-LLM,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,19906 rows.
+hf:allenai/tulu-v2-sft-long-mixture,source:sahil280114/codealpaca,mixture_component,yes,,legal/registers/dfm9-tulu-v2-sciriff-if-sft-component-audit.csv,20016 rows.

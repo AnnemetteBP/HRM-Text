@@ -1,0 +1,181 @@
+{
+  "method": "Exact normalized-question Aho-Corasick match against TriviaQA rc.nocontext train/validation/test. The final matching upstream question in each transformed instruction is the target. Duplicate-source questions split evenly. Per-epoch estimates apply each file cap=100000 and repeat=2; token allocations are proportionally reconciled to the authoritative 61108488.2 tokens/epoch.",
+  "upstream_rows": 173538,
+  "upstream_unique_questions": 96001,
+  "retained_files": 8,
+  "files": [
+    {
+      "file": "flan_fsnoopt_data__trivia_qa_rc_1.1.0.parquet",
+      "rows": 73324,
+      "cap": 73324,
+      "repeat_weight": 2.0,
+      "unmatched": 0,
+      "ambiguous": 3
+    },
+    {
+      "file": "flan_fsopt_data__trivia_qa_rc_1.1.0.parquet",
+      "rows": 137346,
+      "cap": 100000,
+      "repeat_weight": 1.4561763720821865,
+      "unmatched": 0,
+      "ambiguous": 5
+    },
+    {
+      "file": "flan_zsnoopt_data__trivia_qa_rc_1.1.0.parquet",
+      "rows": 79623,
+      "cap": 79623,
+      "repeat_weight": 2.0,
+      "unmatched": 0,
+      "ambiguous": 4
+    },
+    {
+      "file": "flan_zsopt_data__trivia_qa_rc_1.1.0.parquet",
+      "rows": 82955,
+      "cap": 82955,
+      "repeat_weight": 2.0,
+      "unmatched": 0,
+      "ambiguous": 3
+    },
+    {
+      "file": "niv2_fsopt_data__task1564_triviaqa_answer_generation.parquet",
+      "rows": 218,
+      "cap": 218,
+      "repeat_weight": 2.0,
+      "unmatched": 1,
+      "ambiguous": 0
+    },
+    {
+      "file": "niv2_fsopt_data__task1565_triviaqa_classification.parquet",
+      "rows": 216,
+      "cap": 216,
+      "repeat_weight": 2.0,
+      "unmatched": 0,
+      "ambiguous": 0
+    },
+    {
+      "file": "niv2_zsopt_data__task1564_triviaqa_answer_generation.parquet",
+      "rows": 109,
+      "cap": 109,
+      "repeat_weight": 2.0,
+      "unmatched": 13,
+      "ambiguous": 0
+    },
+    {
+      "file": "niv2_zsopt_data__task1565_triviaqa_classification.parquet",
+      "rows": 108,
+      "cap": 108,
+      "repeat_weight": 2.0,
+      "unmatched": 12,
+      "ambiguous": 0
+    }
+  ],
+  "sources": [
+    {
+      "source": "www.sfquiz.org.uk",
+      "matched_transformed_rows": 91795.5,
+      "estimated_rows_per_epoch": 165241.5750587021,
+      "estimated_tokens_per_epoch_raw": 14801788.904474825,
+      "allocated_authoritative_tokens_per_epoch": 14802302.396973686
+    },
+    {
+      "source": "http://www.odquiz.org.uk/",
+      "matched_transformed_rows": 48639.0,
+      "estimated_rows_per_epoch": 87531.59294047186,
+      "estimated_tokens_per_epoch_raw": 8050122.390109662,
+      "allocated_authoritative_tokens_per_epoch": 8050401.65888514
+    },
+    {
+      "source": "http://www.quizwise.com/",
+      "matched_transformed_rows": 45273.0,
+      "estimated_rows_per_epoch": 81555.77969508353,
+      "estimated_tokens_per_epoch_raw": 7891276.115285491,
+      "allocated_authoritative_tokens_per_epoch": 7891549.873485786
+    },
+    {
+      "source": "http://www.quizballs.com/",
+      "matched_transformed_rows": 36832.0,
+      "estimated_rows_per_epoch": 66269.08630756696,
+      "estimated_tokens_per_epoch_raw": 5866933.857003481,
+      "allocated_authoritative_tokens_per_epoch": 5867137.388248679
+    },
+    {
+      "source": "http://www.businessballs.com/",
+      "matched_transformed_rows": 29956.0,
+      "estimated_rows_per_epoch": 53971.27068862138,
+      "estimated_tokens_per_epoch_raw": 4902321.283677716,
+      "allocated_authoritative_tokens_per_epoch": 4902491.35131092
+    },
+    {
+      "source": "https://derbyshirepubquizleague.wordpress.com/",
+      "matched_transformed_rows": 20378.5,
+      "estimated_rows_per_epoch": 36677.23514336393,
+      "estimated_tokens_per_epoch_raw": 3185132.1464913273,
+      "allocated_authoritative_tokens_per_epoch": 3185242.6426938917
+    },
+    {
+      "source": "https://quizguy.wordpress.com/",
+      "matched_transformed_rows": 14843.0,
+      "estimated_rows_per_epoch": 26737.932113060786,
+      "estimated_tokens_per_epoch_raw": 2640521.8521398483,
+      "allocated_authoritative_tokens_per_epoch": 2640613.455132764
+    },
+    {
+      "source": "http://www.wrexhamquizleague.co.uk/",
+      "matched_transformed_rows": 14836.0,
+      "estimated_rows_per_epoch": 26696.740931664914,
+      "estimated_tokens_per_epoch_raw": 2520910.333347895,
+      "allocated_authoritative_tokens_per_epoch": 2520997.786868198
+    },
+    {
+      "source": "www.jetpunk.com",
+      "matched_transformed_rows": 16346.0,
+      "estimated_rows_per_epoch": 29449.179706730116,
+      "estimated_tokens_per_epoch_raw": 2495122.4233978335,
+      "allocated_authoritative_tokens_per_epoch": 2495208.982303411
+    },
+    {
+      "source": "https://www.quiz-zone.co.uk/",
+      "matched_transformed_rows": 13948.0,
+      "estimated_rows_per_epoch": 25099.658905249373,
+      "estimated_tokens_per_epoch_raw": 2241972.2678782027,
+      "allocated_authoritative_tokens_per_epoch": 2242050.0446894816
+    },
+    {
+      "source": "http://billturnbull.quiz4free.com/",
+      "matched_transformed_rows": 14032.0,
+      "estimated_rows_per_epoch": 25275.816259668212,
+      "estimated_tokens_per_epoch_raw": 2129520.089875197,
+      "allocated_authoritative_tokens_per_epoch": 2129593.965580315
+    },
+    {
+      "source": "http://quiz4free.com/",
+      "matched_transformed_rows": 11139.0,
+      "estimated_rows_per_epoch": 20016.781355118903,
+      "estimated_tokens_per_epoch_raw": 1732207.6724768037,
+      "allocated_authoritative_tokens_per_epoch": 1732267.7649191448
+    },
+    {
+      "source": "http://www.triviacountry.com/",
+      "matched_transformed_rows": 10008.0,
+      "estimated_rows_per_epoch": 18010.378460239666,
+      "estimated_tokens_per_epoch_raw": 1547733.6400914562,
+      "allocated_authoritative_tokens_per_epoch": 1547787.332899775
+    },
+    {
+      "source": "http://triviabug.com/q-and-a-quizzes/",
+      "matched_transformed_rows": 5847.0,
+      "estimated_rows_per_epoch": 10520.972434581206,
+      "estimated_tokens_per_epoch_raw": 1100805.3676990941,
+      "allocated_authoritative_tokens_per_epoch": 1100843.556008809
+    }
+  ],
+  "totals": {
+    "transformed_rows": 373899,
+    "matched_rows": 373873.0,
+    "unmatched_rows": 26,
+    "estimated_rows_per_epoch": 673054.0000001229,
+    "estimated_tokens_per_epoch_raw": 61106368.34394883,
+    "authoritative_tokens_per_epoch": 61108488.2,
+    "reconciliation_scale": 1.0000346912459146
+  }
+}

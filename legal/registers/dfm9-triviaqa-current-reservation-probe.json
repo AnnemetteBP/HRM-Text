@@ -1,0 +1,402 @@
+[
+  {
+    "source": "www.sfquiz.org.uk",
+    "base": "https://www.sfquiz.org.uk",
+    "root": {
+      "error": "SSLError: HTTPSConnectionPool(host='www.sfquiz.org.uk', port=443): Max retries exceeded with url: / (Caused by SSLError(SSLCertVerificationError(1, \"[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'www.sfquiz.org.uk'. (_ssl.c:1032)\")))"
+    },
+    "robots": {
+      "error": "SSLError: HTTPSConnectionPool(host='www.sfquiz.org.uk', port=443): Max retries exceeded with url: /robots.txt (Caused by SSLError(SSLCertVerificationError(1, \"[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'www.sfquiz.org.uk'. (_ssl.c:1032)\")))"
+    },
+    "tdmrep": {
+      "error": "SSLError: HTTPSConnectionPool(host='www.sfquiz.org.uk', port=443): Max retries exceeded with url: /.well-known/tdmrep.json (Caused by SSLError(SSLCertVerificationError(1, \"[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'www.sfquiz.org.uk'. (_ssl.c:1032)\")))"
+    }
+  },
+  {
+    "source": "http://www.odquiz.org.uk/",
+    "base": "http://www.odquiz.org.uk",
+    "root": {
+      "error": "ConnectTimeout: HTTPConnectionPool(host='www.odquiz.org.uk', port=80): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='www.odquiz.org.uk', port=80) at 0x7f30852f2190>, 'Connection to www.odquiz.org.uk timed out. (connect timeout=12)'))"
+    },
+    "robots": {
+      "error": "ConnectTimeout: HTTPConnectionPool(host='www.odquiz.org.uk', port=80): Max retries exceeded with url: /robots.txt (Caused by ConnectTimeoutError(<HTTPConnection(host='www.odquiz.org.uk', port=80) at 0x7f308538dc50>, 'Connection to www.odquiz.org.uk timed out. (connect timeout=12)'))"
+    },
+    "tdmrep": {
+      "error": "ConnectTimeout: HTTPConnectionPool(host='www.odquiz.org.uk', port=80): Max retries exceeded with url: /.well-known/tdmrep.json (Caused by ConnectTimeoutError(<HTTPConnection(host='www.odquiz.org.uk', port=80) at 0x7f308538df50>, 'Connection to www.odquiz.org.uk timed out. (connect timeout=12)'))"
+    }
+  },
+  {
+    "source": "http://www.quizwise.com/",
+    "base": "http://www.quizwise.com",
+    "root": {
+      "status": 200,
+      "final_url": "https://www.quizwise.com/",
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "hits": [],
+      "body_head": "\r <!DOCTYPE html>\r <html lang=\"en\">\r <head>\r     <title>Quizwise.com | Daily General Knowledge Quiz</title>\r     <meta charset=\"UTF-8\">\r     <meta name=\"HandheldFriendly\" content=\"true\" />\r     <meta "
+    },
+    "robots": {
+      "status": 200,
+      "final_url": "https://www.quizwise.com/robots.txt",
+      "headers": {
+        "Content-Type": "text/plain"
+      },
+      "hits": [],
+      "body_head": "\u00ef\u00bb\u00bfUser-agent: *\r Disallow: \r \r \r # Sitemap files\r Sitemap: https://www.quizwise.com/sitemap.xml"
+    },
+    "tdmrep": {
+      "status": 404,
+      "final_url": "https://www.quizwise.com/.well-known/tdmrep.json",
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\r <html xmlns=\"http://www.w3.org/1999/xhtml\">\r <head>\r <meta http-equiv=\"Content-Type\" cont"
+    }
+  },
+  {
+    "source": "http://www.quizballs.com/",
+    "base": "http://www.quizballs.com",
+    "root": {
+      "status": 200,
+      "final_url": "https://www.quizballs.com/",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html><html lang=\"en-GB\" prefix=\"og: https://ogp.me/ns#\"><head itemscope=\"\" itemtype=\"https://schema.org/WebSite\"><script> // templated by golang  function __setCMPv2RequestData() {     windo"
+    },
+    "robots": {
+      "status": 200,
+      "final_url": "https://www.quizballs.com/robots.txt",
+      "headers": {
+        "Content-Type": "text/plain"
+      },
+      "hits": [],
+      "body_head": "User-agent: * Disallow: /wp-admin/ Allow: /wp-admin/admin-ajax.php "
+    },
+    "tdmrep": {
+      "status": 404,
+      "final_url": "https://www.quizballs.com/.well-known/tdmrep.json",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [
+        "noindex"
+      ],
+      "body_head": "<!DOCTYPE html> <html lang=\"en-GB\" prefix=\"og: https://ogp.me/ns#\"> <head > <meta charset=\"UTF-8\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />  <!-- Search Engine Optimisa"
+    }
+  },
+  {
+    "source": "http://www.businessballs.com/",
+    "base": "http://www.businessballs.com",
+    "root": {
+      "status": 200,
+      "final_url": "https://www.businessballs.com/",
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html><html lang=\"en\" data-astro-cid-37fxchfa> <head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><!-- Google Consent Mode v2 \u00e2\u0080\u0094 fail-closed de"
+    },
+    "robots": {
+      "status": 200,
+      "final_url": "https://www.businessballs.com/robots.txt",
+      "headers": {
+        "Content-Type": "text/plain"
+      },
+      "hits": [],
+      "body_head": "# ============================================= # BusinessBalls robots.txt # Platform: Astro (static site) # Last updated: 2026-05-27 # =============================================  # Sitemap Sitemap"
+    },
+    "tdmrep": {
+      "status": 404,
+      "final_url": "https://www.businessballs.com/.well-known/tdmrep.json",
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html><html lang=\"en\" data-astro-cid-37fxchfa> <head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><!-- Google Consent Mode v2 \u00e2\u0080\u0094 fail-closed de"
+    }
+  },
+  {
+    "source": "https://derbyshirepubquizleague.wordpress.com/",
+    "base": "https://derbyshirepubquizleague.wordpress.com",
+    "root": {
+      "status": 200,
+      "final_url": "https://derbyshirepubquizleague.wordpress.com/",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"> <html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\"> <head profile=\"http://gm"
+    },
+    "robots": {
+      "status": 200,
+      "final_url": "https://derbyshirepubquizleague.wordpress.com/robots.txt",
+      "headers": {
+        "Content-Type": "text/plain; charset=utf-8"
+      },
+      "hits": [],
+      "body_head": "# If you are regularly crawling WordPress.com sites, please use our firehose to receive real-time push updates instead. # Please see https://developer.wordpress.com/docs/firehose/ for more details.  S"
+    },
+    "tdmrep": {
+      "status": 404,
+      "final_url": "https://derbyshirepubquizleague.wordpress.com/.well-known/tdmrep.json",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"> <html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\"> <head profile=\"http://gm"
+    }
+  },
+  {
+    "source": "https://quizguy.wordpress.com/",
+    "base": "https://quizguy.wordpress.com",
+    "root": {
+      "status": 200,
+      "final_url": "https://quizguy.wordpress.com/",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"> <html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\"> <head profile=\"http://gm"
+    },
+    "robots": {
+      "status": 200,
+      "final_url": "https://quizguy.wordpress.com/robots.txt",
+      "headers": {
+        "Content-Type": "text/plain; charset=utf-8"
+      },
+      "hits": [],
+      "body_head": "# If you are regularly crawling WordPress.com sites, please use our firehose to receive real-time push updates instead. # Please see https://developer.wordpress.com/docs/firehose/ for more details.  S"
+    },
+    "tdmrep": {
+      "status": 404,
+      "final_url": "https://quizguy.wordpress.com/.well-known/tdmrep.json",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"> <html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\"> <head profile=\"http://gm"
+    }
+  },
+  {
+    "source": "http://www.wrexhamquizleague.co.uk/",
+    "base": "http://www.wrexhamquizleague.co.uk",
+    "root": {
+      "status": 200,
+      "final_url": "http://www.wrexhamquizleague.co.uk/",
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<?xml version=\"1.0\" encoding=\"utf-8\"?><!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"> <html xmlns=\"http://www.w3.org/1999/xhtm"
+    },
+    "robots": {
+      "status": 404,
+      "final_url": "http://www.wrexhamquizleague.co.uk/robots.txt",
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html> <html style=\"height:100%\"> <head> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, shrink-to-fit=no\" /> <title> 404 Not Found\r </title><style>@media (prefers-color-s"
+    },
+    "tdmrep": {
+      "status": 404,
+      "final_url": "http://www.wrexhamquizleague.co.uk/.well-known/tdmrep.json",
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html> <html style=\"height:100%\"> <head> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, shrink-to-fit=no\" /> <title> 404 Not Found\r </title><style>@media (prefers-color-s"
+    }
+  },
+  {
+    "source": "www.jetpunk.com",
+    "base": "https://www.jetpunk.com",
+    "root": {
+      "status": 200,
+      "final_url": "https://www.jetpunk.com/",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html> <html lang='en'> <head>   <meta name='description' content=\"\">   <meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>   <link rel=\"preconnect\" href=\"https://cdnjs.cloudf"
+    },
+    "robots": {
+      "status": 200,
+      "final_url": "https://www.jetpunk.com/robots.txt",
+      "headers": {
+        "Content-Type": "text/plain; charset=utf-8"
+      },
+      "hits": [],
+      "body_head": "# As a condition of accessing this website, you agree to abide by the following # content signals:  # (a)  If a Content-Signal = yes, you may collect content for the corresponding #      use. # (b)  I"
+    },
+    "tdmrep": {
+      "status": 404,
+      "final_url": "https://www.jetpunk.com/.well-known/tdmrep.json",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "<!DOCTYPE html> <html lang='en'> <head>   <meta name='description' content=\"\">   <meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>   <link rel=\"preconnect\" href=\"https://cdnjs.cloudf"
+    }
+  },
+  {
+    "source": "https://www.quiz-zone.co.uk/",
+    "base": "https://www.quiz-zone.co.uk",
+    "root": {
+      "status": 200,
+      "final_url": "https://www.quiz-zone.co.uk/",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "  <!DOCTYPE html>  <html lang=\"en\"> <head>     <meta charset=\"UTF-8\">     <META NAME=\"author\" CONTENT=\"Gary Pollock\">     <META NAME=\"title\" CONTENT=\"quiz-zone: quiz questions and quizzes for fun or f"
+    },
+    "robots": {
+      "status": 404,
+      "final_url": "https://www.quiz-zone.co.uk/robots.txt",
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<html lang=\"en\"> <head>     <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">     <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>     <link href=\"https://fonts.googleapi"
+    },
+    "tdmrep": {
+      "status": 404,
+      "final_url": "https://www.quiz-zone.co.uk/.well-known/tdmrep.json",
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<html lang=\"en\"> <head>     <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">     <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>     <link href=\"https://fonts.googleapi"
+    }
+  },
+  {
+    "source": "http://billturnbull.quiz4free.com/",
+    "base": "http://billturnbull.quiz4free.com",
+    "root": {
+      "status": 200,
+      "final_url": "http://billturnbull.quiz4free.com/",
+      "headers": {
+        "content-type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<!doctype html> <html lang=\"en\">  <head>   <meta charset=\"UTF-8\" />   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />   <!-- Send the parked domain's origin as the referrer so"
+    },
+    "robots": {
+      "status": 404,
+      "final_url": "http://billturnbull.quiz4free.com/robots.txt",
+      "headers": {
+        "content-type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>nginx/1.28.3 (Ubuntu)</center>\r </body>\r </html>\r "
+    },
+    "tdmrep": {
+      "status": 404,
+      "final_url": "http://billturnbull.quiz4free.com/.well-known/tdmrep.json",
+      "headers": {
+        "content-type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>nginx/1.28.3 (Ubuntu)</center>\r </body>\r </html>\r "
+    }
+  },
+  {
+    "source": "http://quiz4free.com/",
+    "base": "http://quiz4free.com",
+    "root": {
+      "status": 200,
+      "final_url": "https://quiz4free.com/",
+      "headers": {
+        "content-type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<!doctype html> <html lang=\"en\">  <head>   <meta charset=\"UTF-8\" />   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />   <!-- Send the parked domain's origin as the referrer so"
+    },
+    "robots": {
+      "status": 404,
+      "final_url": "https://quiz4free.com/robots.txt",
+      "headers": {
+        "content-type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>nginx/1.28.3 (Ubuntu)</center>\r </body>\r </html>\r "
+    },
+    "tdmrep": {
+      "status": 404,
+      "final_url": "https://quiz4free.com/.well-known/tdmrep.json",
+      "headers": {
+        "content-type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>nginx/1.28.3 (Ubuntu)</center>\r </body>\r </html>\r "
+    }
+  },
+  {
+    "source": "http://www.triviacountry.com/",
+    "base": "http://www.triviacountry.com",
+    "root": {
+      "status": 200,
+      "final_url": "http://www.triviacountry.com/",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "<!-- Welcome, this is the default page for your hosting plan, if you are seeing this page it means you have not added any files to your hosting account yet.  This page can be deleted at any time. --> "
+    },
+    "robots": {
+      "status": 200,
+      "final_url": "http://www.triviacountry.com/robots.txt",
+      "headers": {
+        "Content-Type": "text/plain"
+      },
+      "hits": [],
+      "body_head": "User-agent: * Disallow: / "
+    },
+    "tdmrep": {
+      "status": 403,
+      "final_url": "http://www.triviacountry.com/.well-known/tdmrep.json",
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "hits": [],
+      "body_head": "<html>\r <head><title>403 Forbidden</title></head>\r <body>\r <center><h1>403 Forbidden</h1></center>\r <hr><center>nginx</center>\r </body>\r </html>\r "
+    }
+  },
+  {
+    "source": "http://triviabug.com/q-and-a-quizzes/",
+    "base": "http://triviabug.com",
+    "root": {
+      "status": 200,
+      "final_url": "https://triviabug.com/",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "<!doctype html> <html class=\"noJS\" lang=\"en-us\"> <head> \t<meta charset=\"utf-8\"> \t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">  \t<title>Free Trivia Quiz Questions &ndash; Trivia"
+    },
+    "robots": {
+      "status": 404,
+      "final_url": "https://triviabug.com/robots.txt",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "<!doctype html> <html class=\"noJS\" lang=\"en-us\"> <head> \t<meta charset=\"utf-8\"> \t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">  \t<title>Are we missing something? &ndash; TriviaB"
+    },
+    "tdmrep": {
+      "status": 404,
+      "final_url": "http://triviabug.com/.well-known/tdmrep.json",
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "hits": [],
+      "body_head": "<!doctype html> <html class=\"noJS\" lang=\"en-us\"> <head> \t<meta charset=\"utf-8\"> \t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">  \t<title>Are we missing something? &ndash; TriviaB"
+    }
+  }
+]

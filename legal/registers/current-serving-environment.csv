@@ -1,0 +1,11 @@
+package,version
+torch,2.11.0
+transformers,5.12.1
+tokenizers,0.22.2
+vllm,0.23.1rc1.dev102+ga46abb7ae
+flash-attn-4,4.0.0b14.dev5+g4178915.d20260520
+ninja,1.13.0
+cuda-toolkit,13.0.2
+nvidia-cuda-nvcc,13.2.78
+safetensors,0.8.0
+accelerate,1.13.0

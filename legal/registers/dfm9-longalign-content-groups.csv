@@ -1,0 +1,12 @@
+group,rows,share_percent,median_prompt_chars,explicit_copyright_marker_rows,method_confidence,current_research_basis,risk_note
+scholarly/research,2168,21.9,50723,252,medium,article3_current_research,Papers and reports often retain complete authored text and references.
+government/legal/procurement,1955,19.8,39485,242,medium,article3_current_research,Some public-sector works may be public domain or freely reusable but jurisdiction and document-level terms are not mapped.
+software/code/technical-QA,1479,15.0,27621,86,medium,article3_current_research,Source code and Stack-style posts require source-level licence and attribution mapping.
+books/literary/publisher,1203,12.2,60293,761,medium,article3_current_research,Highest direct copyright exposure; examples include complete publisher ebooks and explicit no-reproduction notices.
+unclassified/mixed,939,9.5,20343,16,low,article3_current_research,Requires manual or model-assisted classification before any non-research reuse.
+news/blog/general_web,846,8.6,25499,62,medium,article3_current_research,Authored web articles and reposts commonly retain expressive prose.
+corporate/financial/ESG,805,8.1,20856,77,medium,article3_current_research,Reports and corporate publications can be protected despite public accessibility.
+encyclopedia/reference,186,1.9,23868,1,medium,article3_current_research,Likely mixed Wikipedia and other reference sources; attribution and share-alike terms need source mapping.
+public-domain/library,121,1.2,57006,44,medium,direct_or_public_domain_after_verification,Project Gutenberg and similar markers are promising but edition and jurisdiction still require verification.
+manual/technical_documentation,104,1.1,48584,19,medium,article3_current_research,Manuals can carry restrictive copyright notices and software-specific permissions.
+education/course/textbook,82,0.8,45384,12,medium,article3_current_research,Course packs and textbooks can contain substantial protected expression.

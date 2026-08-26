@@ -1,0 +1,26 @@
+evidence_id,claim_or_artifact,source,confidence,classification,notes
+EVD-001,Mimir model card and release files,https://huggingface.co/danish-foundation-models/DFM-Mimir,high,public,Gated automatic access
+EVD-002,Mimir technical report,https://arxiv.org/abs/2608.13517,high,public,Version 1 dated 2026-08-13
+EVD-003,MIMIR License v1.0,https://huggingface.co/danish-foundation-models/DFM-Mimir/blob/main/LICENSE,high,public,Non-commercial research licence
+EVD-004,Final DFM8 161-source inventory,docs/dfm8-datasets.md,high,internal/public-draft,"70,479,308,606 token checksum"
+EVD-005,DFM8 sampled metadata,data/sampled_dfm8/metadata.json,high,internal,Metadata total differs slightly from report checksum and must be reconciled
+EVD-006,DFM7 sampled metadata,data/sampled_dfm7/metadata.json,high,internal,"66,657,268,330 tokens"
+EVD-007,DFM6 sampled metadata,data/sampled_dfm6/metadata.json,high,internal,"62,819,933,768 tokens"
+EVD-008,Training FLOP calculation,wiki/pages/model-architecture/hrm-xl-training-flops.md,medium,internal,Engineering upper bound pending independent review
+EVD-009,HF export and loader compatibility,wiki/pages/model-architecture/hf-export-and-eval-loader-compatibility.md,high,internal,Serving semantics and packed-weight evidence
+EVD-010,Published HF export,exports/dfm8_XL_step1650000_ema_hf,high,confidential,Local artifact corresponding to published checkpoint
+EVD-011,Lex.dk exhaustive prefix extraction,wiki/pages/data-mix-policy/lexdk-prefix-extraction-probe.md,high,internal/public-draft,One source-specific memorisation probe
+EVD-012,EU AI Act,https://eur-lex.europa.eu/eli/reg/2024/1689/oj,high,public,Articles 2 51 53 and Annexes XI XII
+EVD-013,Commission GPAI guidance,https://digital-strategy.ec.europa.eu/en/faqs/guidelines-obligations-general-purpose-ai-providers,high,public,Indicative 1e23 criterion and below-threshold exception
+EVD-014,Mandatory Commission training summary template,https://digital-strategy.ec.europa.eu/en/library/explanatory-notice-and-template-public-summary-training-content-general-purpose-ai-models,high,public,Template structure mirrored in draft
+EVD-015,GPAI Code of Practice,https://digital-strategy.ec.europa.eu/en/policies/contents-code-gpai,high,public,Transparency and copyright compliance route
+EVD-016,Exact DFM6 DFM7 DFM8 step boundaries,legal/registers/training-phase-register.csv,high,confidential,Derived from immutable checkpoint sidecars
+EVD-017,Complete final DFM8 source review register,legal/registers/dataset-legal-basis-register.csv,high,confidential,161 rows and 70479308606 token checksum
+EVD-018,Local Hugging Face acquisition snapshots,legal/registers/hf-snapshot-register.csv,high,confidential,116 recoverable revisions; not a complete source history
+EVD-019,Synthetic translated and derived source inventory,legal/registers/synthetic-data-register.csv,medium,confidential,91 entries; some upstream method fields remain open
+EVD-020,Release artifact hashes,legal/registers/release-artifact-register.csv,high,confidential,Local step-1650000 EMA HF export
+EVD-021,Current tested serving package versions,legal/registers/current-serving-environment.csv,high,confidential,Captured 2026-08-15; release-time environment attestation remains
+EVD-022,Reproduced recurrence-aware compute calculation,legal/registers/compute-estimate.json,high,confidential,Arithmetic reproducible; regulatory approval remains
+EVD-023,Release checkpoint evaluation task/output map,legal/registers/evaluation-register.csv,high,confidential,39 task groups from production scheduler plan
+EVD-024,Energy nameplate estimate,legal/authorities/05-energy-estimate.md,medium,confidential,Not metered consumption
+EVD-025,Current HF source metadata snapshot,legal/registers/hf-current-metadata-register.csv,high,confidential,159 API records fetched 2026-08-15; current state is not acquisition state

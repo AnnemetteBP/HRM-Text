@@ -1,0 +1,4 @@
+phase_id,dataset_recipe,index_slices,source_prefixes_consumed,tasks_consumed,sampled_rows_consumed,source_tokens_consumed
+PHASE-001,dfm6,epoch_0[0:end];epoch_1[0:end];epoch_2[0:end],141,10519,596141430,188459096782
+PHASE-002,dfm7,epoch_3[0:end];epoch_4[0:end],155,10641,413941524,133316601173
+PHASE-003,dfm8,epoch_5[0:end];epoch_6[0:122594633],165,10710,340908524,110056867575
