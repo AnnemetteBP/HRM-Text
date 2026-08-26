@@ -1,9 +1,8 @@
-from typing import Tuple, Dict, Any, Literal, Optional
+from typing import Tuple, Dict, Any, Optional
 
 import torch
 from torch import nn
 from torch import Tensor
-from torch.utils.checkpoint import checkpoint
 
 from models.common import trunc_normal_init_
 from models.transformer import Transformer, Cache, TransformerConfig
@@ -19,7 +18,6 @@ class HierarchicalReasoningModelConfig(TransformerConfig):
     bp_min_steps: int = 2
     bp_max_steps: int = 5
     fwd_bwd_dtype: str = "bfloat16"
-    activation_checkpointing: Literal["none", "full"] = "none"
 
     # Change some Transformer config of H-level
     # TODO: Try asymmetric H and L module, such as different size, hidden dims, architecture, attention type, etc.
@@ -65,7 +63,6 @@ class HierarchicalReasoningModel(nn.Module):
         self.bp_warmup_ratio = config.bp_warmup_ratio
         self.bp_min_steps = config.bp_min_steps
         self.bp_max_steps = config.bp_max_steps
-        self.activation_checkpointing = config.activation_checkpointing
 
         self.hidden_size = config.hidden_size
         self.head_hint = self.H_level.core.head_hint  # Hint for LMHead init (inherit from H)
@@ -75,29 +72,6 @@ class HierarchicalReasoningModel(nn.Module):
         # Create cache function
         self.create_cache = lambda **kwargs: dict(H=[self.H_level.create_cache(**kwargs) for _i in range(self.H_cycles)],
                                                   L=[self.L_level.create_cache(**kwargs) for _i in range(self.H_cycles * self.L_cycles)])
-
-    def _forward_level(
-        self,
-        level: HierarchicalReasoningModelRecurrentBlock,
-        hidden_states: Tensor,
-        input_injection: Tensor,
-        cache: Optional[list[Cache]],
-        seq_info: Dict[str, Any],
-    ) -> Tensor:
-        if self.activation_checkpointing != "full" or not self.training or not torch.is_grad_enabled():
-            return level(hidden_states, input_injection, **seq_info, cache=cache)
-
-        if cache is not None:
-            raise ValueError("activation_checkpointing=full does not support mutable attention caches")
-
-        return checkpoint(
-            level,
-            hidden_states,
-            input_injection,
-            use_reentrant=False,
-            cache=None,
-            **seq_info,
-        )
 
     def forward(self, carry: None, x: torch.Tensor, cache: Optional[dict[str, list[list[Cache]]]] = None, bp_steps: int = 2, **seq_info) -> Tuple[None, torch.Tensor]:
         z_H, z_L = x, self.zL_init
@@ -110,22 +84,10 @@ class HierarchicalReasoningModel(nn.Module):
         for i in range(self.H_cycles):
             for k in range(i * self.L_cycles, (i + 1) * self.L_cycles):
                 with torch.set_grad_enabled(torch.is_grad_enabled() and (k >= self.H_cycles * self.L_cycles - L_bp_steps)):
-                    z_L = self._forward_level(
-                        self.L_level,
-                        z_L,
-                        z_H,
-                        cache=cache["L"][k] if cache is not None else None,
-                        seq_info=seq_info,
-                    )
+                    z_L = self.L_level(z_L, z_H, **seq_info, cache=cache["L"][k] if cache is not None else None)
             
             with torch.set_grad_enabled(torch.is_grad_enabled() and (i >= self.H_cycles - H_bp_steps)):
-                z_H = self._forward_level(
-                    self.H_level,
-                    z_H,
-                    z_L,
-                    cache=cache["H"][i] if cache is not None else None,
-                    seq_info=seq_info,
-                )
+                z_H = self.H_level(z_H, z_L, **seq_info, cache=cache["H"][i] if cache is not None else None)
 
         return None, z_H
 

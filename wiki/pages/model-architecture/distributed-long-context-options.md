@@ -16,8 +16,8 @@ per-block FSDP2, AdamATan2 EMA state, and distributed checkpoints.
 
 | Option | Prototype | Production-ready | Main difficulty |
 |---|---:|---:|---|
-| Whole-call activation checkpointing | 1--3 days | 3--7 days | Recompute only differentiable recurrent calls while preserving compile/FSDP behavior. |
-| Selective/per-block checkpointing | 3--7 days | 1--2 weeks | Choose a useful memory policy and verify custom FA4 recomputation. |
+| Full per-block activation checkpointing | implemented | benchmarked on B200 | Uses composable checkpoint wrappers before FSDP2 wrapping. |
+| Selective/per-block checkpointing | 2--5 days | 1--2 weeks | Choose a useful memory policy and verify memory/throughput tradeoffs. |
 | FSDP `reshard_after_forward=true` | hours | 1--3 days | Performance measurement and checkpoint/resume validation; limited activation savings. |
 | TP=2 | 2--3 weeks | 4--6 weeks | Sharded QKV/output/MLP plus vocabulary-parallel logits, CE, and metrics. |
 | CP=2 | 3--5 weeks | 6--10 weeks | Correct distributed packed PrefixLM attention and backward. |
@@ -30,22 +30,40 @@ the code and distributed PyTorch. Kernel work, unstable dependencies, or
 multi-node debugging can increase them.
 
 Activation checkpointing does not change weight layout or checkpoint format
-and is therefore the conservative first implementation. The main branch now
-has an opt-in `activation_checkpointing=full` mode. It uses non-reentrant
-PyTorch checkpointing around each complete recurrent L/H call for which
-autograd is enabled. At BP=5 this checkpoints `H0`, `L3`, `L4`, `L5`, and
-`H1`, adding five recomputations during backward. The detached `L0--L2` calls
-remain unchanged because they do not retain backward activations.
+and is therefore the conservative first implementation. The `checkpointing`
+branch has an opt-in `activation_checkpointing=full` mode. It applies
+`torch.distributed._composable.checkpoint` to every `TransformerBlock` before
+FSDP2 wraps those blocks. At BP=5, checkpoint recomputation is triggered only
+for the differentiable `H0`, `L3`, `L4`, `L5`, and `H1` recurrent calls. The
+detached `L0--L2` calls do not retain backward activations or recompute.
 
 The default is `activation_checkpointing=none`, which preserves the prior
-path. Full checkpointing is active only in training with gradients enabled and
-rejects mutable attention caches; ordinary training already passes no cache.
-It is compatible by construction with the existing checkpoint/EMA state
-formats because it adds no parameters or buffers. CPU tests verify output and
-gradient parity, the five BP=5 recomputations, inactivity during evaluation,
-and execution through `torch.compile`. A real CUDA FSDP2/FA4 smoke test and a
-matched memory/throughput benchmark remain required before using it for a
-long production run.
+path. Full mode also sets FSDP2 `reshard_after_forward=true`; ordinary mode
+retains the established `false` setting. It is compatible with existing
+checkpoint and EMA formats because it adds no parameters or buffers. CPU tests
+verify output and gradient parity, expected BP=5 recomputation, inactivity
+during evaluation, and a compiled single-process smoke path.
+
+The initially implemented functional `torch.utils.checkpoint` wrappers were
+superseded on 2026-08-26. With FSDP2 mixed precision, recomputation entered the
+FSDP pre-backward state without repeating the forward BF16 parameter cast,
+causing saved-BF16/recomputed-FP32 metadata mismatches. Explicit autocast,
+moving functional checkpoints to blocks, disabling compile, and enabling
+resharding did not resolve that FSDP2 state-machine issue. The composable API,
+applied before `fully_shard`, is the working ordering.
+
+A matched DFM8 XXL continuation from step 152500 established the memory result:
+
+| Mode | Compile | Peak allocated / GPU | Peak reserved / GPU | Steady optimizer step |
+|---|---:|---:|---:|---:|
+| No checkpointing | yes | 143027 MiB | 165168 MiB | 3.53 s |
+| Full block checkpointing | no | 41984 MiB | 49970 MiB | about 6.4 s |
+
+Full mode therefore reduced peak allocated memory by 70.6% and peak reserved
+memory by 69.7%. Its observed optimizer-step time was about 1.8x the compiled
+baseline. This is not a perfectly isolated throughput comparison because the
+working composable FSDP2 path currently runs with `compile_train_batch=false`;
+it is nevertheless representative of the resumed production configuration.
 
 TP is not an especially natural first choice for hidden size 1792 and 14
 attention heads. TP=2 is clean; larger degrees encounter head divisibility or
@@ -67,9 +85,8 @@ canonical copy of each tied module.
 
 Recommended order:
 
-1. Benchmark the implemented full recurrent-call activation checkpointing on
-   CUDA with FSDP2 and FA4; add a selective policy only if full recomputation
-   costs too much throughput.
+1. Use the validated full block checkpointing path where memory is the limiting
+   resource; add a selective policy if its measured throughput cost is too high.
 2. Test whether checkpointing alone makes 16K practical.
 3. Implement CP=2 for production 16K/32K if long-context throughput warrants
    the engineering cost.

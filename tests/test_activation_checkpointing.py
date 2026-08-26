@@ -4,18 +4,20 @@ import unittest
 import torch
 from torch import nn
 
+from models.activation_checkpointing import apply_full_activation_checkpointing
 from models.baselines.hrm_nocarry_bp_warmup import HierarchicalReasoningModel
+from models.transformer import TransformerBlock
 
 
-class CountingLevel(nn.Module):
+class CountingBlock(TransformerBlock):
     def __init__(self, weight: float) -> None:
-        super().__init__()
+        nn.Module.__init__(self)
         self.weight = nn.Parameter(torch.tensor(weight))
         self.calls = 0
 
-    def forward(self, hidden_states, input_injection, **_kwargs):
+    def forward(self, hidden_states, **_kwargs):
         self.calls += 1
-        return torch.tanh((hidden_states + input_injection) * self.weight)
+        return torch.tanh(hidden_states * self.weight)
 
 
 def make_model(activation_checkpointing: str) -> HierarchicalReasoningModel:
@@ -37,8 +39,10 @@ def make_model(activation_checkpointing: str) -> HierarchicalReasoningModel:
         "fwd_bwd_dtype": "float32",
         "activation_checkpointing": activation_checkpointing,
     })
-    model.H_level = CountingLevel(0.7)
-    model.L_level = CountingLevel(0.6)
+    model.H_level.core.layers = nn.ModuleList([CountingBlock(0.7)])
+    model.L_level.core.layers = nn.ModuleList([CountingBlock(0.6)])
+    if activation_checkpointing == "full":
+        apply_full_activation_checkpointing(model)
     model.train()
     return model
 
@@ -59,11 +63,15 @@ class ActivationCheckpointingTest(unittest.TestCase):
 
         torch.testing.assert_close(checkpointed_output, baseline_output)
         torch.testing.assert_close(checkpointed_input.grad, baseline_input.grad)
-        torch.testing.assert_close(checkpointed.H_level.weight.grad, baseline.H_level.weight.grad)
-        torch.testing.assert_close(checkpointed.L_level.weight.grad, baseline.L_level.weight.grad)
+        checkpointed_h = checkpointed.H_level.core.layers[0]
+        checkpointed_l = checkpointed.L_level.core.layers[0]
+        baseline_h = baseline.H_level.core.layers[0]
+        baseline_l = baseline.L_level.core.layers[0]
+        torch.testing.assert_close(checkpointed_h.weight.grad, baseline_h.weight.grad)
+        torch.testing.assert_close(checkpointed_l.weight.grad, baseline_l.weight.grad)
 
-        self.assertEqual((baseline.L_level.calls, baseline.H_level.calls), (6, 2))
-        self.assertEqual((checkpointed.L_level.calls, checkpointed.H_level.calls), (9, 4))
+        self.assertEqual((baseline_l.calls, baseline_h.calls), (6, 2))
+        self.assertEqual((checkpointed_l.calls, checkpointed_h.calls), (9, 4))
 
     def test_full_is_inactive_during_evaluation(self):
         model = make_model("full")
@@ -72,7 +80,7 @@ class ActivationCheckpointingTest(unittest.TestCase):
         with torch.no_grad():
             model(None, torch.randn(4, 8), bp_steps=5)
 
-        self.assertEqual((model.L_level.calls, model.H_level.calls), (6, 2))
+        self.assertEqual((model.L_level.core.layers[0].calls, model.H_level.core.layers[0].calls), (6, 2))
 
     def test_full_runs_under_torch_compile(self):
         model = make_model("full")

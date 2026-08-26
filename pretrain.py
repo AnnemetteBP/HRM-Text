@@ -32,6 +32,7 @@ import pydantic
 from omegaconf import DictConfig, OmegaConf
 
 from models.layers import Carry
+from models.activation_checkpointing import apply_full_activation_checkpointing
 from models.common import IGNORE_LABEL_ID, wrap_tensor
 from models.accelerator import (
     AcceleratorType,
@@ -203,11 +204,11 @@ def create_dataloader(
     return dataloader, dataset.metadata
 
 
-def apply_fsdp(module: nn.Module, param_dtype: torch.dtype):
+def apply_fsdp(module: nn.Module, param_dtype: torch.dtype, *, reshard_after_forward: bool = False):
     fully_shard(module,
                 mp_policy=MixedPrecisionPolicy(param_dtype=param_dtype,
                                                reduce_dtype=torch.get_default_dtype()),  # Use master dtype for reduction
-                reshard_after_forward=False)  # Trade off VRAM for less comms
+                reshard_after_forward=reshard_after_forward)
     
     assert isinstance(module, FSDPModule)
     # Disable gradient division. Adams is scale invariant.
@@ -285,9 +286,15 @@ def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta
         # Attach loss head
         model = head_cls(model, model_cfg)
 
+    if config.activation_checkpointing == "full":
+        checkpointed_blocks = apply_full_activation_checkpointing(model)
+        if checkpointed_blocks == 0:
+            raise ValueError("activation_checkpointing=full found no TransformerBlock modules")
+
     if dist.is_available() and dist.is_initialized():
         if config.distributed_strategy == "fsdp":
             model_dtype = fsdp_model_dtype(config)
+            activation_reshard = config.activation_checkpointing == "full"
             if model_dtype != torch.float32:
                 model = model.to(dtype=model_dtype)
 
@@ -298,9 +305,9 @@ def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta
             # Detect TransformerBlock recursively and apply FSDP
             for module in model.modules():
                 if isinstance(module, TransformerBlock):
-                    apply_fsdp(module, fwd_bwd_dtype)
+                    apply_fsdp(module, fwd_bwd_dtype, reshard_after_forward=activation_reshard)
 
-            apply_fsdp(model, fwd_bwd_dtype)
+            apply_fsdp(model, fwd_bwd_dtype, reshard_after_forward=activation_reshard)
         elif config.distributed_strategy == "ddp":
             if device.type != "cuda":
                 raise RuntimeError("distributed_strategy=ddp is currently only supported for CUDA torchrun jobs")
