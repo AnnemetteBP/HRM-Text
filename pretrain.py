@@ -32,7 +32,7 @@ import pydantic
 from omegaconf import DictConfig, OmegaConf
 
 from models.layers import Carry
-from models.activation_checkpointing import apply_full_activation_checkpointing
+from models.activation_checkpointing import apply_activation_checkpointing
 from models.common import IGNORE_LABEL_ID, wrap_tensor
 from models.accelerator import (
     AcceleratorType,
@@ -83,7 +83,7 @@ class PretrainConfig(pydantic.BaseModel):
     beta2: float
     ema: Optional[float] = None
     fwd_bwd_dtype: str = "bfloat16"
-    activation_checkpointing: Literal["none", "full"] = "none"
+    activation_checkpointing: Literal["none", "full", "l_only"] = "none"
     accelerator_type: AcceleratorType = "sm100"
     distributed_strategy: Literal["fsdp", "ddp", "none"] = "fsdp"
     fsdp_params_precision: Literal["fp32", "bf16"] = "fp32"
@@ -286,15 +286,17 @@ def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta
         # Attach loss head
         model = head_cls(model, model_cfg)
 
-    if config.activation_checkpointing == "full":
-        checkpointed_blocks = apply_full_activation_checkpointing(model)
-        if checkpointed_blocks == 0:
-            raise ValueError("activation_checkpointing=full found no TransformerBlock modules")
+    checkpointed_blocks: set[nn.Module] = set()
+    if config.activation_checkpointing != "none":
+        checkpointed_blocks = apply_activation_checkpointing(model, config.activation_checkpointing)
+        if not checkpointed_blocks:
+            raise ValueError(
+                f"activation_checkpointing={config.activation_checkpointing} found no matching TransformerBlock modules"
+            )
 
     if dist.is_available() and dist.is_initialized():
         if config.distributed_strategy == "fsdp":
             model_dtype = fsdp_model_dtype(config)
-            activation_reshard = config.activation_checkpointing == "full"
             if model_dtype != torch.float32:
                 model = model.to(dtype=model_dtype)
 
@@ -305,9 +307,13 @@ def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta
             # Detect TransformerBlock recursively and apply FSDP
             for module in model.modules():
                 if isinstance(module, TransformerBlock):
-                    apply_fsdp(module, fwd_bwd_dtype, reshard_after_forward=activation_reshard)
+                    apply_fsdp(
+                        module,
+                        fwd_bwd_dtype,
+                        reshard_after_forward=module in checkpointed_blocks,
+                    )
 
-            apply_fsdp(model, fwd_bwd_dtype, reshard_after_forward=activation_reshard)
+            apply_fsdp(model, fwd_bwd_dtype, reshard_after_forward=bool(checkpointed_blocks))
         elif config.distributed_strategy == "ddp":
             if device.type != "cuda":
                 raise RuntimeError("distributed_strategy=ddp is currently only supported for CUDA torchrun jobs")

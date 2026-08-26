@@ -596,3 +596,6 @@
 - Measured 41984 MiB peak allocated and 49970 MiB reserved per GPU, versus
   143027 MiB and 165168 MiB without checkpointing; recorded the approximately
   1.8x observed step-time cost of the current uncompiled checkpointed path.
+- Added and measured L-only selective checkpointing on DFM8 XXL: 90228 MiB
+  allocated, 105344 MiB reserved, and 5.59 seconds per optimizer step. The
+  production campaign resumes from step 153500 without checkpointing.

@@ -58,12 +58,20 @@ A matched DFM8 XXL continuation from step 152500 established the memory result:
 |---|---:|---:|---:|---:|
 | No checkpointing | yes | 143027 MiB | 165168 MiB | 3.53 s |
 | Full block checkpointing | no | 41984 MiB | 49970 MiB | about 6.4 s |
+| L-only block checkpointing | no | 90228 MiB | 105344 MiB | 5.59 s |
 
 Full mode therefore reduced peak allocated memory by 70.6% and peak reserved
 memory by 69.7%. Its observed optimizer-step time was about 1.8x the compiled
 baseline. This is not a perfectly isolated throughput comparison because the
 working composable FSDP2 path currently runs with `compile_train_batch=false`;
 it is nevertheless representative of the resumed production configuration.
+
+The `l_only` selective mode checkpoints the 36 blocks under `L_level` while H
+remains uncheckpointed. At BP=5 this recomputes three L calls and no H calls.
+In a W&B-disabled smoke resumed from DFM8 XXL step 153500, it was 13.0% faster
+than full checkpointing while using 48244 MiB more peak allocated memory. Only
+selected L blocks use FSDP2 `reshard_after_forward=true`; uncheckpointed H
+blocks retain the established no-reshard path.
 
 TP is not an especially natural first choice for hidden size 1792 and 14
 attention heads. TP=2 is clean; larger degrees encounter head divisibility or
