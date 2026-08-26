@@ -2,6 +2,11 @@
 
 ## 2026-08-26
 
+* **DFM9 rights and memorisation framework**: Expanded the generated DFM9
+  source-rights appendix with the copyright/TDM and GDPR decision process, the
+  status and interpretation of EDPB Opinion 28/2024 and the 2026 consultation
+  guidelines, the AI Act open-source release strategy and compute analysis, and
+  the published Mimir memorisation-audit methods, results, and limitations.
 * **Repository validation and OKF refactor**: Split the oversized DFM9 plan
   into focused OKF concepts while preserving its parent path, restored missing
   page-index coverage, and documented capability-gated 8K evaluation planning

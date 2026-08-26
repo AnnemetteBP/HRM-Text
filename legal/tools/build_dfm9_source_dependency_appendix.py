@@ -327,6 +327,248 @@ def build() -> str:
         rf"\textbf{{Authoritative edge specification SHA-256:}} {nolinkurl(digest(SPEC_EDGES))}\\",
         rf"\textbf{{Top-level copyright register SHA-256:}} {nolinkurl(digest(REGISTER))}\\",
         rf"\textbf{{Manual-decision register SHA-256:}} {nolinkurl(digest(MANUAL_DECISIONS))}",
+        r"\section{Copyright and data-protection audit framework}",
+        r"\subsection{Two independent legal gates}",
+        (
+            r"The project treats copyright and database rights on the one hand, and data "
+            r"protection on the other, as independent gates. A copyright licence or text-and-data-"
+            r"mining (TDM) exception does not supply a GDPR legal basis, and a GDPR legal basis "
+            r"does not authorise acts restricted by copyright or database rights. Passing one "
+            r"review therefore never cures a failure in the other. The operational starting point "
+            r"is to identify the exact effective source, revision, acquisition route, retained "
+            r"fields, transformations, repetitions, and upstream dependencies before assigning "
+            r"either status."
+        ),
+        r"\subsection{Copyright and TDM decision path}",
+        (
+            r"The first preference is a direct basis: public-domain status, an applicable open "
+            r"licence, assigned rights, express permission, or an institutional agreement. Terms "
+            r"are applied component by component where a mixture or derivative has multiple rights "
+            r"layers. Attribution, notice, share-alike, non-commercial, field-of-use, and "
+            r"redistribution conditions remain attached to the relevant layer. Synthetic or "
+            r"transformed data are not presumed rights-free merely because a model or script made "
+            r"them; retained source expression and seed provenance remain dependencies."
+        ),
+        (
+            r"Where no sufficient direct basis covers a reproduction or extraction, the project "
+            r"considers Articles 3 and 4 of Directive (EU) 2019/790 (the DSM Directive), as "
+            r"implemented in Denmark by Copyright Act sections 11 c and 11 b."
+            r"\footnote{DSM Directive: \url{https://eur-lex.europa.eu/eli/dir/2019/790/oj}. "
+            r"Danish Copyright Act: \url{https://www.retsinformation.dk/eli/lta/2023/1093}.} "
+            r"Article 3 is the research route: it covers reproductions and extractions by a "
+            r"qualifying research organisation or cultural-heritage institution for scientific "
+            r"research, only for material to which it has lawful access. Copies must be secured and "
+            r"may be retained for research and verification; contractual terms may not override "
+            r"that exception. The project records Article 3 as a purpose- and actor-specific basis, "
+            r"not as a general licence or permission to redistribute source material."
+        ),
+        (
+            r"Article 4 is the general TDM route. It likewise requires lawful access, permits "
+            r"retention only for as long as necessary for TDM, and is unavailable where the "
+            r"rightsholder expressly reserved the use in an appropriate manner, including machine-"
+            r"readable means for online content. The project therefore records acquisition-time "
+            r"terms, repository cards, robots or TDM signals, and other reservation evidence where "
+            r"available. Missing evidence is not converted into an assumption that no reservation "
+            r"existed. Article 4 determinations in this register are source-specific and must be "
+            r"rechecked for a fresh acquisition or a materially different use. Neither TDM article "
+            r"authorises publication of protected training copies or guarantees that generated "
+            r"outputs are non-infringing."
+        ),
+        r"\subsection{GDPR interpretation and controls}",
+        (
+            r"For sources that contain or may contain personal data, the project separately records "
+            r"the controller, purposes, categories and sources of data, Article 6 basis, any Article "
+            r"9 condition, transparency route, retention, access controls, data-subject-rights "
+            r"handling, and whether a data-protection impact assessment is required. Public "
+            r"availability does not by itself remove GDPR protection or make the processing "
+            r"reasonably expected. Data minimisation, purpose limitation, accuracy, storage "
+            r"limitation, security, and accountability apply throughout collection, preparation, "
+            r"training, evaluation, release, and deployment."
+        ),
+        (
+            r"The project reads EDPB Opinion 28/2024 as requiring a documented, case-by-case "
+            r"assessment rather than a categorical claim that trained models are anonymous."
+            r"\footnote{EDPB Opinion 28/2024: "
+            r"\url{https://www.edpb.europa.eu/documents/opinion-of-the-board-art-64/opinion-282024-on-certain-data-protection-aspects-related-to_en}.} "
+            r"Where legitimate interest is relied upon, the record must identify a lawful, precise, "
+            r"real and present interest; establish necessity and the absence of a less intrusive "
+            r"effective alternative; and balance that interest against the rights and reasonable "
+            r"expectations of affected people, with concrete mitigations. Unlawful upstream "
+            r"processing may affect later deployment, especially where personal data remain in the "
+            r"model."
+        ),
+        (
+            r"The EDPB's 2026 Guidelines 1/2026 on scientific research, 02/2026 on "
+            r"anonymisation, and 03/2026 on web scraping for generative AI are treated as "
+            r"consultation drafts, not final law or independent legal bases."
+            r"\footnote{EDPB 2026 consultations: "
+            r"\url{https://www.edpb.europa.eu/public-consultations_en}.} "
+            r"They are nevertheless used as conservative operational guidance: define the research "
+            r"purpose and safeguards specifically; assess anonymisation against record isolation, "
+            r"linkage, and inference using means reasonably likely for the relevant actors; and, for "
+            r"web-derived data, document provenance and collection time, source reliability, "
+            r"minimisation, accuracy, transparency, and incidental special-category data. Their "
+            r"draft status and later revisions must be checked at release and on material reuse."
+        ),
+        r"\subsection{EU AI Act scope and open-source release strategy}",
+        (
+            r"The EU AI Act is a third, independent compliance layer."
+            r"\footnote{Regulation (EU) 2024/1689: "
+            r"\url{https://eur-lex.europa.eu/eli/reg/2024/1689/oj}. Commission GPAI scope "
+            r"guidelines: \url{https://digital-strategy.ec.europa.eu/en/library/guidelines-scope-obligations-providers-general-purpose-ai-models-under-ai-act}.} "
+            r"It does not replace copyright, GDPR, contractual, research-ethics, or product-sector "
+            r"review. Article 2(6) excludes models specifically developed and put into service for "
+            r"the sole purpose of scientific research and development; Article 2(8) separately "
+            r"excludes research, testing, and development before market placement or putting into "
+            r"service. The project does not choose Article 2(6) as its principal release position. "
+            r"The intended public release permits broad inspection, reuse, modification, "
+            r"redistribution, and downstream integration rather than confining the model and every "
+            r"derivative to a sole scientific-R\&D purpose. Article 2(8) also ceases to answer the "
+            r"question once the model is released. Relying on either exclusion would therefore make "
+            r"the legal position depend on a narrow purpose limitation that conflicts with the "
+            r"chosen release objective."
+        ),
+        (
+            r"Instead, DFM-Mimir is published under the Apache License 2.0 on the Danish Foundation "
+            r"Models Hugging Face repository, with its weights, architecture/configuration, chat "
+            r"template, and model-usage instructions publicly available."
+            r"\footnote{DFM-Mimir release: "
+            r"\url{https://huggingface.co/danish-foundation-models/DFM-Mimir}.} "
+            r"Apache-2.0 permits access, use, modification, and distribution without a non-"
+            r"commercial or research-only purpose restriction and therefore supports the Article "
+            r"53(2) free/open-source conditions. This verified release fact supersedes the older "
+            r"scope-dossier assumption that MIMIR License v1.0, a non-commercial/research-only "
+            r"licence, governed the release. The model licence grants only rights controlled by the "
+            r"provider: it does not relicense third-party training works, remove their attribution "
+            r"or non-commercial conditions, or authorise infringing model outputs."
+        ),
+        (
+            r"Open source is chosen for substantive and regulatory reasons. It supports independent "
+            r"inspection, reproducibility, adaptation, Danish-language research and innovation, "
+            r"security review, and broad downstream access without forcing the project to police a "
+            r"sole-research purpose. If the model is nevertheless classified as a general-purpose "
+            r"AI (GPAI) model, Article 53(2) exempts a qualifying non-systemic open-source provider "
+            r"from Article 53(1)(a)--(b): the authority-facing technical-documentation duty and the "
+            r"downstream-provider information duty. It does not exempt the Article 53(1)(c) Union-"
+            r"copyright compliance policy or the Article 53(1)(d) sufficiently detailed public "
+            r"training-content summary, and the exemption does not apply to a GPAI model with "
+            r"systemic risk. Open source likewise does not exempt downstream AI systems from their "
+            r"own applicable obligations. This dossier retains fuller documentation voluntarily "
+            r"because it supports accountability and makes the project robust if classification or "
+            r"guidance changes."
+        ),
+        r"\subsection{Training-compute thresholds}",
+        (
+            r"The Commission's current, non-binding GPAI scope guidelines use a conjunctive "
+            r"indicative criterion of more than $10^{23}$ cumulative training FLOPs and generation "
+            r"of language, text-to-image, or text-to-video. The statutory definition remains "
+            r"capability-based: a model below the indicative compute value can still be GPAI if it "
+            r"displays significant generality and competently performs a wide range of distinct "
+            r"tasks, while an exceptional model above it may lack such generality. Article 51(2) "
+            r"separately presumes high-impact capabilities, and therefore systemic-risk GPAI status, "
+            r"above $10^{25}$ cumulative training FLOPs; the Commission may also designate a model "
+            r"on equivalent capabilities or impact under Article 51(1)."
+        ),
+        (
+            r"The project's recurrence-aware engineering upper bound for the released DFM9/Mimir "
+            r"training run is $1.19\times10^{22}$ FLOPs. It counts multiply-add as two operations, "
+            r"assumes five backpropagation steps from the beginning, and covers the documented "
+            r"1,650,000-step lifecycle. The estimate is 11.9\% of $10^{23}$ (about 8.4 times below "
+            r"the indicative GPAI compute criterion) and 0.119\% of $10^{25}$ (about 840 times below "
+            r"the systemic-risk compute presumption). Thus compute does not trigger either current "
+            r"threshold, even under the project's conservative recurrence assumption. The value "
+            r"must still receive independent technical review, remain bound to the exact checkpoint "
+            r"and methodology, and be updated for continued training or other development in the "
+            r"same model lifecycle. The below-threshold result supports, but does not alone decide, "
+            r"the GPAI or systemic-risk classification."
+        ),
+        r"\subsection{Audit workflow and role of memorisation}",
+        r"\begin{enumerate}",
+        (
+            r"\item Freeze a source inventory and exposure manifest, including revisions, files, "
+            r"fields, transformations, row counts, token exposure, repetition, and acquisition "
+            r"evidence."
+        ),
+        (
+            r"\item Decompose mixtures and derivatives into a dependency DAG; evaluate every "
+            r"required rights layer and preserve notices and obligations transitively."
+        ),
+        (
+            r"\item Apply direct permissions first, then a documented Article 3 or source-specific "
+            r"Article 4 analysis where necessary. Exclude, replace, or escalate unresolved material."
+        ),
+        (
+            r"\item Run the independent GDPR review, including personal- and special-category-data "
+            r"screening, legal basis, necessity and balancing, transparency, rights, security, "
+            r"retention, and DPIA/DPO escalation."
+        ),
+        (
+            r"\item Audit outputs and model behaviour for extractability and memorisation, record "
+            r"residual risk, and make release and access controls proportionate to the evidence."
+        ),
+        (
+            r"\item Reassess when a source, reservation signal, purpose, controller, training "
+            r"exposure, model, attack method, or release mode materially changes."
+        ),
+        r"\end{enumerate}",
+        (
+            r"Memorisation matters to both gates. Verbatim or identifying extraction can increase "
+            r"copyright risk in outputs and can show that personal data remain practically "
+            r"extractable or associated with training subjects, weakening an anonymity claim. "
+            r"Conversely, a negative finite audit cannot prove non-infringement, erase an unlawful "
+            r"collection, establish anonymity, or rule out stronger adaptive attacks. It is one "
+            r"empirical control within the broader provenance, legal-basis, minimisation, security, "
+            r"and release assessment."
+        ),
+        r"\section{DFM9 memorisation audit and results}",
+        (
+            r"The Mimir technical report describes two independent memorisation audits over four "
+            r"rights/provenance categories (A--D)."
+            r"\footnote{Mimir v1 technical report, Appendix C: "
+            r"\url{https://arxiv.org/html/2608.13517}.} "
+            r"Category A contains synthetic instruction data seeded from agreement-covered sources; "
+            r"B contains Hugging Face instruction data for which row-level opt-out status could not "
+            r"be established reliably; C contains Hugging Face instruction data with high confidence "
+            r"that no applicable row-level opt-out had been exercised; and D contains other synthetic "
+            r"and reasoning data with no identified material copyright concern but without a "
+            r"coherent open-licence, licensed, or public-domain status."
+        ),
+        r"\subsection{Prefix and generic-prompt audit}",
+        (
+            r"The first audit used 1,000 ordinary non-adversarial prompts across Danish and English "
+            r"and 500 targeted 50-token-prefix extraction prompts per category, 3,000 prompts in "
+            r"total, against 140,990,504 training documents. In generic settings, matches of at "
+            r"least 50 tokens appeared only once for English/B and once for English/D, and not in "
+            r"the other English or any Danish comparison. Under prefix attacks, any-length matches "
+            r"were found in 0.073\% of A documents, 0.887\% of B, 0.029\% of C, and 0.046\% of D. "
+            r"Spans of at least 50 tokens occurred in 26, 271, 293, and 257 documents respectively: "
+            r"0.00022\%, 0.015\%, 0.00031\%, and 0.00074\% of the checked documents. Average longest "
+            r"spans were 8.8, 17.1, 12.4, and 22.3 tokens. Longer B and D matches were often numbers, "
+            r"formulae, matrices, code, algorithms, structured tasks, or mathematical solutions."
+        ),
+        r"\subsection{Exact 64-token continuation and content adjudication}",
+        (
+            r"The second audit used a fixed greedy 64-token prefix plus 64-token continuation "
+            r"protocol. Across 136,612,444 model-input evaluations it found 5,562 exact-match "
+            r"occurrences (0.0041\%), representing 3,423 unique prefix--continuation pairs. The "
+            r"category counts were 15/2,732,080 for A (0.0005\%), 7/411,508 for B (0.0017\%), "
+            r"4,874/124,246,748 for C (0.0039\%), and 666/9,222,108 for D (0.0072\%). LLM "
+            r"adjudication followed by human review classified 61/5,562 matches (1.10\%) as coherent "
+            r"prose and one (0.018\%) as expressive prose. The report identified no high-priority "
+            r"copyright finding; its single medium-priority case was a predictable continuation of "
+            r"a traditional repetitive song."
+        ),
+        r"\subsection{Conclusion and limits}",
+        (
+            r"The combined evidence did not show systematic reconstruction of long, distinctive "
+            r"expressive passages and supports a low observed copyright-related memorisation risk "
+            r"under the tested conditions. Potentially risky outputs represented 62 of 136,612,444 "
+            r"model-input evaluations (approximately 0.000045\%). This is a measured result, not a "
+            r"zero-risk finding: adaptive prompts, longer prefixes, alternative decoding, future "
+            r"attacks, and personal-data-specific extraction or inference may produce different "
+            r"results. The audit therefore supports, but does not by itself establish, GDPR "
+            r"anonymity or copyright clearance."
+        ),
         r"\begin{landscape}",
         r"\section{Effective DFM9 training sources}",
         r"\scriptsize",
