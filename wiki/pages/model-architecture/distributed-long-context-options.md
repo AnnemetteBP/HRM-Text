@@ -30,9 +30,22 @@ the code and distributed PyTorch. Kernel work, unstable dependencies, or
 multi-node debugging can increase them.
 
 Activation checkpointing does not change weight layout or checkpoint format
-and is therefore the conservative first implementation. At BP=5, checkpoint
-only calls for which autograd is enabled; checkpointing the already detached
-first-cycle L calls cannot save backward state.
+and is therefore the conservative first implementation. The main branch now
+has an opt-in `activation_checkpointing=full` mode. It uses non-reentrant
+PyTorch checkpointing around each complete recurrent L/H call for which
+autograd is enabled. At BP=5 this checkpoints `H0`, `L3`, `L4`, `L5`, and
+`H1`, adding five recomputations during backward. The detached `L0--L2` calls
+remain unchanged because they do not retain backward activations.
+
+The default is `activation_checkpointing=none`, which preserves the prior
+path. Full checkpointing is active only in training with gradients enabled and
+rejects mutable attention caches; ordinary training already passes no cache.
+It is compatible by construction with the existing checkpoint/EMA state
+formats because it adds no parameters or buffers. CPU tests verify output and
+gradient parity, the five BP=5 recomputations, inactivity during evaluation,
+and execution through `torch.compile`. A real CUDA FSDP2/FA4 smoke test and a
+matched memory/throughput benchmark remain required before using it for a
+long production run.
 
 TP is not an especially natural first choice for hidden size 1792 and 14
 attention heads. TP=2 is clean; larger degrees encounter head divisibility or
@@ -54,8 +67,9 @@ canonical copy of each tied module.
 
 Recommended order:
 
-1. Add memory and throughput benchmarks plus optional selective activation
-   checkpointing.
+1. Benchmark the implemented full recurrent-call activation checkpointing on
+   CUDA with FSDP2 and FA4; add a selective policy only if full recomputation
+   costs too much throughput.
 2. Test whether checkpointing alone makes 16K practical.
 3. Implement CP=2 for production 16K/32K if long-context throughput warrants
    the engineering cost.
@@ -67,4 +81,3 @@ Recommended order:
 Every distributed path needs one-step forward, loss, gradient, optimizer,
 EMA, save/resume, and HF-export parity tests on packed prefix/causal examples
 before throughput measurements are accepted.
-

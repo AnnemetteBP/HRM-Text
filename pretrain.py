@@ -82,6 +82,7 @@ class PretrainConfig(pydantic.BaseModel):
     beta2: float
     ema: Optional[float] = None
     fwd_bwd_dtype: str = "bfloat16"
+    activation_checkpointing: Literal["none", "full"] = "none"
     accelerator_type: AcceleratorType = "sm100"
     distributed_strategy: Literal["fsdp", "ddp", "none"] = "fsdp"
     fsdp_params_precision: Literal["fp32", "bf16"] = "fp32"
@@ -263,7 +264,15 @@ def optimizer_ema_dtype(config: PretrainConfig) -> Optional[torch.dtype]:
 
 
 def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta, local_batch_size: int, device: torch.device):
-    model_cfg = config.arch.model_dump() | train_metadata.model_dump() | config.data.model_dump() | {"fwd_bwd_dtype": config.fwd_bwd_dtype}
+    model_cfg = (
+        config.arch.model_dump()
+        | train_metadata.model_dump()
+        | config.data.model_dump()
+        | {
+            "fwd_bwd_dtype": config.fwd_bwd_dtype,
+            "activation_checkpointing": config.activation_checkpointing,
+        }
+    )
     fwd_bwd_dtype = getattr(torch, config.fwd_bwd_dtype)
 
     # Instantiate model with head

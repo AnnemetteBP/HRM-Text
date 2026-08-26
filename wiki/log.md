@@ -576,3 +576,13 @@
   publication of one JSONL result.
 - Queued execution behind the active Folketing acceptance audit because its
   eight E4B servers leave insufficient headroom for a second server set.
+
+## 2026-08-26 - Full recurrent-call activation checkpointing
+
+- Added opt-in `activation_checkpointing=full` training support while keeping
+  `none` as the default and preserving existing checkpoint/EMA formats.
+- Full mode applies non-reentrant PyTorch checkpointing only to differentiable
+  recurrent calls. At BP=5 these are `H0`, `L3`, `L4`, `L5`, and `H1`; the
+  detached `L0--L2` calls are not checkpointed.
+- Added CPU parity, recomputation-count, evaluation-inactivity, and compile
+  checks. CUDA FSDP2/FA4 memory and throughput benchmarking remains pending.
