@@ -69,3 +69,28 @@ status `-15`; this is the expected result of the intentional SIGTERM, not a
 training failure. Before continuing, update that row to resume from
 `ephemeral_step_152500`, reset it to pending, and clear the stop request only
 when training should actually restart.
+
+## Checkpointed continuation from step 152500
+
+The pause description above was superseded later on 2026-08-26. The scheduler
+was resumed from the verified `ephemeral_step_152500` checkpoint with:
+
+```text
+activation_checkpointing=full
+compile_train_batch=false
+memory_log_interval=1
+```
+
+The first functional-checkpoint implementations failed before advancing the
+optimizer because FSDP2 recomputation produced FP32 tensors where the original
+forward saved BF16 tensors. Those failed starts did not alter checkpoint state.
+The working implementation applies PyTorch composable checkpoint wrappers to
+Transformer blocks before FSDP2 wrapping. It passed step 152500 and continued
+normally in the existing W&B run and scheduler campaign.
+
+The matched no-checkpoint control peaked at 143027 MiB allocated and 165168 MiB
+reserved per GPU. Full checkpointing peaked at 41984 MiB allocated and 49970
+MiB reserved, reductions of 70.6% and 69.7%, respectively. The current
+checkpointed path runs at approximately 6.4 seconds per optimizer step after
+warmup, versus 3.53 seconds for the compiled control. The throughput comparison
+includes the current requirement to disable whole-batch compile.

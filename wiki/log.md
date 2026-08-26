@@ -590,3 +590,13 @@
   detached `L0--L2` calls are not checkpointed.
 - Added CPU parity, recomputation-count, evaluation-inactivity, and compile
   checks. CUDA FSDP2/FA4 memory and throughput benchmarking remains pending.
+
+## 2026-08-26 - FSDP2 composable activation checkpointing validation
+
+- Superseded functional recurrent-call checkpointing after CUDA validation
+  exposed an FSDP2 BF16-versus-FP32 recomputation metadata mismatch.
+- Switched full mode to composable per-Transformer-block checkpoint wrappers
+  applied before FSDP2 wrapping and resumed DFM8 XXL from step 152500.
+- Measured 41984 MiB peak allocated and 49970 MiB reserved per GPU, versus
+  143027 MiB and 165168 MiB without checkpointing; recorded the approximately
+  1.8x observed step-time cost of the current uncompiled checkpointed path.
