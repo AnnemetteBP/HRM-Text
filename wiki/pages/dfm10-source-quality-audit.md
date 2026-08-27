@@ -4,7 +4,7 @@ title: DFM10 Source Quality Audit
 description: Deterministic Gemma 4 26B-A4B review of up to 100 exact training examples from every logical DFM10 source.
 tags: [dfm10, data-quality, audit, gemma4, vllm]
 status: draft
-last_updated: 2026-08-26
+last_updated: 2026-08-27
 confidence: high
 ---
 # DFM10 Source Quality Audit
@@ -91,6 +91,42 @@ The ready-source pass completed on 2026-08-26 with 17,455 judgments across 177
 sources, zero judge errors, and 15,044 rows (`86.2%`) marked usable for training.
 All A4B servers owned by the pass were torn down after the merge. This is a
 partial DFM10 result until accepted Folketing rows are appended and audited.
+
+## Ranked PDF report
+
+The reproducible report builder is
+[`scripts/build_dfm10_quality_audit_report.py`](/../scripts/build_dfm10_quality_audit_report.py).
+It reads the authoritative merged JSONL and produces both the LaTeX source and
+the compiled report at:
+
+- [`docs/reports/dfm10-source-quality-audit.tex`](/../docs/reports/dfm10-source-quality-audit.tex)
+- [`docs/reports/dfm10-source-quality-audit.pdf`](/../docs/reports/dfm10-source-quality-audit.pdf)
+
+Rebuild the committed artifacts with:
+
+```bash
+python scripts/build_dfm10_quality_audit_report.py
+cd docs/reports
+pdflatex -interaction=nonstopmode -halt-on-error dfm10-source-quality-audit.tex
+pdflatex -interaction=nonstopmode -halt-on-error dfm10-source-quality-audit.tex
+```
+
+The report ranks all 177 audited sources from most to least severe. Its severity
+index gives 50% weight to the unusable-row rate, 20% to coherence deficit, and
+15% each to language-quality and training-value deficits. The table also gives
+sample counts, usable and issue rates, all three mean scores, and the two most
+frequent qualitative issue categories for every source.
+
+The `Posttrain` assessment asks whether the current converted source is useful
+for supervised post-training of a conventional pretrained decoder-only LLM,
+independently of HRM recurrence. `Yes` means directly relevant and coherent;
+`Conditional` means filtering or narrow auxiliary use is warranted;
+`No--repair` means the task family is relevant but its current conversion is
+too broken; and `No--midtrain` reserves continuation-style data for continued
+pretraining or midtraining. The completed pass yields 122 `Yes`, 43
+`Conditional`, 10 `No--repair`, and 2 `No--midtrain` assessments. These are
+pipeline triage judgments, not licensing, privacy, provenance, or safety
+determinations.
 
 ## Initial source-level finding
 

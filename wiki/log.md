@@ -621,3 +621,12 @@
 - Verified LUMI XXL-32 used valid 4096-token local batches at 99.44% packing
   utilization. Recorded LR `1e-3`, BP max 3, update count, and absent clipping
   as more plausible divergence factors than batch geometry alone.
+
+## 2026-08-27 - DFM10 source-quality report
+
+- Added a reproducible LaTeX/PDF report over the completed 17,455-row,
+  177-source audit, ranked most-severe first with quantitative scores and
+  recurring qualitative findings.
+- Added a conventional pretrained LLM post-training suitability assessment for
+  every audited source: 122 direct, 43 conditional, 10 requiring converter
+  repair, and 2 more appropriate for midtraining.
