@@ -1,5 +1,13 @@
 # Knowledge Bundle Update Log
 
+## 2026-08-27
+
+* **FSDP2/HSDP implementation and XXL parity**: Added configurable local shard
+  degree, explicit/preserved resharding behavior, communication-efficient GAS,
+  run-aware no-carry checkpoints, and row-cursor world-size resume. Recorded
+  deterministic DDP/FSDP/HSDP GAS parity plus the full XXL degree-8/4/2 timing
+  and memory matrix.
+
 ## 2026-08-26
 
 * **Distributed long-context implementation matrix**: Documented main-branch

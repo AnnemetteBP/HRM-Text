@@ -414,7 +414,20 @@ def checkpoint_ready(job: Job) -> tuple[bool, str]:
     else:
         return False, f"missing {fsdp_path} or {unsharded_path}"
 
-    carry_ranks = int(job.metadata.get("checkpoint_carry_ranks", 8))
+    state_path = ckpt_path / f"checkpoint_state_{ckpt_tag}.json"
+    state: dict[str, object] = {}
+    if state_path.is_file():
+        try:
+            state = json.loads(state_path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            return False, f"invalid {state_path}: {exc}"
+    carry_policy = str(state.get("carry_policy", "per_rank"))
+    if carry_policy == "none":
+        return True, "ready"
+    if carry_policy != "per_rank":
+        return False, f"unsupported carry_policy={carry_policy!r} in {state_path}"
+
+    carry_ranks = int(state.get("world_size", job.metadata.get("checkpoint_carry_ranks", 8)))
     missing = [
         str(ckpt_path / f"carry_{ckpt_tag}.{rank}.pt")
         for rank in range(carry_ranks)

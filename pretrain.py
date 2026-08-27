@@ -1,6 +1,7 @@
 from typing import Literal, Optional
 from dataclasses import dataclass
 from pathlib import Path
+from contextlib import nullcontext
 import json
 import math
 import os
@@ -21,6 +22,7 @@ from torch.distributed.checkpoint.state_dict import (
 )
 from torch.nn.parallel import DistributedDataParallel
 from torch.distributed.fsdp import fully_shard, FSDPModule, MixedPrecisionPolicy
+from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
@@ -87,6 +89,9 @@ class PretrainConfig(pydantic.BaseModel):
     accelerator_type: AcceleratorType = "sm100"
     distributed_strategy: Literal["fsdp", "ddp", "none"] = "fsdp"
     fsdp_params_precision: Literal["fp32", "bf16"] = "fp32"
+    fsdp_shard_degree: Optional[int] = pydantic.Field(default=None, ge=2)
+    fsdp_reshard_after_forward: Optional[bool] = None
+    fsdp_accumulation_sync_mode: Literal["no_sync", "reduce_scatter"] = "no_sync"
     ddp_params_precision: Literal["fp32", "bf16"] = "fp32"
     ddp_find_unused_parameters: bool = True
     compile_train_batch: bool = True
@@ -115,6 +120,7 @@ class PretrainConfig(pydantic.BaseModel):
     checkpoint_step_interval: Optional[int] = None
     ephemeral_checkpoint_step_interval: Optional[int] = None
     max_steps: Optional[int] = None  # Optional early stop after this many optimizer steps (benchmarking/debugging).
+    benchmark_state_fingerprint: bool = False
     stop_after_step: Optional[int] = None  # Gracefully stop after checkpointing this global optimizer step.
     dataloader_prefetch_factor: int = pydantic.Field(default=8, ge=1)  # Batches prefetched by the (single) dataloader worker.
     log_interval: int = 5
@@ -204,8 +210,15 @@ def create_dataloader(
     return dataloader, dataset.metadata
 
 
-def apply_fsdp(module: nn.Module, param_dtype: torch.dtype, *, reshard_after_forward: bool = False):
+def apply_fsdp(
+    module: nn.Module,
+    param_dtype: torch.dtype,
+    *,
+    mesh: Optional[DeviceMesh] = None,
+    reshard_after_forward: bool = False,
+):
     fully_shard(module,
+                mesh=mesh,
                 mp_policy=MixedPrecisionPolicy(param_dtype=param_dtype,
                                                reduce_dtype=torch.get_default_dtype()),  # Use master dtype for reduction
                 reshard_after_forward=reshard_after_forward)
@@ -219,6 +232,42 @@ def apply_fsdp(module: nn.Module, param_dtype: torch.dtype, *, reshard_after_for
         module.set_reduce_scatter_divide_factor(1.0)
     if hasattr(module, "set_force_sum_reduction_for_comms"):
         module.set_force_sum_reduction_for_comms(True)
+
+
+def create_fsdp_mesh(config: PretrainConfig) -> Optional[DeviceMesh]:
+    """Create a native FSDP2 HSDP mesh, preserving the default 1D path."""
+    degree = config.fsdp_shard_degree
+    if degree is None:
+        return None
+    if not dist.is_available() or not dist.is_initialized():
+        raise RuntimeError("fsdp_shard_degree requires initialized distributed training")
+
+    world_size = dist.get_world_size()
+    local_world_size = int(os.environ.get("LOCAL_WORLD_SIZE", torch.cuda.device_count()))
+    if degree > local_world_size:
+        raise ValueError(
+            f"fsdp_shard_degree={degree} exceeds LOCAL_WORLD_SIZE={local_world_size}"
+        )
+    if world_size % degree != 0:
+        raise ValueError(
+            f"WORLD_SIZE={world_size} must be divisible by fsdp_shard_degree={degree}"
+        )
+    if degree == world_size:
+        # mesh=None is the established full-world FSDP path.
+        return None
+
+    return init_device_mesh(
+        "cuda",
+        (world_size // degree, degree),
+        mesh_dim_names=("replicate", "shard"),
+    )
+
+
+def fsdp_reshard_after_forward(config: PretrainConfig, *, checkpointed: bool) -> bool:
+    if config.fsdp_reshard_after_forward is not None:
+        return config.fsdp_reshard_after_forward
+    # Preserve the existing activation-checkpointing integration by default.
+    return checkpointed
 
 
 def unwrap_model(model: nn.Module) -> nn.Module:
@@ -296,6 +345,7 @@ def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta
 
     if dist.is_available() and dist.is_initialized():
         if config.distributed_strategy == "fsdp":
+            fsdp_mesh = create_fsdp_mesh(config)
             model_dtype = fsdp_model_dtype(config)
             if model_dtype != torch.float32:
                 model = model.to(dtype=model_dtype)
@@ -310,10 +360,22 @@ def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta
                     apply_fsdp(
                         module,
                         fwd_bwd_dtype,
-                        reshard_after_forward=module in checkpointed_blocks,
+                        mesh=fsdp_mesh,
+                        reshard_after_forward=fsdp_reshard_after_forward(
+                            config,
+                            checkpointed=module in checkpointed_blocks,
+                        ),
                     )
 
-            apply_fsdp(model, fwd_bwd_dtype, reshard_after_forward=bool(checkpointed_blocks))
+            apply_fsdp(
+                model,
+                fwd_bwd_dtype,
+                mesh=fsdp_mesh,
+                reshard_after_forward=fsdp_reshard_after_forward(
+                    config,
+                    checkpointed=bool(checkpointed_blocks),
+                ),
+            )
         elif config.distributed_strategy == "ddp":
             if device.type != "cuda":
                 raise RuntimeError("distributed_strategy=ddp is currently only supported for CUDA torchrun jobs")
@@ -423,6 +485,46 @@ def load_checkpoint_metadata(checkpoint_path: str, tag: str) -> dict:
         return json.load(f)
 
 
+def infer_checkpoint_world_size(checkpoint_path: str, tag: str, metadata: dict) -> Optional[int]:
+    if metadata.get("world_size") is not None:
+        return int(metadata["world_size"])
+    carry_pattern = re.compile(rf"^carry_{re.escape(tag)}\.(\d+)\.pt$")
+    carry_ranks = {
+        int(match.group(1))
+        for name in os.listdir(checkpoint_path)
+        if (match := carry_pattern.fullmatch(name)) is not None
+    }
+    return max(carry_ranks) + 1 if carry_ranks else None
+
+
+def checkpoint_carry_policy(checkpoint_path: str, tag: str, metadata: dict) -> Literal["none", "per_rank"]:
+    explicit_policy = metadata.get("carry_policy")
+    if explicit_policy is not None:
+        if explicit_policy not in ("none", "per_rank"):
+            raise ValueError(f"Unsupported carry_policy={explicit_policy!r} in checkpoint {tag}")
+        return explicit_policy
+
+    # Legacy no-carry checkpoints wrote one serialized None per rank.
+    inferred_world_size = infer_checkpoint_world_size(checkpoint_path, tag, metadata)
+    legacy_policy: Literal["none", "per_rank"] = "per_rank"
+    if not dist.is_available() or not dist.is_initialized() or dist.get_rank() == 0:
+        if inferred_world_size is not None:
+            carry_paths = [
+                os.path.join(checkpoint_path, f"carry_{tag}.{rank}.pt")
+                for rank in range(inferred_world_size)
+            ]
+            if all(os.path.isfile(path) for path in carry_paths) and all(
+                torch.load(path, map_location="cpu", weights_only=False) is None
+                for path in carry_paths
+            ):
+                legacy_policy = "none"
+    if dist.is_available() and dist.is_initialized():
+        policies = [legacy_policy]
+        dist.broadcast_object_list(policies, src=0)
+        legacy_policy = policies[0]
+    return legacy_policy
+
+
 def resolve_resume_state(config: PretrainConfig, current_local_batch_size: int) -> Optional[ResumeState]:
     if config.resume_checkpoint_path is None and config.resume_checkpoint_tag is None:
         return None
@@ -437,6 +539,10 @@ def resolve_resume_state(config: PretrainConfig, current_local_batch_size: int) 
     batch_in_epoch = metadata.get("batch_in_epoch", config.resume_batch_in_epoch)
     row_cursor = metadata.get("global_row_cursor_in_epoch")
     checkpoint_local_batch_size = metadata.get("local_batch_size")
+    checkpoint_world_size = infer_checkpoint_world_size(
+        config.resume_checkpoint_path, tag, metadata
+    )
+    current_world_size = dist.get_world_size() if dist.is_available() and dist.is_initialized() else 1
     batch_in_epoch_exact = bool(metadata.get("batch_in_epoch_exact", True))
 
     if tag.startswith("epoch_"):
@@ -459,7 +565,14 @@ def resolve_resume_state(config: PretrainConfig, current_local_batch_size: int) 
     if (
         row_cursor is not None
         and checkpoint_local_batch_size is not None
-        and (int(checkpoint_local_batch_size) != current_local_batch_size or not batch_in_epoch_exact)
+        and (
+            int(checkpoint_local_batch_size) != current_local_batch_size
+            or (
+                checkpoint_world_size is not None
+                and int(checkpoint_world_size) != current_world_size
+            )
+            or not batch_in_epoch_exact
+        )
     ):
         start_row_cursor = int(row_cursor)
         resume_mode = "row_cursor"
@@ -479,8 +592,26 @@ def load_train_checkpoint(config: PretrainConfig, train_state: TrainState, rank:
         return None
 
     assert config.resume_checkpoint_path is not None
+    metadata = load_checkpoint_metadata(config.resume_checkpoint_path, resume_state.tag)
+    carry_policy = checkpoint_carry_policy(
+        config.resume_checkpoint_path, resume_state.tag, metadata
+    )
+    checkpoint_world_size = infer_checkpoint_world_size(
+        config.resume_checkpoint_path, resume_state.tag, metadata
+    )
+    current_world_size = dist.get_world_size() if dist.is_available() and dist.is_initialized() else 1
+    if (
+        carry_policy == "per_rank"
+        and checkpoint_world_size is not None
+        and checkpoint_world_size != current_world_size
+    ):
+        raise ValueError(
+            "Cannot resume stateful per-rank carry across a world-size change: "
+            f"checkpoint={checkpoint_world_size}, current={current_world_size}. "
+            "Sample-keyed carry redistribution is not implemented."
+        )
     carry_path = os.path.join(config.resume_checkpoint_path, f"carry_{resume_state.tag}.{rank}.pt")
-    if not os.path.isfile(carry_path):
+    if carry_policy == "per_rank" and not os.path.isfile(carry_path):
         raise ValueError(f"Carry file not found: {carry_path}")
 
     trace_print(config, rank, f"load_checkpoint_begin tag={resume_state.tag} format={config.checkpoint_format}")
@@ -501,9 +632,13 @@ def load_train_checkpoint(config: PretrainConfig, train_state: TrainState, rank:
         reset_optimizer_ema_to_params(train_state.optim)
         trace_print(config, rank, "reset_ema_to_params_end")
 
-    trace_print(config, rank, f"load_carry_begin path={carry_path}")
-    train_state.carry = torch.load(carry_path, map_location="cuda")
-    trace_print(config, rank, "load_carry_end")
+    if carry_policy == "none":
+        train_state.carry = None
+        trace_print(config, rank, "load_carry_skipped policy=none")
+    else:
+        trace_print(config, rank, f"load_carry_begin path={carry_path}")
+        train_state.carry = torch.load(carry_path, map_location="cuda")
+        trace_print(config, rank, "load_carry_end")
     if resume_state.step >= 0:
         train_state.step = resume_state.step
     elif resume_state.tag.startswith("epoch_"):
@@ -702,11 +837,36 @@ def train_accumulated_batches(
     train_state.optim.zero_grad()
     trace_print(config, rank, f"zero_grad_end step={train_state.step}")
     metrics = None
-    for microbatch_idx, (batch, supervised_count) in enumerate(zip(batches, supervised_counts), start=1):
-        loss_scale = supervised_count / total_supervised
-        trace_print(config, rank, f"forward_backward_begin step={train_state.step} microbatch={microbatch_idx} loss_scale={loss_scale.item()}")
-        metrics = _add_metrics(metrics, backward_step(train_state, batch, loss_scale, **kwargs))
-        trace_print(config, rank, f"forward_backward_end step={train_state.step} microbatch={microbatch_idx}")
+    use_hsdp_reduce_scatter = (
+        isinstance(train_state.model, FSDPModule)
+        and config.fsdp_accumulation_sync_mode == "reduce_scatter"
+        and config.fsdp_shard_degree is not None
+        and dist.is_available()
+        and dist.is_initialized()
+        and config.fsdp_shard_degree < dist.get_world_size()
+    )
+    try:
+        for microbatch_idx, (batch, supervised_count) in enumerate(zip(batches, supervised_counts), start=1):
+            is_final_microbatch = microbatch_idx == len(batches)
+            sync_context = nullcontext()
+            if isinstance(train_state.model, DistributedDataParallel) and not is_final_microbatch:
+                sync_context = train_state.model.no_sync()
+            elif isinstance(train_state.model, FSDPModule):
+                if use_hsdp_reduce_scatter:
+                    train_state.model.set_requires_gradient_sync(True, recurse=True)
+                    train_state.model.set_requires_all_reduce(is_final_microbatch, recurse=True)
+                else:
+                    train_state.model.set_requires_gradient_sync(is_final_microbatch, recurse=True)
+
+            loss_scale = supervised_count / total_supervised
+            trace_print(config, rank, f"forward_backward_begin step={train_state.step} microbatch={microbatch_idx} loss_scale={loss_scale.item()}")
+            with sync_context:
+                metrics = _add_metrics(metrics, backward_step(train_state, batch, loss_scale, **kwargs))
+            trace_print(config, rank, f"forward_backward_end step={train_state.step} microbatch={microbatch_idx}")
+    finally:
+        if isinstance(train_state.model, FSDPModule):
+            train_state.model.set_requires_gradient_sync(True, recurse=True)
+            train_state.model.set_requires_all_reduce(True, recurse=True)
 
     trace_print(config, rank, f"optim_step_begin step={train_state.step}")
     train_state.optim.step()
@@ -814,6 +974,7 @@ def save_checkpoint_metadata(
     local_batch_size: int,
     resume_info: Optional[dict[str, int]] = None,
     batch_in_epoch_exact: bool = True,
+    carry_policy: Literal["none", "per_rank"] = "per_rank",
 ):
     if config.checkpoint_path is None or rank != 0:
         return
@@ -831,6 +992,13 @@ def save_checkpoint_metadata(
         "local_batch_size": local_batch_size,
         "data_path": config.data.path,
         "seed": config.seed,
+        "world_size": dist.get_world_size() if dist.is_available() and dist.is_initialized() else 1,
+        "local_world_size": int(os.environ.get("LOCAL_WORLD_SIZE", 1)),
+        "carry_policy": carry_policy,
+        "carry_schema_version": 1,
+        "fsdp_shard_degree": config.fsdp_shard_degree,
+        "fsdp_reshard_after_forward": config.fsdp_reshard_after_forward,
+        "fsdp_accumulation_sync_mode": config.fsdp_accumulation_sync_mode,
     }
     if resume_info is not None:
         metadata.update({
@@ -839,9 +1007,14 @@ def save_checkpoint_metadata(
             "global_numseq": int(resume_info["global_numseq"]),
             "global_batch_totlen": int(resume_info["global_batch_totlen"]),
         })
-    with open(os.path.join(config.checkpoint_path, f"checkpoint_state_{tag}.json"), "wt") as f:
+    metadata_path = os.path.join(config.checkpoint_path, f"checkpoint_state_{tag}.json")
+    temporary_path = f"{metadata_path}.tmp"
+    with open(temporary_path, "wt") as f:
         json.dump(metadata, f, indent=2, sort_keys=True)
         f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(temporary_path, metadata_path)
 
 
 def save_train_checkpoint(
@@ -866,11 +1039,24 @@ def save_train_checkpoint(
     else:
         raise ValueError(f"Unsupported checkpoint_format: {config.checkpoint_format}")
 
-    # Save carry on all ranks
-    torch.save(train_state.carry, os.path.join(config.checkpoint_path, f"carry_{tag}.{rank}.pt"))
+    carry_policy: Literal["none", "per_rank"] = "none" if train_state.carry is None else "per_rank"
+    if carry_policy == "per_rank":
+        torch.save(train_state.carry, os.path.join(config.checkpoint_path, f"carry_{tag}.{rank}.pt"))
     if dist.is_available() and dist.is_initialized():
         dist.barrier()
-    save_checkpoint_metadata(config, train_state, tag, epoch, batch_in_epoch, rank, checkpoint_kind, local_batch_size, resume_info, batch_in_epoch_exact)
+    save_checkpoint_metadata(
+        config,
+        train_state,
+        tag,
+        epoch,
+        batch_in_epoch,
+        rank,
+        checkpoint_kind,
+        local_batch_size,
+        resume_info,
+        batch_in_epoch_exact,
+        carry_policy,
+    )
 
 
 def _ephemeral_step_from_name(name: str) -> Optional[int]:
@@ -975,6 +1161,55 @@ def maybe_empty_cache(step: int, device: torch.device, interval: int) -> None:
     print(f"[{device.type} empty_cache] step={step}: {' '.join(changes)}", flush=True)
 
 
+@torch.no_grad()
+def distributed_state_fingerprint(
+    config: PretrainConfig,
+    train_state: TrainState,
+    device: torch.device,
+) -> dict[str, dict[str, float]]:
+    """Return compact distributed checksums for benchmark parity comparisons."""
+    buckets: dict[str, list[Tensor]] = {"parameters": []}
+    for param in train_state.model.parameters():
+        buckets["parameters"].append(param)
+    for state in train_state.optim.state.values():
+        for key, value in state.items():
+            if torch.is_tensor(value) and value.is_floating_point():
+                buckets.setdefault(f"optimizer/{key}", []).append(value)
+
+    world_size = dist.get_world_size() if dist.is_available() and dist.is_initialized() else 1
+    replica_factor = 1
+    if config.fsdp_shard_degree is not None and dist.is_available() and dist.is_initialized():
+        replica_factor = world_size // config.fsdp_shard_degree
+
+    result: dict[str, dict[str, float]] = {}
+    for name, tensors in sorted(buckets.items()):
+        sums = torch.zeros(4, dtype=torch.float64, device=device)
+        maximum = torch.zeros(1, dtype=torch.float64, device=device)
+        for tensor in tensors:
+            local = tensor.to_local() if hasattr(tensor, "to_local") else tensor
+            if local.device != device:
+                local = local.to(device)
+            sums[0] += local.sum(dtype=torch.float64)
+            sums[1] += local.abs().sum(dtype=torch.float64)
+            sums[2] += (local * local).sum(dtype=torch.float64)
+            sums[3] += local.numel()
+            if local.numel():
+                maximum.copy_(torch.maximum(maximum, local.abs().max().to(torch.float64).reshape(1)))
+        if dist.is_available() and dist.is_initialized():
+            dist.all_reduce(sums, op=dist.ReduceOp.SUM)
+            dist.all_reduce(maximum, op=dist.ReduceOp.MAX)
+        normalization = world_size if name == "optimizer/step" else replica_factor
+        sums /= normalization
+        result[name] = {
+            "sum": sums[0].item(),
+            "abs_sum": sums[1].item(),
+            "square_sum": sums[2].item(),
+            "numel": sums[3].item(),
+            "abs_max": maximum.item(),
+        }
+    return result
+
+
 @hydra.main(config_path="config", config_name="cfg_pretrain", version_base=None)
 def launch(hydra_config: DictConfig):
     WORLD_SIZE = 1
@@ -1055,6 +1290,7 @@ def launch(hydra_config: DictConfig):
     # Optional per-step timing for benchmarking (only active with max_steps).
     bench_step_times: list[float] = []
     bench_last_time: Optional[float] = None
+    bench_last_metrics: dict[str, float] = {}
 
     # Progress bar and logger
     progress_bar = None
@@ -1146,6 +1382,7 @@ def launch(hydra_config: DictConfig):
                 metrics = reduce_metrics(metrics, prefix="train/")
                 trace_print(config, RANK, f"reduce_metrics_end step={train_state.step}")
                 if RANK == 0:
+                    bench_last_metrics = dict(metrics)
                     progress_bar.update(train_state.step - progress_bar.n)  # type: ignore
                     trace_print(config, RANK, f"wandb_log_begin step={train_state.step}")
                     wandb.log(metrics | train_extra_args | {"train/lr": lr}, step=train_state.step)
@@ -1224,6 +1461,10 @@ def launch(hydra_config: DictConfig):
         if (epoch % config.checkpoint_interval == 0) or (epoch == config.epochs):
             save_train_checkpoint(config, train_state, f"epoch_{epoch}", epoch, 0, RANK, local_batch_size=local_batch_size, batch_in_epoch_exact=True)
 
+    benchmark_fingerprint = None
+    if config.max_steps is not None and config.benchmark_state_fingerprint:
+        benchmark_fingerprint = distributed_state_fingerprint(config, train_state, device)
+
     # Benchmark summary (rank 0 only, when max_steps was set).
     if config.max_steps is not None and RANK == 0 and bench_step_times:
         # Drop the first couple of measured intervals as warmup (compile/MIOPEN tuning).
@@ -1243,7 +1484,10 @@ def launch(hydra_config: DictConfig):
             "min_step_seconds": min(steady),
             "max_step_seconds": max(steady),
             "all_step_seconds": bench_step_times,
+            "last_metrics": bench_last_metrics,
         }
+        if benchmark_fingerprint is not None:
+            summary["state_fingerprint"] = benchmark_fingerprint
         bench_path = os.environ.get("BENCH_OUTPUT")
         if bench_path:
             with open(bench_path, "w") as f:

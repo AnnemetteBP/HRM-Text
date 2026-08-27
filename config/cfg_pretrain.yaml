@@ -14,6 +14,7 @@ training_total_steps: null  # Optional global optimizer-step endpoint for resume
 checkpoint_interval: 1
 checkpoint_step_interval: null
 max_steps: null  # Optional early stop after N optimizer steps (benchmarking/debugging)
+benchmark_state_fingerprint: false  # Expensive distributed parameter/optimizer/EMA checksums for parity tests
 stop_after_step: null  # Optional global optimizer step: force a regular step checkpoint, then exit cleanly.
 dataloader_prefetch_factor: 8  # Batches the single dataloader worker prefetches ahead
 ephemeral_checkpoint_step_interval: null  # Optional resumability checkpoint cadence; keeps only latest ephemeral_step_* unless superseded by a regular step checkpoint.
@@ -47,6 +48,9 @@ activation_checkpointing: none  # none, full, or l_only; checkpoint selected Tra
 accelerator_type: sm100
 distributed_strategy: fsdp
 fsdp_params_precision: fp32  # FSDP only: fp32 persistent sharded weights by default; set bf16 for bf16 optimizer/master params with fp32 EMA
+fsdp_shard_degree: null  # null preserves full-world FSDP; smaller divisors enable native FSDP2 hybrid sharding
+fsdp_reshard_after_forward: null  # null preserves current behavior; true/false explicitly overrides every FSDP-wrapped module
+fsdp_accumulation_sync_mode: no_sync  # no_sync defers all FSDP comms; reduce_scatter retains HSDP shard-local reduction and defers replica all-reduce
 ddp_params_precision: fp32  # DDP only: fp32 persistent params + bf16 autocast compute, or bf16 params with fp32 EMA
 ddp_find_unused_parameters: true
 compile_train_batch: true

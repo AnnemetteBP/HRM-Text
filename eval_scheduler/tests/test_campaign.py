@@ -186,6 +186,49 @@ def test_training_checkpoint_requires_regular_sidecar(tmp_path: Path) -> None:
     assert runtime.training_checkpoint_ready(training, 100) == (True, "ready")
 
 
+def test_checkpoint_ready_accepts_completed_no_carry_checkpoint(tmp_path: Path) -> None:
+    tag = "step_100"
+    checkpoint = tmp_path / "checkpoints"
+    shard = checkpoint / f"fsdp2_{tag}"
+    shard.mkdir(parents=True)
+    (shard / ".metadata").touch()
+    job = Job(
+        job_id="wait",
+        action=Action.WAIT_CHECKPOINT,
+        family="checkpoint",
+        name=tag,
+        metadata={"ckpt_path": str(checkpoint), "ckpt_tag": tag},
+    )
+
+    assert runtime.checkpoint_ready(job)[0] is False
+    (checkpoint / f"checkpoint_state_{tag}.json").write_text(
+        json.dumps({"step": 100, "world_size": 64, "carry_policy": "none"})
+    )
+    assert runtime.checkpoint_ready(job) == (True, "ready")
+
+
+def test_checkpoint_ready_uses_sidecar_world_size_for_carry(tmp_path: Path) -> None:
+    tag = "step_100"
+    checkpoint = tmp_path / "checkpoints"
+    shard = checkpoint / f"fsdp2_{tag}"
+    shard.mkdir(parents=True)
+    (shard / ".metadata").touch()
+    (checkpoint / f"checkpoint_state_{tag}.json").write_text(
+        json.dumps({"step": 100, "world_size": 2, "carry_policy": "per_rank"})
+    )
+    job = Job(
+        job_id="wait",
+        action=Action.WAIT_CHECKPOINT,
+        family="checkpoint",
+        name=tag,
+        metadata={"ckpt_path": str(checkpoint), "ckpt_tag": tag},
+    )
+
+    for rank in range(2):
+        (checkpoint / f"carry_{tag}.{rank}.pt").touch()
+    assert runtime.checkpoint_ready(job) == (True, "ready")
+
+
 def test_training_command_replaces_stop_target(monkeypatch, tmp_path: Path) -> None:
     process = MagicMock()
     process.wait.return_value = 0

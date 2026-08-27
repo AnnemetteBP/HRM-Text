@@ -194,3 +194,70 @@ conservatively and compare by processed tokens as well as optimizer steps.
 Do not start a costly multi-node production run until a two-node job has passed
 forward/backward parity, optimizer/EMA parity, regular and ephemeral save,
 same-world resume, changed-world resume, HF export, and one evaluation smoke.
+
+## Single-Node Implementation and XXL Validation
+
+On 2026-08-27 the first implementation landed on the `checkpointing` branch:
+
+- `fsdp_shard_degree=null` preserves the established full-world FSDP2 path.
+  Explicit degrees must divide `WORLD_SIZE` and may not exceed
+  `LOCAL_WORLD_SIZE`. A smaller degree constructs the native 2D
+  `("replicate", "shard")` mesh. Degrees 4 and 2 were exercised on the local
+  eight-GPU node as simulated HSDP.
+- `fsdp_reshard_after_forward=null` preserves the preceding behavior: false
+  without activation checkpointing and true for checkpointed blocks/root.
+  Explicit true or false overrides all FSDP-wrapped modules.
+- Accumulation now defers DDP and FSDP synchronization until the final
+  microbatch. `fsdp_accumulation_sync_mode=reduce_scatter` is available for
+  HSDP: it retains intra-shard reduce-scatter on each microbatch and postpones
+  only the replica all-reduce. The conservative default remains `no_sync`.
+- New checkpoints atomically publish topology and carry policy in the sidecar.
+  This no-carry HRM no longer writes redundant rank-local `None` files.
+  Scheduler readiness derives carry requirements from the sidecar, with the
+  old eight-rank behavior retained for legacy checkpoints.
+- A world-size change forces row-cursor resume even when the local microbatch
+  size happens to remain unchanged. Legacy sidecars infer their old world size
+  from carry ranks when possible.
+
+Deterministic fixed-example tests using the production accumulation function
+passed GAS 1 versus GAS 4 for DDP, 1D FSDP, degree-4 HSDP, and degree-2 HSDP.
+The maximum absolute model/optimizer difference was `8.94e-8`; parameters and
+EMA were exactly equal. Both HSDP synchronization modes passed.
+
+The full XXL timing matrix resumed the same DFM8 `ephemeral_step_161000`
+checkpoint. It used six optimizer steps, discarded two timing warmups, disabled
+W&B, and used full activation checkpointing except for the production control:
+
+| World | Shard degree | Accumulation | Reshard | Median s/step | Peak allocated MiB |
+|---:|---:|---|---|---:|---:|
+| 8 | 8 | no-sync GAS 4 | current/true | 6.22 | 55,326 |
+| 8 | 8 | no-sync GAS 4 | false | 5.99 | 61,028 |
+| 8 | 4 | no-sync GAS 4 | current/true | 6.41 | 62,897 |
+| 8 | 4 | no-sync GAS 4 | false | 6.06 | 68,610 |
+| 8 | 4 | reduce-scatter GAS 4 | current/true | 6.35 | 51,468 |
+| 8 | 2 | no-sync GAS 4 | current/true | 6.46 | 78,075 |
+| 8 | 2 | no-sync GAS 4 | false | 6.28 | 83,789 |
+| 8 | 2 | reduce-scatter GAS 4 | current/true | 6.40 | 70,443 |
+| 8 | 8 | GAS 1 | current/true | 4.58 | 131,599 |
+| 4 | 4 | GAS 8 | current/true | 12.63 | 62,897 |
+| 2 | 2 | GAS 16 | current/true | 24.42 | 78,078 |
+| 8 | 8 | production GAS 4, compiled, no AC | current/false | 3.80 | 156,692 |
+
+The 8-to-4 and 8-to-2 DCP loads and subsequent full XXL optimizer steps
+succeeded. Their near-2x/4x timing is consistent with the reduced GPU count.
+The full-data runs are not strict cross-GAS numerical tests: changing local
+microbatch geometry changes packed sequence grouping, and repeated nominally
+identical degree-8 replays also showed optimizer-fingerprint variation. Use
+the deterministic fixed-example test as the communication parity gate. The
+full XXL runs establish operational load, memory, and throughput behavior.
+
+`reduce_scatter` is the preferred HSDP GAS mode based on this one-node test: it
+reduced degree-4 peak allocation by about 11.4 GiB and degree-2 by about 7.6
+GiB relative to full no-sync, without a meaningful time penalty. Revalidate
+on multiple nodes because inter-node all-reduce changes that tradeoff.
+
+Artifacts and reproducible commands live under
+`logs/benchmarks/fsdp_hsdp_xxl/` and in
+`scripts/benchmark_fsdp_topology_xxl.sh`. The multi-node SSH launcher,
+multi-node NCCL measurements, HF export, and evaluation smoke remain open
+delivery gates.
