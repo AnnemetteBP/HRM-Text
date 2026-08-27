@@ -1,10 +1,10 @@
 ---
 type: Plan Record
 title: DFM8 XXL Epoch 1 Resume
-description: Verified scheduler continuation from step 151K through the first DFM8 epoch.
+description: Verified scheduler continuation from the latest complete ephemeral through the first DFM8 epoch.
 tags: [dfm8, xxl, training, evaluation, scheduler]
 status: stable
-last_updated: 2026-08-26
+last_updated: 2026-08-27
 confidence: high
 part_of: /pages/dfm8-plan.md
 ---
@@ -111,3 +111,31 @@ resume point is the fully written `ephemeral_step_161000`, with DCP metadata,
 state JSON, and all eight carry files. The 115-step unsaved tail is intentionally
 discarded. All carries contain `None`, confirming that this HRM variant has no
 cross-batch recurrent state to redistribute when changing world size.
+
+## Production resume from step 161000
+
+On 2026-08-27 the existing scheduler plan was repaired under its advisory lock
+and resumed from `ephemeral_step_161000`. The plan repair utility now accepts an
+explicit `--resume-tag`; this avoids embedding an obsolete ephemeral in future
+recoveries. The failed 200K training row was reset to pending, its log directory
+was changed to `logs/training/dfm8_XXL_1epoch/step_161000_to_200000`, and the
+same evaluation and continuation graph was retained.
+
+The resumed command explicitly selects the measured fastest compatible
+single-node path:
+
+```text
+activation_checkpointing=none
+compile_train_batch=true
+fsdp_shard_degree=null
+fsdp_reshard_after_forward=false
+fsdp_accumulation_sync_mode=no_sync
+```
+
+It retains eight GPUs, GBS 262144, GAS 4, FP32 FSDP parameters, BF16 compute,
+FA4, and W&B run `DFM5/40j5y877`. All eight ranks restored `step=161000`,
+`start_epoch=1`, and `skip_batches=644000`. The run advanced past step 161015;
+post-compilation five-step intervals were approximately 18 seconds. W&B warns
+about non-monotonic points until the resumed process passes the previously
+logged unsaved tail at step 161111; those warnings are expected and do not
+alter checkpoint correctness.

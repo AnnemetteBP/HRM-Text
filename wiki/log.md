@@ -2,6 +2,10 @@
 
 ## 2026-08-27
 
+* **DFM8 XXL production resume at 161K**: Repaired the existing epoch-one
+  scheduler row under lock, resumed its existing W&B run from the latest fully
+  written ephemeral, and verified forward progress on the measured fastest
+  single-node FSDP2 path.
 * **Fixed-membership SSH TorchRun launcher**: Added ordered-host SSH launch,
   cross-node software/path/interface/clock preflight, NCCL all-reduce smoke,
   atomic manifests, per-node logs, and exact process-group teardown. Added a

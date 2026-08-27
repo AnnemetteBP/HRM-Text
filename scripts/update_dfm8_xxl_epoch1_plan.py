@@ -3,12 +3,11 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import os
-import sys
 from pathlib import Path
-
 
 TRAIN_ENV = (
     "CC=/usr/bin/gcc CXX=/usr/bin/g++ AS=/usr/bin/as "
@@ -22,10 +21,16 @@ BARE_TORCHRUN = "torchrun --nproc_per_node=8"
 EXPLICIT_TORCHRUN = "/home/ucloud/miniforge3/envs/hrm/bin/torchrun --nproc_per_node=8"
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--resume-tag", default="ephemeral_step_151000")
+    parser.add_argument("plan_tsv", type=Path)
+    return parser.parse_args()
+
+
 def main() -> None:
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: update_dfm8_xxl_epoch1_plan.py PLAN_TSV")
-    path = Path(sys.argv[1])
+    args = parse_args()
+    path = args.plan_tsv
     with path.open(newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         fieldnames = reader.fieldnames
@@ -49,11 +54,20 @@ def main() -> None:
             command = command.replace(BARE_TORCHRUN, EXPLICIT_TORCHRUN, 1)
         torchrun_index = command.index(EXPLICIT_TORCHRUN)
         command = f"{TRAIN_ENV} {command[torchrun_index:]}"
+        explicit_fast_path = {
+            "fsdp_shard_degree": "null",
+            "fsdp_reshard_after_forward": "false",
+            "fsdp_accumulation_sync_mode": "no_sync",
+        }
+        for key, value in explicit_fast_path.items():
+            if f"{key}=" not in command:
+                command += f" {key}={value}"
         metadata["command"] = command
 
         if row["job_id"] == "campaign-train-200000":
-            metadata["resume_from_tag"] = "ephemeral_step_151000"
-            row["log_dir"] = "logs/training/dfm8_XXL_1epoch/step_151000_to_200000"
+            metadata["resume_from_tag"] = args.resume_tag
+            resume_step = args.resume_tag.rsplit("_", 1)[-1]
+            row["log_dir"] = f"logs/training/dfm8_XXL_1epoch/step_{resume_step}_to_200000"
             row["status"] = "pending"
             row["attempt"] = "0"
         elif row["job_id"] == "campaign-train-268857":
