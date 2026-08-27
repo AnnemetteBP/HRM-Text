@@ -139,3 +139,34 @@ post-compilation five-step intervals were approximately 18 seconds. W&B warns
 about non-monotonic points until the resumed process passes the previously
 logged unsaved tail at step 161111; those warnings are expected and do not
 alter checkpoint correctness.
+
+## Capacity crossover interpretation
+
+The configured XXL model has `3,978,299,136` parameters, versus
+`1,786,773,504` for XL. At GBS 262144, the 50K, 100K, and 150K checkpoints
+represent 13.11B, 26.21B, and 39.32B tokens, or only 3.3, 6.6, and 9.9 tokens
+per XXL parameter. The estimated end of epoch one at step 268857 is 70.48B
+tokens, or 17.7 tokens per parameter. A mature XL checkpoint from the long
+DFM6/DFM7/DFM8 lineage has seen hundreds of billions of tokens, so comparing
+it directly with the current sub-epoch XXL checkpoint conflates capacity with
+training maturity.
+
+The first three XXL headline/suite points are:
+
+| Metric | 50K | 100K | 150K |
+|---|---:|---:|---:|
+| Danish headline | 0.442 | 0.517 | 0.539 |
+| English headline | 0.460 | 0.543 | 0.542 |
+| Math/code headline | 0.434 | 0.488 | 0.438 |
+| Standard suite | 0.415 | 0.530 | 0.559 |
+| DFM suite | 0.492 | 0.587 | 0.614 |
+| EuroEval suite | 0.436 | 0.484 | 0.464 |
+
+This is not a broad plateau: standard and DFM continue to improve from 100K
+to 150K, while English is flat and math/code and EuroEval are volatile. Expect
+the first credible capacity separation on difficult benchmarks near the end
+of epoch one or during epoch two. A defensible ceiling comparison needs at
+least roughly 80--160B tokens (20--40 tokens per XXL parameter), corresponding
+to about 305K--610K optimizer steps at the current GBS. This range is an
+engineering forecast, not a scaling-law guarantee; the custom recurrent depth,
+data changes, and aggressive constant LR can move the crossover.
