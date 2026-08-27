@@ -631,7 +631,13 @@
 - Added a reproducible LaTeX/PDF report over the completed 17,455-row,
   177-source audit, ranked most-severe first with quantitative scores and
   recurring qualitative findings.
-- Superseded the initial combined post-training label after review. The report
-  now independently classifies task role (169 SFT, 6 auxiliary SFT, 2
+- Superseded the initial combined post-training label after review. The initial
+  177-source report independently classified task role (169 SFT, 6 auxiliary SFT, 2
   midtraining) and measured quality (135 use, 32 filter, 10 repair), so a broken
   SFT conversion is no longer conflated with a sound midtraining source.
+- Extended the report to 178 sources and 17,555 judgments with a balanced
+  100-row sample of accepted Folketing transformations from completed audit
+  partitions 0--5. Added the DFM-Mimir category taxonomy and a source-specific
+  remediation table with full-row B200 repair/re-audit GPU-hour estimates. The
+  combined report has 169 SFT, 6 auxiliary SFT, 2 midtraining, and 1 mixed
+  source, independently of 136 use, 32 filter, and 10 repair dispositions.
