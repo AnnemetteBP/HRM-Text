@@ -2,6 +2,9 @@
 
 ## 2026-08-27
 
+* **DFM8 XXL to DFM10 multi-node transition**: Recorded the planned clean
+  epoch-boundary dataset change, four/eight-node GBS geometry, HSDP topology,
+  DFM10 readiness blockers, validation gates, and checkpoint-cadence concerns.
 * **DFM8 XXL production resume at 161K**: Repaired the existing epoch-one
   scheduler row under lock, resumed its existing W&B run from the latest fully
   written ephemeral, and verified forward progress on the measured fastest

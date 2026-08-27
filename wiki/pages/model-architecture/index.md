@@ -19,3 +19,4 @@
 * [Distributed Long-Context Implementation Options](distributed-long-context-options.md) - Main-branch difficulty, risks, and recommended ordering for activation and model-parallel approaches.
 * [Multi-Node and 32K Training Plan](multinode-32k-training-plan.md) - Direct-SSH TorchRun, run-aware checkpoints, efficient GAS, HSDP, world-size resume, and staged B200 context extension.
 * [Fixed-Membership SSH TorchRun Launcher](multinode-ssh-launcher.md) - Host contract, preflight, NCCL smoke, launch, logging, and coordinated failure handling without Slurm.
+* [DFM8 XXL to DFM10 Multi-Node Transition](dfm8-xxl-to-dfm10-multinode-transition.md) - Epoch-boundary data/topology change, batch geometry, readiness gates, and checkpoint cadence.
