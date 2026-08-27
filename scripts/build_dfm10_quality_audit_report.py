@@ -46,7 +46,8 @@ class SourceSummary:
     value_mean: float
     severity: float
     finding: str
-    posttraining: str
+    training_role: str
+    quality_disposition: str
 
 
 def latex_escape(value: str) -> str:
@@ -84,25 +85,26 @@ def issue_categories(judgment: dict) -> set[str]:
     }
 
 
-def posttraining_suitability(
-    source_id: str,
+def training_role(source_id: str) -> str:
+    """Classify task semantics independently of observed source quality."""
+    if source_id.endswith("prefix-continuation"):
+        return "Midtrain"
+    if source_id.endswith(("denoising", "paragraph-reordering", "span-filling")):
+        return "Aux-SFT"
+    return "SFT"
+
+
+def quality_disposition(
     usable_rate: float,
     coherence_mean: float,
     value_mean: float,
 ) -> str:
+    """Classify measured viability independently of the task's training role."""
     if usable_rate < 0.5 or coherence_mean < 3.0:
-        return "No--repair"
-    if source_id.endswith("prefix-continuation"):
-        return "No--midtrain"
-    transformation = (
-        source_id.startswith("schneiderkamplab/common-pile-")
-        or source_id.startswith("schneiderkamplab/danish-dynaword-")
-        or source_id.startswith("schneiderkamplab/transformations-")
-        or source_id == "common-pile/arxiv_papers_filtered"
-    )
-    if transformation or usable_rate < 0.8 or coherence_mean < 4.0 or value_mean < 3.5:
-        return "Conditional"
-    return "Yes"
+        return "Repair"
+    if usable_rate < 0.8 or coherence_mean < 4.0 or value_mean < 3.5:
+        return "Filter"
+    return "Use"
 
 
 def summarize_source(source_id: str, rows: list[dict]) -> SourceSummary:
@@ -146,7 +148,8 @@ def summarize_source(source_id: str, rows: list[dict]) -> SourceSummary:
         value_mean=value_mean,
         severity=severity,
         finding=finding,
-        posttraining=posttraining_suitability(source_id, usable_rate, coherence_mean, value_mean),
+        training_role=training_role(source_id),
+        quality_disposition=quality_disposition(usable_rate, coherence_mean, value_mean),
     )
 
 
@@ -179,7 +182,8 @@ def build_tex(audit_path: Path, summaries: list[SourceSummary], row_count: int) 
     usable = sum(item.usable_rate * item.samples for item in summaries) / row_count
     weighted = lambda name: sum(getattr(item, name) * item.samples for item in summaries) / row_count
     bands = collections.Counter(severity_band(item.severity) for item in summaries)
-    suitability = collections.Counter(item.posttraining for item in summaries)
+    roles = collections.Counter(item.training_role for item in summaries)
+    dispositions = collections.Counter(item.quality_disposition for item in summaries)
     table_rows: list[str] = []
     for rank, item in enumerate(summaries, start=1):
         finding = latex_escape(item.finding)
@@ -187,7 +191,8 @@ def build_tex(audit_path: Path, summaries: list[SourceSummary], row_count: int) 
             f"{rank} & \\url{{{item.source_id}}} & {item.samples} & "
             f"{100 * item.usable_rate:.0f} & {100 * item.issue_rate:.0f} & "
             f"{item.language_mean:.2f} & {item.coherence_mean:.2f} & {item.value_mean:.2f} & "
-            f"{item.severity:.1f} & {latex_escape(item.posttraining)} & {finding} \\\\"
+            f"{item.severity:.1f} & {latex_escape(item.training_role)} & "
+            f"{latex_escape(item.quality_disposition)} & {finding} \\\\"
         )
 
     source_path = latex_escape(str(audit_path.relative_to(ROOT)))
@@ -237,24 +242,27 @@ ties. Bands are critical $\geq50$, high $\geq30$, moderate $\geq15$, and low
 $<15$. Qualitative findings report the two most frequent issue categories per
 source and the percentage of sampled rows exhibiting each category.
 
-The post-training column assesses the \emph{{current converted source}} for
-supervised post-training of a conventional pretrained decoder-only LLM:
-\textbf{{Yes}} means directly relevant and sufficiently coherent;
-\textbf{{Conditional}} means useful after filtering or as a narrow auxiliary task;
-\textbf{{No--repair}} means conceptually relevant but the current conversion is too
-broken; and \textbf{{No--midtrain}} denotes continuation-style data better treated
-as midtraining or continued pretraining. This assessment is independent of HRM's
-recurrent architecture.
+The two decision columns are deliberately independent. \textbf{{LLM role}} is
+based only on task semantics: \textbf{{SFT}} denotes ordinary supervised
+post-training, \textbf{{Aux-SFT}} denotes reconstruction objectives useful as
+narrow post-training auxiliaries, and \textbf{{Midtrain}} denotes continuation
+data better suited to continued pretraining or midtraining. It does not encode
+quality. \textbf{{Quality}} is based only on audit measurements:
+\textbf{{Use}} requires at least 80\% usable rows, mean coherence at least 4.0,
+and mean training value at least 3.5; \textbf{{Filter}} denotes an intermediate
+source; and \textbf{{Repair}} applies below 50\% usability or 3.0 mean
+coherence. It does not encode training stage. Both assessments are independent
+of HRM's recurrent architecture.
 
 \section*{{Aggregate results}}
 Across all judgments, {100 * usable:.1f}\% were marked usable. Mean language,
 coherence, and training-value scores were {weighted('language_mean'):.2f},
 {weighted('coherence_mean'):.2f}, and {weighted('value_mean'):.2f}. Source counts
 by severity were: {bands['critical']} critical, {bands['high']} high,
-{bands['moderate']} moderate, and {bands['low']} low. Post-training assessments
-were: {suitability['Yes']} Yes, {suitability['Conditional']} Conditional,
-{suitability['No--repair']} No--repair, and {suitability['No--midtrain']}
-No--midtrain.
+{bands['moderate']} moderate, and {bands['low']} low. Training roles were:
+{roles['SFT']} SFT, {roles['Aux-SFT']} Aux-SFT, and {roles['Midtrain']} Midtrain.
+Quality dispositions were: {dispositions['Use']} Use,
+{dispositions['Filter']} Filter, and {dispositions['Repair']} Repair.
 
 The strongest immediate exclusions are the sources at the top of the table.
 In particular, the Arabic and Ukrainian machine-translation conversions show
@@ -267,17 +275,17 @@ task families are intrinsically unsuitable.
 \section*{{All audited sources, most severe first}}
 \scriptsize
 \rowcolors{{2}}{{gray!7}}{{white}}
-\begin{{longtable}}{{r L{{5.0cm}} r r r r r r r L{{1.6cm}} L{{7.2cm}}}}
+\begin{{longtable}}{{r L{{4.8cm}} r r r r r r r L{{1.25cm}} L{{1.2cm}} L{{5.8cm}}}}
 \toprule
-Rank & Source & $n$ & Usable\% & Issue\% & Lang. & Coher. & Value & Sev. & Posttrain & Recurring qualitative findings \\
+Rank & Source & $n$ & Usable\% & Issue\% & Lang. & Coher. & Value & Sev. & LLM role & Quality & Recurring qualitative findings \\
 \midrule
 \endfirsthead
 \toprule
-Rank & Source & $n$ & Usable\% & Issue\% & Lang. & Coher. & Value & Sev. & Posttrain & Recurring qualitative findings \\
+Rank & Source & $n$ & Usable\% & Issue\% & Lang. & Coher. & Value & Sev. & LLM role & Quality & Recurring qualitative findings \\
 \midrule
 \endhead
 \midrule
-\multicolumn{{11}}{{r}}{{Continued on next page}} \\
+\multicolumn{{12}}{{r}}{{Continued on next page}} \\
 \endfoot
 \bottomrule
 \endlastfoot
@@ -288,10 +296,10 @@ Rank & Source & $n$ & Usable\% & Issue\% & Lang. & Coher. & Value & Sev. & Postt
 \section*{{Interpretation limits}}
 The 100-example cap gives useful source-level triage but wide uncertainty for
 rare defects and heterogeneous sources. Issue percentages can overlap because a
-single row may exhibit multiple problems. The post-training assessment is a
-pipeline decision aid, not a license, privacy, or safety determination. Before
-exclusion or high-repeat sampling, inspect the underlying rows and validate any
-converter repair on a fresh holdout sample.
+single row may exhibit multiple problems. The training-role and quality
+assessments are pipeline decision aids, not license, privacy, or safety
+determinations. Before exclusion or high-repeat sampling, inspect the underlying
+rows and validate any converter repair on a fresh holdout sample.
 
 \end{{document}}
 """

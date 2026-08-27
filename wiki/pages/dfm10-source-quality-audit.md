@@ -117,16 +117,24 @@ index gives 50% weight to the unusable-row rate, 20% to coherence deficit, and
 sample counts, usable and issue rates, all three mean scores, and the two most
 frequent qualitative issue categories for every source.
 
-The `Posttrain` assessment asks whether the current converted source is useful
-for supervised post-training of a conventional pretrained decoder-only LLM,
-independently of HRM recurrence. `Yes` means directly relevant and coherent;
-`Conditional` means filtering or narrow auxiliary use is warranted;
-`No--repair` means the task family is relevant but its current conversion is
-too broken; and `No--midtrain` reserves continuation-style data for continued
-pretraining or midtraining. The completed pass yields 122 `Yes`, 43
-`Conditional`, 10 `No--repair`, and 2 `No--midtrain` assessments. These are
-pipeline triage judgments, not licensing, privacy, provenance, or safety
-determinations.
+**Superseded 2026-08-27:** the first report revision used one `Posttrain`
+column whose labels combined task role and observed quality. That conflated two
+independent decisions and must not be used.
+
+The corrected report has two columns. `LLM role` depends only on task semantics:
+`SFT` is ordinary supervised post-training, `Aux-SFT` is a reconstruction-style
+auxiliary objective, and `Midtrain` is continuation data better suited to
+continued pretraining or midtraining. `Quality` depends only on the audit:
+`Use` requires at least 80% usable rows, mean coherence of at least 4.0, and
+mean training value of at least 3.5; `Filter` is the intermediate disposition;
+and `Repair` applies below 50% usability or 3.0 mean coherence. Thus a source
+can be semantically appropriate for SFT while still requiring repair, or be a
+high-quality source whose semantics make it midtraining data.
+
+The completed pass yields 169 `SFT`, 6 `Aux-SFT`, and 2 `Midtrain` role
+classifications, independently of 135 `Use`, 32 `Filter`, and 10 `Repair`
+quality dispositions. These are pipeline triage judgments, not licensing,
+privacy, provenance, or safety determinations.
 
 ## Initial source-level finding
 

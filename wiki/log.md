@@ -631,6 +631,7 @@
 - Added a reproducible LaTeX/PDF report over the completed 17,455-row,
   177-source audit, ranked most-severe first with quantitative scores and
   recurring qualitative findings.
-- Added a conventional pretrained LLM post-training suitability assessment for
-  every audited source: 122 direct, 43 conditional, 10 requiring converter
-  repair, and 2 more appropriate for midtraining.
+- Superseded the initial combined post-training label after review. The report
+  now independently classifies task role (169 SFT, 6 auxiliary SFT, 2
+  midtraining) and measured quality (135 use, 32 filter, 10 repair), so a broken
+  SFT conversion is no longer conflated with a sound midtraining source.

@@ -44,24 +44,27 @@ ties. Bands are critical $\geq50$, high $\geq30$, moderate $\geq15$, and low
 $<15$. Qualitative findings report the two most frequent issue categories per
 source and the percentage of sampled rows exhibiting each category.
 
-The post-training column assesses the \emph{current converted source} for
-supervised post-training of a conventional pretrained decoder-only LLM:
-\textbf{Yes} means directly relevant and sufficiently coherent;
-\textbf{Conditional} means useful after filtering or as a narrow auxiliary task;
-\textbf{No--repair} means conceptually relevant but the current conversion is too
-broken; and \textbf{No--midtrain} denotes continuation-style data better treated
-as midtraining or continued pretraining. This assessment is independent of HRM's
-recurrent architecture.
+The two decision columns are deliberately independent. \textbf{LLM role} is
+based only on task semantics: \textbf{SFT} denotes ordinary supervised
+post-training, \textbf{Aux-SFT} denotes reconstruction objectives useful as
+narrow post-training auxiliaries, and \textbf{Midtrain} denotes continuation
+data better suited to continued pretraining or midtraining. It does not encode
+quality. \textbf{Quality} is based only on audit measurements:
+\textbf{Use} requires at least 80\% usable rows, mean coherence at least 4.0,
+and mean training value at least 3.5; \textbf{Filter} denotes an intermediate
+source; and \textbf{Repair} applies below 50\% usability or 3.0 mean
+coherence. It does not encode training stage. Both assessments are independent
+of HRM's recurrent architecture.
 
 \section*{Aggregate results}
 Across all judgments, 86.2\% were marked usable. Mean language,
 coherence, and training-value scores were 4.87,
 4.49, and 4.28. Source counts
 by severity were: 8 critical, 11 high,
-39 moderate, and 119 low. Post-training assessments
-were: 122 Yes, 43 Conditional,
-10 No--repair, and 2
-No--midtrain.
+39 moderate, and 119 low. Training roles were:
+169 SFT, 6 Aux-SFT, and 2 Midtrain.
+Quality dispositions were: 135 Use,
+32 Filter, and 10 Repair.
 
 The strongest immediate exclusions are the sources at the top of the table.
 In particular, the Arabic and Ukrainian machine-translation conversions show
@@ -74,206 +77,206 @@ task families are intrinsically unsuitable.
 \section*{All audited sources, most severe first}
 \scriptsize
 \rowcolors{2}{gray!7}{white}
-\begin{longtable}{r L{5.0cm} r r r r r r r L{1.6cm} L{7.2cm}}
+\begin{longtable}{r L{4.8cm} r r r r r r r L{1.25cm} L{1.2cm} L{5.8cm}}
 \toprule
-Rank & Source & $n$ & Usable\% & Issue\% & Lang. & Coher. & Value & Sev. & Posttrain & Recurring qualitative findings \\
+Rank & Source & $n$ & Usable\% & Issue\% & Lang. & Coher. & Value & Sev. & LLM role & Quality & Recurring qualitative findings \\
 \midrule
 \endfirsthead
 \toprule
-Rank & Source & $n$ & Usable\% & Issue\% & Lang. & Coher. & Value & Sev. & Posttrain & Recurring qualitative findings \\
+Rank & Source & $n$ & Usable\% & Issue\% & Lang. & Coher. & Value & Sev. & LLM role & Quality & Recurring qualitative findings \\
 \midrule
 \endhead
 \midrule
-\multicolumn{11}{r}{Continued on next page} \\
+\multicolumn{12}{r}{Continued on next page} \\
 \endfoot
 \bottomrule
 \endlastfoot
-1 & \url{oliverkinch/machine-translation-da-ar} & 100 & 7 & 96 & 3.27 & 1.29 & 1.27 & 85.5 & No--repair & translation mismatch or failure (96\%); ungrounded or hallucinated content (94\%) \\
-2 & \url{oliverkinch/machine-translation-da-uk} & 100 & 23 & 82 & 3.59 & 1.93 & 1.89 & 70.8 & No--repair & translation mismatch or failure (82\%); ungrounded or hallucinated content (76\%) \\
-3 & \url{oliverkinch/dst-table-prompts-bt} & 100 & 26 & 99 & 4.39 & 2.50 & 2.14 & 62.5 & No--repair & scraping, OCR, or encoding noise (94\%); instruction or output-format mismatch (84\%) \\
-4 & \url{dfm-agreement/dbc} & 100 & 27 & 97 & 3.84 & 3.08 & 2.37 & 60.3 & No--repair & instruction or output-format mismatch (80\%); prompt/target language mismatch (58\%) \\
-5 & \url{ccdv/govreport-summarization} & 100 & 27 & 89 & 4.93 & 2.78 & 2.20 & 58.4 & No--repair & ungrounded or hallucinated content (73\%); instruction or output-format mismatch (39\%) \\
-6 & \url{laion/Scientific-Summaries} & 100 & 20 & 92 & 4.59 & 3.37 & 3.54 & 55.2 & No--repair & truncated or incomplete target (92\%); instruction or output-format mismatch (24\%) \\
-7 & \url{schneiderkamplab/sapient-synth-flan-dialog-zsopt-data-qrecc-ii} & 100 & 34 & 84 & 4.58 & 2.84 & 2.70 & 54.0 & No--repair & truncated or incomplete target (72\%); instruction or output-format mismatch (67\%) \\
-8 & \url{schneiderkamplab/sapient-synth-platypus-scibench} & 100 & 38 & 77 & 4.92 & 2.72 & 2.59 & 51.7 & No--repair & instruction or output-format mismatch (34\%); low-value, ambiguous, or overly narrow signal (23\%) \\
-9 & \url{nvidia/Nemotron-SFT-SWE-v2} & 100 & 47 & 65 & 4.72 & 3.17 & 2.88 & 44.7 & No--repair & truncated or incomplete target (58\%); instruction or output-format mismatch (57\%) \\
-10 & \url{oliverkinch/danish-university-portals-bt} & 100 & 47 & 84 & 4.25 & 3.49 & 3.15 & 43.8 & No--repair & instruction or output-format mismatch (46\%); truncated or incomplete target (41\%) \\
-11 & \url{GEM/wiki_cat_sum} & 100 & 57 & 98 & 4.17 & 3.77 & 2.95 & 38.5 & Conditional & ungrounded or hallucinated content (64\%); scraping, OCR, or encoding noise (28\%) \\
-12 & \url{oliverkinch/danmarks-statistik-bt} & 100 & 61 & 84 & 4.97 & 3.20 & 3.13 & 35.6 & Conditional & instruction or output-format mismatch (47\%); ungrounded or hallucinated content (17\%) \\
-13 & \url{schneiderkamplab/sapient-synth-flan-dialog-fsopt-data-qrecc-ii} & 100 & 62 & 84 & 4.46 & 3.62 & 3.36 & 34.1 & Conditional & truncated or incomplete target (61\%); instruction or output-format mismatch (48\%) \\
-14 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task871-msmarco-question-generation} & 89 & 63 & 96 & 4.70 & 3.66 & 3.07 & 33.6 & Conditional & instruction or output-format mismatch (52\%); truncated or incomplete target (17\%) \\
-15 & \url{allenai/code_meta_reasoning} & 100 & 60 & 53 & 4.83 & 3.64 & 3.58 & 32.8 & Conditional & instruction or output-format mismatch (42\%); ungrounded or hallucinated content (30\%) \\
-16 & \url{oliverkinch/da-instruct-dynaword} & 100 & 62 & 74 & 4.41 & 3.73 & 3.67 & 32.6 & Conditional & truncated or incomplete target (47\%); instruction or output-format mismatch (38\%) \\
-17 & \url{alexandrainst/dacoref} & 100 & 65 & 92 & 4.99 & 3.76 & 2.92 & 31.5 & Conditional & incorrect answer or reasoning (33\%); low-value, ambiguous, or overly narrow signal (22\%) \\
-18 & \url{oliverkinch/tidsskrift-dk-bt} & 100 & 64 & 68 & 4.30 & 3.91 & 3.71 & 30.9 & Conditional & instruction or output-format mismatch (32\%); truncated or incomplete target (24\%) \\
-19 & \url{oliverkinch/eur-lex-bt} & 100 & 64 & 66 & 4.86 & 3.52 & 3.71 & 30.8 & Conditional & instruction or output-format mismatch (41\%); truncated or incomplete target (15\%) \\
-20 & \url{oliverkinch/doab-da-bt} & 100 & 68 & 84 & 4.67 & 3.68 & 3.52 & 29.4 & Conditional & instruction or output-format mismatch (46\%); truncated or incomplete target (24\%) \\
-21 & \url{oliverkinch/dynaword-bt} & 100 & 70 & 70 & 4.55 & 3.93 & 3.69 & 27.0 & Conditional & instruction or output-format mismatch (35\%); truncated or incomplete target (29\%) \\
-22 & \url{nvidia/OpenMathInstruct-2} & 100 & 68 & 37 & 4.98 & 3.78 & 3.75 & 26.9 & Conditional & instruction or output-format mismatch (22\%); incorrect answer or reasoning (20\%) \\
-23 & \url{schneiderkamplab/opus-da-en-permissive} & 100 & 75 & 49 & 4.21 & 4.01 & 3.73 & 25.2 & Conditional & translation mismatch or failure (40\%); incorrect answer or reasoning (21\%) \\
-24 & \url{facebook/asset} & 100 & 75 & 89 & 4.55 & 4.15 & 3.23 & 25.1 & Conditional & instruction or output-format mismatch (26\%); grammar or fluency defect (13\%) \\
-25 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task871-msmarco-question-generation} & 100 & 74 & 79 & 4.71 & 4.02 & 3.49 & 24.6 & Conditional & instruction or output-format mismatch (43\%); truncated or incomplete target (26\%) \\
-26 & \url{oliverkinch/da-instruct-dynaword-contemporary} & 100 & 75 & 71 & 4.42 & 4.11 & 3.80 & 23.6 & Conditional & instruction or output-format mismatch (36\%); truncated or incomplete target (29\%) \\
-27 & \url{alexandrainst/nordjylland-news-summarization} & 100 & 76 & 74 & 4.86 & 4.07 & 3.55 & 22.6 & Conditional & instruction or output-format mismatch (45\%); ungrounded or hallucinated content (17\%) \\
-28 & \url{danish-foundation-models/kaenguruen} & 100 & 76 & 37 & 4.99 & 4.01 & 3.91 & 21.1 & Conditional & incorrect answer or reasoning (16\%); instruction or output-format mismatch (9\%) \\
-29 & \url{allenai/IF_sft_data_verified} & 100 & 76 & 58 & 4.86 & 4.14 & 3.87 & 21.1 & Conditional & instruction or output-format mismatch (39\%); incorrect answer or reasoning (11\%) \\
-30 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task264-paper-reviews-accept-reject} & 100 & 80 & 90 & 4.99 & 4.06 & 3.35 & 20.9 & Conditional & incorrect answer or reasoning (21\%); instruction or output-format mismatch (7\%) \\
-31 & \url{schneiderkamplab/sapient-synth-flan-dialog-zsopt-data-qrecc} & 100 & 77 & 71 & 4.94 & 4.25 & 3.66 & 20.5 & Conditional & ungrounded or hallucinated content (36\%); instruction or output-format mismatch (19\%) \\
-32 & \url{alexandrainst/multi-zebra-logic} & 100 & 76 & 52 & 4.58 & 4.49 & 3.84 & 20.5 & Conditional & ungrounded or hallucinated content (29\%); incorrect answer or reasoning (15\%) \\
-33 & \url{grammarly/coedit} & 100 & 79 & 80 & 4.66 & 4.41 & 3.50 & 20.3 & Conditional & instruction or output-format mismatch (25\%); grammar or fluency defect (16\%) \\
-34 & \url{oliverkinch/eur-lex-sum-instruct} & 24 & 75 & 38 & 4.92 & 4.12 & 4.17 & 20.3 & Conditional & instruction or output-format mismatch (29\%); ungrounded or hallucinated content (17\%) \\
-35 & \url{oliverkinch/machine-translation-da-en} & 100 & 78 & 43 & 4.58 & 4.18 & 4.03 & 20.3 & Conditional & translation mismatch or failure (39\%); ungrounded or hallucinated content (18\%) \\
-36 & \url{schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-aeslc-1.0.0} & 100 & 78 & 49 & 4.78 & 4.20 & 3.92 & 19.9 & Conditional & instruction or output-format mismatch (24\%); truncated or incomplete target (12\%) \\
-37 & \url{oliverkinch/da-instruct-dynaword-contemporary-hq} & 100 & 78 & 56 & 4.81 & 4.11 & 4.09 & 19.6 & Conditional & instruction or output-format mismatch (28\%); truncated or incomplete target (26\%) \\
-38 & \url{allenai/Dolci-Instruct-SFT-Tool-Use} & 100 & 75 & 34 & 4.94 & 4.30 & 4.19 & 19.3 & Conditional & tool-call or agent-trajectory defect (29\%); instruction or output-format mismatch (24\%) \\
-39 & \url{allenai/tulu-3-sft-personas-algebra} & 100 & 77 & 41 & 4.93 & 4.20 & 4.16 & 18.9 & Conditional & instruction or output-format mismatch (26\%); truncated or incomplete target (17\%) \\
-40 & \url{MegaScience/TextbookReasoning} & 100 & 79 & 44 & 4.90 & 4.19 & 3.95 & 18.9 & Conditional & instruction or output-format mismatch (20\%); truncated or incomplete target (7\%) \\
-41 & \url{allenai/SciRIFF-train-mix} & 100 & 82 & 72 & 4.64 & 4.26 & 3.75 & 18.7 & Yes & instruction or output-format mismatch (26\%); grammar or fluency defect (11\%) \\
-42 & \url{Muennighoff/natural-instructions} & 100 & 79 & 49 & 4.84 & 4.26 & 3.96 & 18.7 & Conditional & instruction or output-format mismatch (20\%); incorrect answer or reasoning (11\%) \\
-43 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task264-paper-reviews-accept-reject} & 100 & 80 & 64 & 5.00 & 4.22 & 3.76 & 18.6 & Yes & instruction or output-format mismatch (17\%); incorrect answer or reasoning (17\%) \\
-44 & \url{danish-foundation-models/laerebogen} & 100 & 80 & 51 & 4.84 & 4.39 & 3.94 & 17.6 & Yes & instruction or output-format mismatch (17\%); ungrounded or hallucinated content (11\%) \\
-45 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task266-paper-reviews-reviewer-perspective} & 100 & 81 & 54 & 5.00 & 4.20 & 3.93 & 17.5 & Yes & incorrect answer or reasoning (19\%); grammar or fluency defect (4\%) \\
-46 & \url{zai-org/DeepDive} & 100 & 80 & 47 & 5.00 & 4.15 & 4.14 & 17.5 & Yes & tool-call or agent-trajectory defect (46\%); truncated or incomplete target (28\%) \\
-47 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1374-newscomm-translation} & 100 & 78 & 29 & 4.80 & 4.44 & 4.23 & 17.4 & Conditional & translation mismatch or failure (26\%); instruction or output-format mismatch (22\%) \\
-48 & \url{schneiderkamplab/sapient-synth-flan-flan-zsopt-data-aeslc-1.0.0} & 100 & 84 & 87 & 4.96 & 4.29 & 3.53 & 17.2 & Yes & instruction or output-format mismatch (23\%); ungrounded or hallucinated content (9\%) \\
-49 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task266-paper-reviews-reviewer-perspective} & 100 & 81 & 45 & 5.00 & 4.19 & 4.04 & 17.1 & Yes & incorrect answer or reasoning (18\%); instruction or output-format mismatch (16\%) \\
-50 & \url{allenai/tulu-3-sft-personas-math} & 100 & 81 & 43 & 4.99 & 4.22 & 4.11 & 16.8 & Yes & instruction or output-format mismatch (23\%); incorrect answer or reasoning (21\%) \\
-51 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1376-newscomm-translation} & 100 & 82 & 30 & 4.64 & 4.33 & 4.21 & 16.7 & Yes & translation mismatch or failure (27\%); instruction or output-format mismatch (21\%) \\
-52 & \url{oliverkinch/da-instruct-dynaword-hq} & 100 & 83 & 55 & 4.74 & 4.23 & 4.14 & 16.5 & Yes & instruction or output-format mismatch (23\%); truncated or incomplete target (20\%) \\
-53 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task618-amazonreview-summary-text-generation} & 100 & 81 & 40 & 4.97 & 4.35 & 4.06 & 16.4 & Yes & instruction or output-format mismatch (19\%); truncated or incomplete target (13\%) \\
-54 & \url{danish-foundation-models/ai_arena_udtraek} & 100 & 83 & 45 & 4.55 & 4.49 & 4.04 & 16.3 & Yes & ungrounded or hallucinated content (17\%); incorrect answer or reasoning (13\%) \\
-55 & \url{schneiderkamplab/sapient-synth-flan-flan-fsopt-data-aeslc-1.0.0} & 100 & 85 & 60 & 4.83 & 4.29 & 3.91 & 15.8 & Yes & instruction or output-format mismatch (18\%); truncated or incomplete target (13\%) \\
-56 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1374-newscomm-translation} & 100 & 82 & 36 & 4.74 & 4.48 & 4.23 & 15.5 & Yes & translation mismatch or failure (31\%); truncated or incomplete target (23\%) \\
-57 & \url{schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-aeslc-1.0.0} & 100 & 87 & 85 & 5.00 & 4.29 & 3.59 & 15.3 & Yes & instruction or output-format mismatch (21\%); ungrounded or hallucinated content (7\%) \\
-58 & \url{allenai/RLVR-MATH} & 100 & 83 & 22 & 5.00 & 4.19 & 4.33 & 15.1 & Yes & incorrect answer or reasoning (11\%); instruction or output-format mismatch (9\%) \\
-59 & \url{dfm-agreement/hc-andersen-modernization} & 100 & 83 & 29 & 4.88 & 4.35 & 4.30 & 14.8 & Yes & ungrounded or hallucinated content (25\%); instruction or output-format mismatch (22\%) \\
-60 & \url{AI-MO/NuminaMath-1.5} & 100 & 84 & 33 & 4.81 & 4.36 & 4.25 & 14.7 & Yes & incorrect answer or reasoning (18\%); ungrounded or hallucinated content (13\%) \\
-61 & \url{nvidia/AceReason-1.1-SFT} & 100 & 83 & 31 & 5.00 & 4.36 & 4.31 & 14.3 & Yes & incorrect answer or reasoning (11\%); ungrounded or hallucinated content (7\%) \\
-62 & \url{alexandrainst/scandi-qa} & 100 & 85 & 49 & 4.91 & 4.41 & 4.16 & 13.9 & Yes & instruction or output-format mismatch (17\%); incorrect answer or reasoning (14\%) \\
-63 & \url{kobprof/skolegpt-instruct} & 100 & 85 & 51 & 4.84 & 4.48 & 4.14 & 13.9 & Yes & instruction or output-format mismatch (22\%); ungrounded or hallucinated content (10\%) \\
-64 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1370-newscomm-classification} & 100 & 84 & 18 & 4.98 & 4.32 & 4.36 & 13.9 & Yes & incorrect answer or reasoning (18\%); ungrounded or hallucinated content (5\%) \\
-65 & \url{allenai/Dolci-Instruct-SFT-Tool-Use-SA} & 100 & 86 & 50 & 4.90 & 4.44 & 4.13 & 13.4 & Yes & tool-call or agent-trajectory defect (30\%); instruction or output-format mismatch (21\%) \\
-66 & \url{oliverkinch/instruct-bt} & 100 & 89 & 71 & 4.75 & 4.41 & 3.95 & 13.3 & Yes & instruction or output-format mismatch (23\%); truncated or incomplete target (9\%) \\
-67 & \url{sapientinc/HRM-Text-data-io-cleaned-20260515} & 100 & 86 & 38 & 4.83 & 4.44 & 4.24 & 13.3 & Yes & instruction or output-format mismatch (15\%); incorrect answer or reasoning (10\%) \\
-68 & \url{schneiderkamplab/sapient-synth-flan-flan-zsopt-data-opinion-abstracts-rotten-tomatoes} & 100 & 87 & 71 & 4.99 & 4.53 & 3.95 & 12.8 & Yes & ungrounded or hallucinated content (24\%); instruction or output-format mismatch (12\%) \\
-69 & \url{allenai/tulu-v2-sft-long-mixture} & 100 & 89 & 69 & 4.78 & 4.52 & 3.96 & 12.6 & Yes & instruction or output-format mismatch (25\%); ungrounded or hallucinated content (8\%) \\
-70 & \url{schneiderkamplab/sapient-synth-flan-dialog-fsopt-data-qrecc} & 100 & 89 & 77 & 4.97 & 4.52 & 3.93 & 12.0 & Yes & instruction or output-format mismatch (21\%); ungrounded or hallucinated content (18\%) \\
-71 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task589-amazonfood-summary-text-generation} & 100 & 88 & 60 & 5.00 & 4.55 & 4.00 & 12.0 & Yes & instruction or output-format mismatch (26\%); truncated or incomplete target (4\%) \\
-72 & \url{allenai/tulu-v2-sft-mixture} & 100 & 90 & 68 & 4.79 & 4.50 & 4.02 & 12.0 & Yes & instruction or output-format mismatch (25\%); truncated or incomplete target (14\%) \\
-73 & \url{schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-opinion-abstracts-rotten-tomatoes} & 100 & 90 & 64 & 5.00 & 4.56 & 4.08 & 10.7 & Yes & ungrounded or hallucinated content (24\%); instruction or output-format mismatch (16\%) \\
-74 & \url{allenai/Dolci-Instruct-SFT-No-Tools} & 100 & 89 & 33 & 4.90 & 4.55 & 4.38 & 10.4 & Yes & instruction or output-format mismatch (14\%); incorrect answer or reasoning (10\%) \\
-75 & \url{nvidia/Nemotron-SFT-Multilingual-v1} & 100 & 91 & 57 & 4.59 & 4.61 & 4.52 & 9.8 & Yes & translation mismatch or failure (14\%); instruction or output-format mismatch (13\%) \\
-76 & \url{schneiderkamplab/sapient-synth-flan-flan-zsopt-data-opinion-abstracts-idebate} & 100 & 94 & 73 & 4.99 & 4.55 & 3.94 & 9.3 & Yes & instruction or output-format mismatch (12\%); truncated or incomplete target (5\%) \\
-77 & \url{giannor/dala_tv2r_it} & 100 & 88 & 31 & 5.00 & 4.85 & 4.50 & 8.6 & Yes & incorrect answer or reasoning (16\%); grammar or fluency defect (10\%) \\
-78 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task908-dialogre-identify-familial-relationships} & 100 & 91 & 36 & 5.00 & 4.63 & 4.40 & 8.6 & Yes & instruction or output-format mismatch (8\%); incorrect answer or reasoning (5\%) \\
-79 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task589-amazonfood-summary-text-generation} & 100 & 92 & 33 & 5.00 & 4.58 & 4.41 & 8.3 & Yes & instruction or output-format mismatch (18\%); truncated or incomplete target (5\%) \\
-80 & \url{allenai/tulu-3-sft-mixture} & 100 & 93 & 45 & 4.92 & 4.62 & 4.31 & 8.3 & Yes & instruction or output-format mismatch (13\%); incorrect answer or reasoning (7\%) \\
-81 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task906-dialogre-identify-names} & 100 & 91 & 19 & 5.00 & 4.59 & 4.56 & 8.2 & Yes & incorrect answer or reasoning (11\%); ungrounded or hallucinated content (3\%) \\
-82 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task908-dialogre-identify-familial-relationships} & 72 & 90 & 21 & 5.00 & 4.67 & 4.56 & 8.2 & Yes & low-value, ambiguous, or overly narrow signal (8\%); incorrect answer or reasoning (7\%) \\
-83 & \url{dfm-agreement/lexdk} & 100 & 92 & 30 & 4.96 & 4.64 & 4.41 & 8.2 & Yes & instruction or output-format mismatch (13\%); scraping, OCR, or encoding noise (10\%) \\
-84 & \url{allenai/tulu-3-sft-personas-instruction-following} & 100 & 91 & 28 & 4.98 & 4.63 & 4.55 & 8.1 & Yes & instruction or output-format mismatch (15\%); incorrect answer or reasoning (3\%) \\
-85 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task906-dialogre-identify-names} & 100 & 91 & 20 & 5.00 & 4.65 & 4.53 & 8.0 & Yes & incorrect answer or reasoning (9\%); ungrounded or hallucinated content (4\%) \\
-86 & \url{danish-foundation-models/dfm-dyna-instruct} & 100 & 92 & 34 & 4.97 & 4.65 & 4.43 & 8.0 & Yes & instruction or output-format mismatch (11\%); incorrect answer or reasoning (5\%) \\
-87 & \url{croco-munin/apertus-8b-da-simpo-full-50k} & 100 & 92 & 32 & 4.88 & 4.64 & 4.54 & 8.0 & Yes & instruction or output-format mismatch (14\%); ungrounded or hallucinated content (9\%) \\
-88 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task907-dialogre-identify-relationships} & 50 & 92 & 40 & 5.00 & 4.70 & 4.34 & 8.0 & Yes & incorrect answer or reasoning (10\%); low-value, ambiguous, or overly narrow signal (8\%) \\
-89 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task634-allegro-reviews-classification} & 100 & 92 & 31 & 5.00 & 4.68 & 4.44 & 7.7 & Yes & incorrect answer or reasoning (9\%); instruction or output-format mismatch (4\%) \\
-90 & \url{open-thoughts/OpenThoughts2-1M} & 100 & 91 & 19 & 4.99 & 4.65 & 4.63 & 7.7 & Yes & instruction or output-format mismatch (7\%); incorrect answer or reasoning (7\%) \\
-91 & \url{synquid/wiki-instruct-da} & 100 & 93 & 34 & 4.65 & 4.76 & 4.59 & 7.5 & Yes & grammar or fluency defect (14\%); truncated or incomplete target (9\%) \\
-92 & \url{schneiderkamplab/sapient-synth-flan-flan-fsopt-data-opinion-abstracts-idebate} & 100 & 94 & 44 & 4.94 & 4.64 & 4.35 & 7.5 & Yes & instruction or output-format mismatch (13\%); truncated or incomplete target (7\%) \\
-93 & \url{HuggingFaceH4/no_robots} & 100 & 95 & 62 & 4.85 & 4.76 & 4.16 & 7.4 & Yes & instruction or output-format mismatch (8\%); repetition or excessive verbosity (6\%) \\
-94 & \url{allenai/RLVR-GSM} & 100 & 91 & 10 & 4.99 & 4.67 & 4.68 & 7.4 & Yes & incorrect answer or reasoning (7\%); instruction or output-format mismatch (6\%) \\
-95 & \url{schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-opinion-abstracts-idebate} & 100 & 96 & 63 & 4.98 & 4.70 & 4.14 & 6.8 & Yes & ungrounded or hallucinated content (5\%); instruction or output-format mismatch (5\%) \\
-96 & \url{allenai/Dolci-Instruct-SFT} & 100 & 94 & 26 & 4.97 & 4.67 & 4.51 & 6.6 & Yes & instruction or output-format mismatch (12\%); truncated or incomplete target (6\%) \\
-97 & \url{schneiderkamplab/sapient-synth-platypus-reclor} & 100 & 95 & 63 & 5.00 & 4.77 & 4.22 & 6.6 & Yes & incorrect answer or reasoning (4\%); instruction or output-format mismatch (3\%) \\
-98 & \url{google/multilingual_gsm_symbolic} & 100 & 92 & 10 & 4.95 & 4.76 & 4.70 & 6.5 & Yes & incorrect answer or reasoning (8\%); instruction or output-format mismatch (6\%) \\
-99 & \url{schneiderkamplab/danish-dynaword-span-filling} & 100 & 94 & 29 & 4.76 & 4.76 & 4.75 & 6.0 & Conditional & instruction or output-format mismatch (9\%); grammar or fluency defect (7\%) \\
-100 & \url{schneiderkamplab/transformations-english-english} & 100 & 92 & 15 & 5.00 & 4.72 & 4.83 & 6.0 & Conditional & instruction or output-format mismatch (9\%); truncated or incomplete target (3\%) \\
-101 & \url{schneiderkamplab/common-pile-paragraph-reordering} & 100 & 93 & 10 & 4.95 & 4.79 & 4.72 & 5.8 & Conditional & instruction or output-format mismatch (7\%); incorrect answer or reasoning (6\%) \\
-102 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task902-deceptive-opinion-spam-classification} & 100 & 100 & 95 & 5.00 & 5.00 & 3.51 & 5.6 & Yes & low-value, ambiguous, or overly narrow signal (18\%); instruction or output-format mismatch (2\%) \\
-103 & \url{allenai/verifiable-reasoning-filtered-o4-mini} & 100 & 94 & 18 & 5.00 & 4.71 & 4.70 & 5.6 & Yes & instruction or output-format mismatch (6\%); low-value, ambiguous, or overly narrow signal (2\%) \\
-104 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task618-amazonreview-summary-text-generation} & 100 & 95 & 23 & 4.96 & 4.74 & 4.61 & 5.4 & Yes & instruction or output-format mismatch (8\%); truncated or incomplete target (6\%) \\
-105 & \url{glaiveai/glaive-function-calling-v2} & 100 & 95 & 32 & 5.00 & 4.78 & 4.52 & 5.4 & Yes & tool-call or agent-trajectory defect (17\%); instruction or output-format mismatch (6\%) \\
-106 & \url{Team-ACE/ToolACE} & 100 & 94 & 16 & 4.97 & 4.75 & 4.77 & 5.2 & Yes & tool-call or agent-trajectory defect (8\%); instruction or output-format mismatch (6\%) \\
-107 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task907-dialogre-identify-relationships} & 100 & 95 & 23 & 5.00 & 4.84 & 4.65 & 4.6 & Yes & instruction or output-format mismatch (4\%); incorrect answer or reasoning (2\%) \\
-108 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1309-amazonreview-summary-classification} & 100 & 95 & 18 & 5.00 & 4.82 & 4.68 & 4.6 & Yes & truncated or incomplete target (8\%); low-value, ambiguous, or overly narrow signal (8\%) \\
-109 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task902-deceptive-opinion-spam-classification} & 100 & 98 & 74 & 5.00 & 4.98 & 4.08 & 4.5 & Yes & instruction or output-format mismatch (5\%); repetition or excessive verbosity (3\%) \\
-110 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task590-amazonfood-summary-correction-classification} & 100 & 95 & 14 & 5.00 & 4.82 & 4.73 & 4.4 & Yes & truncated or incomplete target (4\%); incorrect answer or reasoning (3\%) \\
-111 & \url{schneiderkamplab/common-pile-prefix-continuation} & 100 & 97 & 38 & 4.62 & 4.91 & 4.74 & 4.3 & No--midtrain & scraping, OCR, or encoding noise (25\%); grammar or fluency defect (13\%) \\
-112 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task634-allegro-reviews-classification} & 100 & 96 & 18 & 4.97 & 4.81 & 4.66 & 4.3 & Yes & instruction or output-format mismatch (5\%); incorrect answer or reasoning (4\%) \\
-113 & \url{schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-opinion-abstracts-idebate} & 100 & 97 & 25 & 4.95 & 4.76 & 4.65 & 4.2 & Yes & truncated or incomplete target (9\%); instruction or output-format mismatch (5\%) \\
-114 & \url{giannor/gec_dala_tv2r_it} & 100 & 95 & 7 & 4.98 & 4.82 & 4.81 & 4.2 & Yes & instruction or output-format mismatch (5\%); incorrect answer or reasoning (4\%) \\
-115 & \url{schneiderkamplab/danish-dynaword-prefix-continuation} & 100 & 96 & 18 & 4.80 & 4.87 & 4.81 & 4.1 & No--midtrain & truncated or incomplete target (9\%); grammar or fluency defect (5\%) \\
-116 & \url{schneiderkamplab/sapient-synth-flan-flan-fsopt-data-opinion-abstracts-rotten-tomatoes} & 100 & 96 & 13 & 5.00 & 4.79 & 4.77 & 3.9 & Yes & instruction or output-format mismatch (6\%); ungrounded or hallucinated content (4\%) \\
-117 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1376-newscomm-translation} & 100 & 96 & 10 & 4.91 & 4.88 & 4.79 & 3.7 & Yes & translation mismatch or failure (6\%); instruction or output-format mismatch (5\%) \\
-118 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1373-newscomm-translation} & 100 & 97 & 21 & 4.97 & 4.88 & 4.63 & 3.6 & Yes & translation mismatch or failure (9\%); instruction or output-format mismatch (3\%) \\
-119 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1371-newscomm-translation} & 100 & 97 & 23 & 4.92 & 4.92 & 4.63 & 3.6 & Yes & translation mismatch or failure (7\%); instruction or output-format mismatch (5\%) \\
-120 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task590-amazonfood-summary-correction-classification} & 100 & 97 & 28 & 5.00 & 4.88 & 4.63 & 3.5 & Yes & incorrect answer or reasoning (4\%); instruction or output-format mismatch (3\%) \\
-121 & \url{schneiderkamplab/sapient-synth-tasksource-reclor} & 100 & 96 & 21 & 5.00 & 4.93 & 4.75 & 3.3 & Yes & incorrect answer or reasoning (5\%); truncated or incomplete target (1\%) \\
-122 & \url{schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-opinion-abstracts-rotten-tomatoes} & 100 & 97 & 19 & 5.00 & 4.84 & 4.74 & 3.3 & Yes & instruction or output-format mismatch (8\%); ungrounded or hallucinated content (3\%) \\
-123 & \url{allenai/tulu-3-sft-personas-code} & 100 & 97 & 17 & 4.98 & 4.86 & 4.76 & 3.2 & Yes & instruction or output-format mismatch (6\%); incorrect answer or reasoning (4\%) \\
-124 & \url{schneiderkamplab/dfm8-synthetic-native-tool-calling} & 100 & 98 & 19 & 4.99 & 4.81 & 4.69 & 3.2 & Yes & tool-call or agent-trajectory defect (11\%); instruction or output-format mismatch (5\%) \\
-125 & \url{oliverkinch/danish-qa} & 100 & 98 & 19 & 4.98 & 4.84 & 4.73 & 2.9 & Yes & incorrect answer or reasoning (2\%); truncated or incomplete target (2\%) \\
-126 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1373-newscomm-translation} & 100 & 97 & 6 & 4.95 & 4.89 & 4.85 & 2.8 & Yes & translation mismatch or failure (5\%); instruction or output-format mismatch (4\%) \\
-127 & \url{schneiderkamplab/sapient-synth-tasksource-pragmeval-sarcasm} & 100 & 98 & 43 & 5.00 & 5.00 & 4.53 & 2.8 & Yes & low-value, ambiguous, or overly narrow signal (2\%); incorrect answer or reasoning (2\%) \\
-128 & \url{schneiderkamplab/dfm8-openhermes-en} & 100 & 99 & 37 & 4.99 & 4.96 & 4.55 & 2.4 & Yes & instruction or output-format mismatch (6\%); low-value, ambiguous, or overly narrow signal (5\%) \\
-129 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task635-allegro-reviews-answer-generation} & 100 & 97 & 4 & 5.00 & 4.93 & 4.86 & 2.4 & Yes & instruction or output-format mismatch (3\%); truncated or incomplete target (2\%) \\
-130 & \url{Salesforce/xlam-function-calling-60k} & 100 & 97 & 3 & 4.97 & 4.92 & 4.91 & 2.4 & Yes & tool-call or agent-trajectory defect (3\%); incorrect answer or reasoning (3\%) \\
-131 & \url{synquid/translation-100k} & 100 & 98 & 10 & 4.90 & 4.91 & 4.87 & 2.3 & Yes & translation mismatch or failure (10\%); instruction or output-format mismatch (4\%) \\
-132 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1371-newscomm-translation} & 100 & 98 & 10 & 4.95 & 4.92 & 4.81 & 2.3 & Yes & translation mismatch or failure (3\%); truncated or incomplete target (3\%) \\
-133 & \url{oliverkinch/multi-wiki-qa-high-quality-subset} & 100 & 98 & 8 & 4.96 & 4.89 & 4.86 & 2.2 & Yes & truncated or incomplete target (3\%); scraping, OCR, or encoding noise (1\%) \\
-134 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1375-newscomm-translation} & 100 & 99 & 25 & 4.94 & 4.94 & 4.70 & 2.1 & Yes & translation mismatch or failure (6\%); instruction or output-format mismatch (3\%) \\
-135 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task672-amazon-yelp-summarization} & 100 & 97 & 5 & 5.00 & 4.95 & 4.91 & 2.1 & Yes & ungrounded or hallucinated content (3\%); instruction or output-format mismatch (2\%) \\
-136 & \url{nvidia/Nemotron-SFT-Instruction-Following-Chat-v2} & 100 & 99 & 21 & 5.00 & 4.94 & 4.66 & 2.1 & Yes & instruction or output-format mismatch (8\%); low-value, ambiguous, or overly narrow signal (2\%) \\
-137 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1377-newscomm-translation} & 100 & 99 & 21 & 4.96 & 4.93 & 4.72 & 2.1 & Yes & translation mismatch or failure (7\%); repetition or excessive verbosity (3\%) \\
-138 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task870-msmarco-answer-generation} & 100 & 98 & 11 & 5.00 & 4.91 & 4.84 & 2.1 & Yes & truncated or incomplete target (2\%); incorrect answer or reasoning (2\%) \\
-139 & \url{allenai/verifiable-reasoning-filtered-gpt-41} & 100 & 98 & 6 & 4.99 & 4.88 & 4.90 & 2.0 & Yes & instruction or output-format mismatch (4\%); incorrect answer or reasoning (2\%) \\
-140 & \url{schneiderkamplab/danish-dynaword-paragraph-reordering} & 100 & 98 & 12 & 4.89 & 4.95 & 4.93 & 1.9 & Conditional & grammar or fluency defect (5\%); scraping, OCR, or encoding noise (4\%) \\
-141 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1377-newscomm-translation} & 100 & 98 & 7 & 4.99 & 4.97 & 4.91 & 1.5 & Yes & translation mismatch or failure (5\%); instruction or output-format mismatch (2\%) \\
-142 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task870-msmarco-answer-generation} & 100 & 99 & 15 & 5.00 & 4.94 & 4.82 & 1.5 & Yes & instruction or output-format mismatch (4\%); incorrect answer or reasoning (3\%) \\
-143 & \url{synquid/wildchat-100k-qwen-messages} & 100 & 99 & 16 & 4.98 & 4.95 & 4.84 & 1.4 & Yes & instruction or output-format mismatch (5\%); ungrounded or hallucinated content (2\%) \\
-144 & \url{schneiderkamplab/transformations-danish-danish} & 100 & 99 & 8 & 4.99 & 4.92 & 4.88 & 1.4 & Conditional & instruction or output-format mismatch (6\%); scraping, OCR, or encoding noise (1\%) \\
-145 & \url{schneiderkamplab/dfm8-synthetic-multiturn-danish-english-chat} & 100 & 99 & 13 & 5.00 & 4.95 & 4.85 & 1.3 & Yes & instruction or output-format mismatch (2\%); ungrounded or hallucinated content (1\%) \\
-146 & \url{schneiderkamplab/dfm8-synthetic-danish-summarization-rewrite-controls} & 100 & 100 & 29 & 5.00 & 5.00 & 4.68 & 1.2 & Yes & instruction or output-format mismatch (6\%); low-value, ambiguous, or overly narrow signal (3\%) \\
-147 & \url{schneiderkamplab/transformations-danish-english} & 100 & 99 & 8 & 5.00 & 4.96 & 4.88 & 1.2 & Conditional & translation mismatch or failure (2\%); instruction or output-format mismatch (2\%) \\
-148 & \url{schneiderkamplab/dfm8-synthetic-constrained-format-following} & 100 & 99 & 13 & 5.00 & 4.97 & 4.87 & 1.1 & Yes & ungrounded or hallucinated content (5\%); instruction or output-format mismatch (2\%) \\
-149 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task903-deceptive-opinion-spam-classification} & 100 & 100 & 29 & 5.00 & 5.00 & 4.70 & 1.1 & Yes & low-value, ambiguous, or overly narrow signal (6\%) \\
-150 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task909-dialogre-prevalent-speakers} & 100 & 99 & 3 & 5.00 & 4.92 & 4.94 & 1.1 & Yes & low-value, ambiguous, or overly narrow signal (2\%); instruction or output-format mismatch (2\%) \\
-151 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1309-amazonreview-summary-classification} & 100 & 99 & 7 & 5.00 & 4.96 & 4.90 & 1.1 & Yes & instruction or output-format mismatch (2\%); truncated or incomplete target (2\%) \\
-152 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task909-dialogre-prevalent-speakers} & 100 & 99 & 5 & 5.00 & 4.96 & 4.92 & 1.0 & Yes & instruction or output-format mismatch (2\%); incorrect answer or reasoning (1\%) \\
-153 & \url{alexandrainst/dane} & 100 & 100 & 17 & 5.00 & 4.94 & 4.82 & 1.0 & Yes & instruction or output-format mismatch (2\%); low-value, ambiguous, or overly narrow signal (2\%) \\
-154 & \url{schneiderkamplab/dfm8-openhermes-da} & 100 & 100 & 15 & 4.98 & 4.96 & 4.84 & 0.9 & Yes & instruction or output-format mismatch (2\%); translation mismatch or failure (2\%) \\
-155 & \url{nvidia/Nemotron-SFT-Agentic-v2} & 100 & 99 & 3 & 5.00 & 4.95 & 4.97 & 0.9 & Yes & truncated or incomplete target (2\%); instruction or output-format mismatch (1\%) \\
-156 & \url{allenai/big-reasoning-traces} & 100 & 100 & 10 & 4.99 & 4.94 & 4.88 & 0.8 & Yes & instruction or output-format mismatch (3\%); low-value, ambiguous, or overly narrow signal (1\%) \\
-157 & \url{synquid/ifbench-train} & 100 & 100 & 12 & 4.97 & 4.98 & 4.88 & 0.7 & Yes & low-value, ambiguous, or overly narrow signal (3\%); instruction or output-format mismatch (2\%) \\
-158 & \url{schneiderkamplab/common-pile-denoising} & 100 & 100 & 12 & 4.97 & 4.98 & 4.90 & 0.6 & Conditional & truncated or incomplete target (7\%); instruction or output-format mismatch (2\%) \\
-159 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task903-deceptive-opinion-spam-classification} & 100 & 100 & 14 & 5.00 & 5.00 & 4.86 & 0.5 & Yes & instruction or output-format mismatch (1\%) \\
-160 & \url{common-pile/arxiv_papers_filtered} & 100 & 100 & 7 & 4.95 & 4.97 & 4.96 & 0.5 & Conditional & repetition or excessive verbosity (2\%); grammar or fluency defect (2\%) \\
-161 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1375-newscomm-translation} & 100 & 100 & 12 & 4.99 & 5.00 & 4.88 & 0.5 & Yes & translation mismatch or failure (7\%); low-value, ambiguous, or overly narrow signal (2\%) \\
-162 & \url{schneiderkamplab/common-pile-span-filling} & 100 & 100 & 9 & 4.96 & 4.99 & 4.96 & 0.3 & Conditional & grammar or fluency defect (4\%); truncated or incomplete target (1\%) \\
-163 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task635-allegro-reviews-answer-generation} & 100 & 100 & 6 & 5.00 & 4.97 & 4.95 & 0.3 & Yes & instruction or output-format mismatch (2\%); repetition or excessive verbosity (1\%) \\
-164 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task672-amazon-yelp-summarization} & 100 & 100 & 5 & 5.00 & 4.99 & 4.95 & 0.2 & Yes & instruction or output-format mismatch (3\%) \\
-165 & \url{schneiderkamplab/transformations-english-danish} & 100 & 100 & 2 & 4.99 & 4.99 & 4.98 & 0.2 & Conditional & translation mismatch or failure (1\%); truncated or incomplete target (1\%) \\
-166 & \url{synquid/danish-verifiable-reasoning} & 100 & 100 & 3 & 5.00 & 4.97 & 5.00 & 0.2 & Yes & instruction or output-format mismatch (1\%); repetition or excessive verbosity (1\%) \\
-167 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task265-paper-reviews-language-identification} & 100 & 100 & 2 & 5.00 & 5.00 & 4.96 & 0.2 & Yes & low-value, ambiguous, or overly narrow signal (1\%) \\
-168 & \url{oliverkinch/autodata-da-sft} & 100 & 100 & 2 & 5.00 & 4.99 & 4.98 & 0.1 & Yes & ungrounded or hallucinated content (1\%) \\
-169 & \url{schneiderkamplab/danish-dynaword-denoising} & 100 & 100 & 2 & 4.98 & 4.99 & 5.00 & 0.1 & Conditional & instruction or output-format mismatch (1\%); truncated or incomplete target (1\%) \\
-170 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task265-paper-reviews-language-identification} & 100 & 100 & 2 & 5.00 & 5.00 & 4.98 & 0.1 & Yes & low-value, ambiguous, or overly narrow signal (2\%); instruction or output-format mismatch (1\%) \\
-171 & \url{synquid/mt-da-deepseek} & 100 & 100 & 1 & 5.00 & 5.00 & 4.99 & 0.0 & Yes & Scattered judge complaints without a recurring taxonomy category (1\% of rows). \\
-172 & \url{allenai/open_math_2_50k_r1-original} & 100 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & Yes & No issue identified in the sample. \\
-173 & \url{nvidia/Nemotron-Terminal-Corpus} & 100 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & Yes & No issue identified in the sample. \\
-174 & \url{oliverkinch/danish-summarization} & 100 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & Yes & No issue identified in the sample. \\
-175 & \url{schneiderkamplab/dfm8-synthetic-code-debugging} & 100 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & Yes & No issue identified in the sample. \\
-176 & \url{schneiderkamplab/dfm8-synthetic-strict-math-answer-contract} & 100 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & Yes & No issue identified in the sample. \\
-177 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1370-newscomm-classification} & 20 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & Yes & No issue identified in the sample. \\
+1 & \url{oliverkinch/machine-translation-da-ar} & 100 & 7 & 96 & 3.27 & 1.29 & 1.27 & 85.5 & SFT & Repair & translation mismatch or failure (96\%); ungrounded or hallucinated content (94\%) \\
+2 & \url{oliverkinch/machine-translation-da-uk} & 100 & 23 & 82 & 3.59 & 1.93 & 1.89 & 70.8 & SFT & Repair & translation mismatch or failure (82\%); ungrounded or hallucinated content (76\%) \\
+3 & \url{oliverkinch/dst-table-prompts-bt} & 100 & 26 & 99 & 4.39 & 2.50 & 2.14 & 62.5 & SFT & Repair & scraping, OCR, or encoding noise (94\%); instruction or output-format mismatch (84\%) \\
+4 & \url{dfm-agreement/dbc} & 100 & 27 & 97 & 3.84 & 3.08 & 2.37 & 60.3 & SFT & Repair & instruction or output-format mismatch (80\%); prompt/target language mismatch (58\%) \\
+5 & \url{ccdv/govreport-summarization} & 100 & 27 & 89 & 4.93 & 2.78 & 2.20 & 58.4 & SFT & Repair & ungrounded or hallucinated content (73\%); instruction or output-format mismatch (39\%) \\
+6 & \url{laion/Scientific-Summaries} & 100 & 20 & 92 & 4.59 & 3.37 & 3.54 & 55.2 & SFT & Repair & truncated or incomplete target (92\%); instruction or output-format mismatch (24\%) \\
+7 & \url{schneiderkamplab/sapient-synth-flan-dialog-zsopt-data-qrecc-ii} & 100 & 34 & 84 & 4.58 & 2.84 & 2.70 & 54.0 & SFT & Repair & truncated or incomplete target (72\%); instruction or output-format mismatch (67\%) \\
+8 & \url{schneiderkamplab/sapient-synth-platypus-scibench} & 100 & 38 & 77 & 4.92 & 2.72 & 2.59 & 51.7 & SFT & Repair & instruction or output-format mismatch (34\%); low-value, ambiguous, or overly narrow signal (23\%) \\
+9 & \url{nvidia/Nemotron-SFT-SWE-v2} & 100 & 47 & 65 & 4.72 & 3.17 & 2.88 & 44.7 & SFT & Repair & truncated or incomplete target (58\%); instruction or output-format mismatch (57\%) \\
+10 & \url{oliverkinch/danish-university-portals-bt} & 100 & 47 & 84 & 4.25 & 3.49 & 3.15 & 43.8 & SFT & Repair & instruction or output-format mismatch (46\%); truncated or incomplete target (41\%) \\
+11 & \url{GEM/wiki_cat_sum} & 100 & 57 & 98 & 4.17 & 3.77 & 2.95 & 38.5 & SFT & Filter & ungrounded or hallucinated content (64\%); scraping, OCR, or encoding noise (28\%) \\
+12 & \url{oliverkinch/danmarks-statistik-bt} & 100 & 61 & 84 & 4.97 & 3.20 & 3.13 & 35.6 & SFT & Filter & instruction or output-format mismatch (47\%); ungrounded or hallucinated content (17\%) \\
+13 & \url{schneiderkamplab/sapient-synth-flan-dialog-fsopt-data-qrecc-ii} & 100 & 62 & 84 & 4.46 & 3.62 & 3.36 & 34.1 & SFT & Filter & truncated or incomplete target (61\%); instruction or output-format mismatch (48\%) \\
+14 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task871-msmarco-question-generation} & 89 & 63 & 96 & 4.70 & 3.66 & 3.07 & 33.6 & SFT & Filter & instruction or output-format mismatch (52\%); truncated or incomplete target (17\%) \\
+15 & \url{allenai/code_meta_reasoning} & 100 & 60 & 53 & 4.83 & 3.64 & 3.58 & 32.8 & SFT & Filter & instruction or output-format mismatch (42\%); ungrounded or hallucinated content (30\%) \\
+16 & \url{oliverkinch/da-instruct-dynaword} & 100 & 62 & 74 & 4.41 & 3.73 & 3.67 & 32.6 & SFT & Filter & truncated or incomplete target (47\%); instruction or output-format mismatch (38\%) \\
+17 & \url{alexandrainst/dacoref} & 100 & 65 & 92 & 4.99 & 3.76 & 2.92 & 31.5 & SFT & Filter & incorrect answer or reasoning (33\%); low-value, ambiguous, or overly narrow signal (22\%) \\
+18 & \url{oliverkinch/tidsskrift-dk-bt} & 100 & 64 & 68 & 4.30 & 3.91 & 3.71 & 30.9 & SFT & Filter & instruction or output-format mismatch (32\%); truncated or incomplete target (24\%) \\
+19 & \url{oliverkinch/eur-lex-bt} & 100 & 64 & 66 & 4.86 & 3.52 & 3.71 & 30.8 & SFT & Filter & instruction or output-format mismatch (41\%); truncated or incomplete target (15\%) \\
+20 & \url{oliverkinch/doab-da-bt} & 100 & 68 & 84 & 4.67 & 3.68 & 3.52 & 29.4 & SFT & Filter & instruction or output-format mismatch (46\%); truncated or incomplete target (24\%) \\
+21 & \url{oliverkinch/dynaword-bt} & 100 & 70 & 70 & 4.55 & 3.93 & 3.69 & 27.0 & SFT & Filter & instruction or output-format mismatch (35\%); truncated or incomplete target (29\%) \\
+22 & \url{nvidia/OpenMathInstruct-2} & 100 & 68 & 37 & 4.98 & 3.78 & 3.75 & 26.9 & SFT & Filter & instruction or output-format mismatch (22\%); incorrect answer or reasoning (20\%) \\
+23 & \url{schneiderkamplab/opus-da-en-permissive} & 100 & 75 & 49 & 4.21 & 4.01 & 3.73 & 25.2 & SFT & Filter & translation mismatch or failure (40\%); incorrect answer or reasoning (21\%) \\
+24 & \url{facebook/asset} & 100 & 75 & 89 & 4.55 & 4.15 & 3.23 & 25.1 & SFT & Filter & instruction or output-format mismatch (26\%); grammar or fluency defect (13\%) \\
+25 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task871-msmarco-question-generation} & 100 & 74 & 79 & 4.71 & 4.02 & 3.49 & 24.6 & SFT & Filter & instruction or output-format mismatch (43\%); truncated or incomplete target (26\%) \\
+26 & \url{oliverkinch/da-instruct-dynaword-contemporary} & 100 & 75 & 71 & 4.42 & 4.11 & 3.80 & 23.6 & SFT & Filter & instruction or output-format mismatch (36\%); truncated or incomplete target (29\%) \\
+27 & \url{alexandrainst/nordjylland-news-summarization} & 100 & 76 & 74 & 4.86 & 4.07 & 3.55 & 22.6 & SFT & Filter & instruction or output-format mismatch (45\%); ungrounded or hallucinated content (17\%) \\
+28 & \url{danish-foundation-models/kaenguruen} & 100 & 76 & 37 & 4.99 & 4.01 & 3.91 & 21.1 & SFT & Filter & incorrect answer or reasoning (16\%); instruction or output-format mismatch (9\%) \\
+29 & \url{allenai/IF_sft_data_verified} & 100 & 76 & 58 & 4.86 & 4.14 & 3.87 & 21.1 & SFT & Filter & instruction or output-format mismatch (39\%); incorrect answer or reasoning (11\%) \\
+30 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task264-paper-reviews-accept-reject} & 100 & 80 & 90 & 4.99 & 4.06 & 3.35 & 20.9 & SFT & Filter & incorrect answer or reasoning (21\%); instruction or output-format mismatch (7\%) \\
+31 & \url{schneiderkamplab/sapient-synth-flan-dialog-zsopt-data-qrecc} & 100 & 77 & 71 & 4.94 & 4.25 & 3.66 & 20.5 & SFT & Filter & ungrounded or hallucinated content (36\%); instruction or output-format mismatch (19\%) \\
+32 & \url{alexandrainst/multi-zebra-logic} & 100 & 76 & 52 & 4.58 & 4.49 & 3.84 & 20.5 & SFT & Filter & ungrounded or hallucinated content (29\%); incorrect answer or reasoning (15\%) \\
+33 & \url{grammarly/coedit} & 100 & 79 & 80 & 4.66 & 4.41 & 3.50 & 20.3 & SFT & Filter & instruction or output-format mismatch (25\%); grammar or fluency defect (16\%) \\
+34 & \url{oliverkinch/eur-lex-sum-instruct} & 24 & 75 & 38 & 4.92 & 4.12 & 4.17 & 20.3 & SFT & Filter & instruction or output-format mismatch (29\%); ungrounded or hallucinated content (17\%) \\
+35 & \url{oliverkinch/machine-translation-da-en} & 100 & 78 & 43 & 4.58 & 4.18 & 4.03 & 20.3 & SFT & Filter & translation mismatch or failure (39\%); ungrounded or hallucinated content (18\%) \\
+36 & \url{schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-aeslc-1.0.0} & 100 & 78 & 49 & 4.78 & 4.20 & 3.92 & 19.9 & SFT & Filter & instruction or output-format mismatch (24\%); truncated or incomplete target (12\%) \\
+37 & \url{oliverkinch/da-instruct-dynaword-contemporary-hq} & 100 & 78 & 56 & 4.81 & 4.11 & 4.09 & 19.6 & SFT & Filter & instruction or output-format mismatch (28\%); truncated or incomplete target (26\%) \\
+38 & \url{allenai/Dolci-Instruct-SFT-Tool-Use} & 100 & 75 & 34 & 4.94 & 4.30 & 4.19 & 19.3 & SFT & Filter & tool-call or agent-trajectory defect (29\%); instruction or output-format mismatch (24\%) \\
+39 & \url{allenai/tulu-3-sft-personas-algebra} & 100 & 77 & 41 & 4.93 & 4.20 & 4.16 & 18.9 & SFT & Filter & instruction or output-format mismatch (26\%); truncated or incomplete target (17\%) \\
+40 & \url{MegaScience/TextbookReasoning} & 100 & 79 & 44 & 4.90 & 4.19 & 3.95 & 18.9 & SFT & Filter & instruction or output-format mismatch (20\%); truncated or incomplete target (7\%) \\
+41 & \url{allenai/SciRIFF-train-mix} & 100 & 82 & 72 & 4.64 & 4.26 & 3.75 & 18.7 & SFT & Use & instruction or output-format mismatch (26\%); grammar or fluency defect (11\%) \\
+42 & \url{Muennighoff/natural-instructions} & 100 & 79 & 49 & 4.84 & 4.26 & 3.96 & 18.7 & SFT & Filter & instruction or output-format mismatch (20\%); incorrect answer or reasoning (11\%) \\
+43 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task264-paper-reviews-accept-reject} & 100 & 80 & 64 & 5.00 & 4.22 & 3.76 & 18.6 & SFT & Use & instruction or output-format mismatch (17\%); incorrect answer or reasoning (17\%) \\
+44 & \url{danish-foundation-models/laerebogen} & 100 & 80 & 51 & 4.84 & 4.39 & 3.94 & 17.6 & SFT & Use & instruction or output-format mismatch (17\%); ungrounded or hallucinated content (11\%) \\
+45 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task266-paper-reviews-reviewer-perspective} & 100 & 81 & 54 & 5.00 & 4.20 & 3.93 & 17.5 & SFT & Use & incorrect answer or reasoning (19\%); grammar or fluency defect (4\%) \\
+46 & \url{zai-org/DeepDive} & 100 & 80 & 47 & 5.00 & 4.15 & 4.14 & 17.5 & SFT & Use & tool-call or agent-trajectory defect (46\%); truncated or incomplete target (28\%) \\
+47 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1374-newscomm-translation} & 100 & 78 & 29 & 4.80 & 4.44 & 4.23 & 17.4 & SFT & Filter & translation mismatch or failure (26\%); instruction or output-format mismatch (22\%) \\
+48 & \url{schneiderkamplab/sapient-synth-flan-flan-zsopt-data-aeslc-1.0.0} & 100 & 84 & 87 & 4.96 & 4.29 & 3.53 & 17.2 & SFT & Use & instruction or output-format mismatch (23\%); ungrounded or hallucinated content (9\%) \\
+49 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task266-paper-reviews-reviewer-perspective} & 100 & 81 & 45 & 5.00 & 4.19 & 4.04 & 17.1 & SFT & Use & incorrect answer or reasoning (18\%); instruction or output-format mismatch (16\%) \\
+50 & \url{allenai/tulu-3-sft-personas-math} & 100 & 81 & 43 & 4.99 & 4.22 & 4.11 & 16.8 & SFT & Use & instruction or output-format mismatch (23\%); incorrect answer or reasoning (21\%) \\
+51 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1376-newscomm-translation} & 100 & 82 & 30 & 4.64 & 4.33 & 4.21 & 16.7 & SFT & Use & translation mismatch or failure (27\%); instruction or output-format mismatch (21\%) \\
+52 & \url{oliverkinch/da-instruct-dynaword-hq} & 100 & 83 & 55 & 4.74 & 4.23 & 4.14 & 16.5 & SFT & Use & instruction or output-format mismatch (23\%); truncated or incomplete target (20\%) \\
+53 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task618-amazonreview-summary-text-generation} & 100 & 81 & 40 & 4.97 & 4.35 & 4.06 & 16.4 & SFT & Use & instruction or output-format mismatch (19\%); truncated or incomplete target (13\%) \\
+54 & \url{danish-foundation-models/ai_arena_udtraek} & 100 & 83 & 45 & 4.55 & 4.49 & 4.04 & 16.3 & SFT & Use & ungrounded or hallucinated content (17\%); incorrect answer or reasoning (13\%) \\
+55 & \url{schneiderkamplab/sapient-synth-flan-flan-fsopt-data-aeslc-1.0.0} & 100 & 85 & 60 & 4.83 & 4.29 & 3.91 & 15.8 & SFT & Use & instruction or output-format mismatch (18\%); truncated or incomplete target (13\%) \\
+56 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1374-newscomm-translation} & 100 & 82 & 36 & 4.74 & 4.48 & 4.23 & 15.5 & SFT & Use & translation mismatch or failure (31\%); truncated or incomplete target (23\%) \\
+57 & \url{schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-aeslc-1.0.0} & 100 & 87 & 85 & 5.00 & 4.29 & 3.59 & 15.3 & SFT & Use & instruction or output-format mismatch (21\%); ungrounded or hallucinated content (7\%) \\
+58 & \url{allenai/RLVR-MATH} & 100 & 83 & 22 & 5.00 & 4.19 & 4.33 & 15.1 & SFT & Use & incorrect answer or reasoning (11\%); instruction or output-format mismatch (9\%) \\
+59 & \url{dfm-agreement/hc-andersen-modernization} & 100 & 83 & 29 & 4.88 & 4.35 & 4.30 & 14.8 & SFT & Use & ungrounded or hallucinated content (25\%); instruction or output-format mismatch (22\%) \\
+60 & \url{AI-MO/NuminaMath-1.5} & 100 & 84 & 33 & 4.81 & 4.36 & 4.25 & 14.7 & SFT & Use & incorrect answer or reasoning (18\%); ungrounded or hallucinated content (13\%) \\
+61 & \url{nvidia/AceReason-1.1-SFT} & 100 & 83 & 31 & 5.00 & 4.36 & 4.31 & 14.3 & SFT & Use & incorrect answer or reasoning (11\%); ungrounded or hallucinated content (7\%) \\
+62 & \url{alexandrainst/scandi-qa} & 100 & 85 & 49 & 4.91 & 4.41 & 4.16 & 13.9 & SFT & Use & instruction or output-format mismatch (17\%); incorrect answer or reasoning (14\%) \\
+63 & \url{kobprof/skolegpt-instruct} & 100 & 85 & 51 & 4.84 & 4.48 & 4.14 & 13.9 & SFT & Use & instruction or output-format mismatch (22\%); ungrounded or hallucinated content (10\%) \\
+64 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1370-newscomm-classification} & 100 & 84 & 18 & 4.98 & 4.32 & 4.36 & 13.9 & SFT & Use & incorrect answer or reasoning (18\%); ungrounded or hallucinated content (5\%) \\
+65 & \url{allenai/Dolci-Instruct-SFT-Tool-Use-SA} & 100 & 86 & 50 & 4.90 & 4.44 & 4.13 & 13.4 & SFT & Use & tool-call or agent-trajectory defect (30\%); instruction or output-format mismatch (21\%) \\
+66 & \url{oliverkinch/instruct-bt} & 100 & 89 & 71 & 4.75 & 4.41 & 3.95 & 13.3 & SFT & Use & instruction or output-format mismatch (23\%); truncated or incomplete target (9\%) \\
+67 & \url{sapientinc/HRM-Text-data-io-cleaned-20260515} & 100 & 86 & 38 & 4.83 & 4.44 & 4.24 & 13.3 & SFT & Use & instruction or output-format mismatch (15\%); incorrect answer or reasoning (10\%) \\
+68 & \url{schneiderkamplab/sapient-synth-flan-flan-zsopt-data-opinion-abstracts-rotten-tomatoes} & 100 & 87 & 71 & 4.99 & 4.53 & 3.95 & 12.8 & SFT & Use & ungrounded or hallucinated content (24\%); instruction or output-format mismatch (12\%) \\
+69 & \url{allenai/tulu-v2-sft-long-mixture} & 100 & 89 & 69 & 4.78 & 4.52 & 3.96 & 12.6 & SFT & Use & instruction or output-format mismatch (25\%); ungrounded or hallucinated content (8\%) \\
+70 & \url{schneiderkamplab/sapient-synth-flan-dialog-fsopt-data-qrecc} & 100 & 89 & 77 & 4.97 & 4.52 & 3.93 & 12.0 & SFT & Use & instruction or output-format mismatch (21\%); ungrounded or hallucinated content (18\%) \\
+71 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task589-amazonfood-summary-text-generation} & 100 & 88 & 60 & 5.00 & 4.55 & 4.00 & 12.0 & SFT & Use & instruction or output-format mismatch (26\%); truncated or incomplete target (4\%) \\
+72 & \url{allenai/tulu-v2-sft-mixture} & 100 & 90 & 68 & 4.79 & 4.50 & 4.02 & 12.0 & SFT & Use & instruction or output-format mismatch (25\%); truncated or incomplete target (14\%) \\
+73 & \url{schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-opinion-abstracts-rotten-tomatoes} & 100 & 90 & 64 & 5.00 & 4.56 & 4.08 & 10.7 & SFT & Use & ungrounded or hallucinated content (24\%); instruction or output-format mismatch (16\%) \\
+74 & \url{allenai/Dolci-Instruct-SFT-No-Tools} & 100 & 89 & 33 & 4.90 & 4.55 & 4.38 & 10.4 & SFT & Use & instruction or output-format mismatch (14\%); incorrect answer or reasoning (10\%) \\
+75 & \url{nvidia/Nemotron-SFT-Multilingual-v1} & 100 & 91 & 57 & 4.59 & 4.61 & 4.52 & 9.8 & SFT & Use & translation mismatch or failure (14\%); instruction or output-format mismatch (13\%) \\
+76 & \url{schneiderkamplab/sapient-synth-flan-flan-zsopt-data-opinion-abstracts-idebate} & 100 & 94 & 73 & 4.99 & 4.55 & 3.94 & 9.3 & SFT & Use & instruction or output-format mismatch (12\%); truncated or incomplete target (5\%) \\
+77 & \url{giannor/dala_tv2r_it} & 100 & 88 & 31 & 5.00 & 4.85 & 4.50 & 8.6 & SFT & Use & incorrect answer or reasoning (16\%); grammar or fluency defect (10\%) \\
+78 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task908-dialogre-identify-familial-relationships} & 100 & 91 & 36 & 5.00 & 4.63 & 4.40 & 8.6 & SFT & Use & instruction or output-format mismatch (8\%); incorrect answer or reasoning (5\%) \\
+79 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task589-amazonfood-summary-text-generation} & 100 & 92 & 33 & 5.00 & 4.58 & 4.41 & 8.3 & SFT & Use & instruction or output-format mismatch (18\%); truncated or incomplete target (5\%) \\
+80 & \url{allenai/tulu-3-sft-mixture} & 100 & 93 & 45 & 4.92 & 4.62 & 4.31 & 8.3 & SFT & Use & instruction or output-format mismatch (13\%); incorrect answer or reasoning (7\%) \\
+81 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task906-dialogre-identify-names} & 100 & 91 & 19 & 5.00 & 4.59 & 4.56 & 8.2 & SFT & Use & incorrect answer or reasoning (11\%); ungrounded or hallucinated content (3\%) \\
+82 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task908-dialogre-identify-familial-relationships} & 72 & 90 & 21 & 5.00 & 4.67 & 4.56 & 8.2 & SFT & Use & low-value, ambiguous, or overly narrow signal (8\%); incorrect answer or reasoning (7\%) \\
+83 & \url{dfm-agreement/lexdk} & 100 & 92 & 30 & 4.96 & 4.64 & 4.41 & 8.2 & SFT & Use & instruction or output-format mismatch (13\%); scraping, OCR, or encoding noise (10\%) \\
+84 & \url{allenai/tulu-3-sft-personas-instruction-following} & 100 & 91 & 28 & 4.98 & 4.63 & 4.55 & 8.1 & SFT & Use & instruction or output-format mismatch (15\%); incorrect answer or reasoning (3\%) \\
+85 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task906-dialogre-identify-names} & 100 & 91 & 20 & 5.00 & 4.65 & 4.53 & 8.0 & SFT & Use & incorrect answer or reasoning (9\%); ungrounded or hallucinated content (4\%) \\
+86 & \url{danish-foundation-models/dfm-dyna-instruct} & 100 & 92 & 34 & 4.97 & 4.65 & 4.43 & 8.0 & SFT & Use & instruction or output-format mismatch (11\%); incorrect answer or reasoning (5\%) \\
+87 & \url{croco-munin/apertus-8b-da-simpo-full-50k} & 100 & 92 & 32 & 4.88 & 4.64 & 4.54 & 8.0 & SFT & Use & instruction or output-format mismatch (14\%); ungrounded or hallucinated content (9\%) \\
+88 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task907-dialogre-identify-relationships} & 50 & 92 & 40 & 5.00 & 4.70 & 4.34 & 8.0 & SFT & Use & incorrect answer or reasoning (10\%); low-value, ambiguous, or overly narrow signal (8\%) \\
+89 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task634-allegro-reviews-classification} & 100 & 92 & 31 & 5.00 & 4.68 & 4.44 & 7.7 & SFT & Use & incorrect answer or reasoning (9\%); instruction or output-format mismatch (4\%) \\
+90 & \url{open-thoughts/OpenThoughts2-1M} & 100 & 91 & 19 & 4.99 & 4.65 & 4.63 & 7.7 & SFT & Use & instruction or output-format mismatch (7\%); incorrect answer or reasoning (7\%) \\
+91 & \url{synquid/wiki-instruct-da} & 100 & 93 & 34 & 4.65 & 4.76 & 4.59 & 7.5 & SFT & Use & grammar or fluency defect (14\%); truncated or incomplete target (9\%) \\
+92 & \url{schneiderkamplab/sapient-synth-flan-flan-fsopt-data-opinion-abstracts-idebate} & 100 & 94 & 44 & 4.94 & 4.64 & 4.35 & 7.5 & SFT & Use & instruction or output-format mismatch (13\%); truncated or incomplete target (7\%) \\
+93 & \url{HuggingFaceH4/no_robots} & 100 & 95 & 62 & 4.85 & 4.76 & 4.16 & 7.4 & SFT & Use & instruction or output-format mismatch (8\%); repetition or excessive verbosity (6\%) \\
+94 & \url{allenai/RLVR-GSM} & 100 & 91 & 10 & 4.99 & 4.67 & 4.68 & 7.4 & SFT & Use & incorrect answer or reasoning (7\%); instruction or output-format mismatch (6\%) \\
+95 & \url{schneiderkamplab/sapient-synth-flan-flan-zsnoopt-data-opinion-abstracts-idebate} & 100 & 96 & 63 & 4.98 & 4.70 & 4.14 & 6.8 & SFT & Use & ungrounded or hallucinated content (5\%); instruction or output-format mismatch (5\%) \\
+96 & \url{allenai/Dolci-Instruct-SFT} & 100 & 94 & 26 & 4.97 & 4.67 & 4.51 & 6.6 & SFT & Use & instruction or output-format mismatch (12\%); truncated or incomplete target (6\%) \\
+97 & \url{schneiderkamplab/sapient-synth-platypus-reclor} & 100 & 95 & 63 & 5.00 & 4.77 & 4.22 & 6.6 & SFT & Use & incorrect answer or reasoning (4\%); instruction or output-format mismatch (3\%) \\
+98 & \url{google/multilingual_gsm_symbolic} & 100 & 92 & 10 & 4.95 & 4.76 & 4.70 & 6.5 & SFT & Use & incorrect answer or reasoning (8\%); instruction or output-format mismatch (6\%) \\
+99 & \url{schneiderkamplab/danish-dynaword-span-filling} & 100 & 94 & 29 & 4.76 & 4.76 & 4.75 & 6.0 & Aux-SFT & Use & instruction or output-format mismatch (9\%); grammar or fluency defect (7\%) \\
+100 & \url{schneiderkamplab/transformations-english-english} & 100 & 92 & 15 & 5.00 & 4.72 & 4.83 & 6.0 & SFT & Use & instruction or output-format mismatch (9\%); truncated or incomplete target (3\%) \\
+101 & \url{schneiderkamplab/common-pile-paragraph-reordering} & 100 & 93 & 10 & 4.95 & 4.79 & 4.72 & 5.8 & Aux-SFT & Use & instruction or output-format mismatch (7\%); incorrect answer or reasoning (6\%) \\
+102 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task902-deceptive-opinion-spam-classification} & 100 & 100 & 95 & 5.00 & 5.00 & 3.51 & 5.6 & SFT & Use & low-value, ambiguous, or overly narrow signal (18\%); instruction or output-format mismatch (2\%) \\
+103 & \url{allenai/verifiable-reasoning-filtered-o4-mini} & 100 & 94 & 18 & 5.00 & 4.71 & 4.70 & 5.6 & SFT & Use & instruction or output-format mismatch (6\%); low-value, ambiguous, or overly narrow signal (2\%) \\
+104 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task618-amazonreview-summary-text-generation} & 100 & 95 & 23 & 4.96 & 4.74 & 4.61 & 5.4 & SFT & Use & instruction or output-format mismatch (8\%); truncated or incomplete target (6\%) \\
+105 & \url{glaiveai/glaive-function-calling-v2} & 100 & 95 & 32 & 5.00 & 4.78 & 4.52 & 5.4 & SFT & Use & tool-call or agent-trajectory defect (17\%); instruction or output-format mismatch (6\%) \\
+106 & \url{Team-ACE/ToolACE} & 100 & 94 & 16 & 4.97 & 4.75 & 4.77 & 5.2 & SFT & Use & tool-call or agent-trajectory defect (8\%); instruction or output-format mismatch (6\%) \\
+107 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task907-dialogre-identify-relationships} & 100 & 95 & 23 & 5.00 & 4.84 & 4.65 & 4.6 & SFT & Use & instruction or output-format mismatch (4\%); incorrect answer or reasoning (2\%) \\
+108 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1309-amazonreview-summary-classification} & 100 & 95 & 18 & 5.00 & 4.82 & 4.68 & 4.6 & SFT & Use & truncated or incomplete target (8\%); low-value, ambiguous, or overly narrow signal (8\%) \\
+109 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task902-deceptive-opinion-spam-classification} & 100 & 98 & 74 & 5.00 & 4.98 & 4.08 & 4.5 & SFT & Use & instruction or output-format mismatch (5\%); repetition or excessive verbosity (3\%) \\
+110 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task590-amazonfood-summary-correction-classification} & 100 & 95 & 14 & 5.00 & 4.82 & 4.73 & 4.4 & SFT & Use & truncated or incomplete target (4\%); incorrect answer or reasoning (3\%) \\
+111 & \url{schneiderkamplab/common-pile-prefix-continuation} & 100 & 97 & 38 & 4.62 & 4.91 & 4.74 & 4.3 & Midtrain & Use & scraping, OCR, or encoding noise (25\%); grammar or fluency defect (13\%) \\
+112 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task634-allegro-reviews-classification} & 100 & 96 & 18 & 4.97 & 4.81 & 4.66 & 4.3 & SFT & Use & instruction or output-format mismatch (5\%); incorrect answer or reasoning (4\%) \\
+113 & \url{schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-opinion-abstracts-idebate} & 100 & 97 & 25 & 4.95 & 4.76 & 4.65 & 4.2 & SFT & Use & truncated or incomplete target (9\%); instruction or output-format mismatch (5\%) \\
+114 & \url{giannor/gec_dala_tv2r_it} & 100 & 95 & 7 & 4.98 & 4.82 & 4.81 & 4.2 & SFT & Use & instruction or output-format mismatch (5\%); incorrect answer or reasoning (4\%) \\
+115 & \url{schneiderkamplab/danish-dynaword-prefix-continuation} & 100 & 96 & 18 & 4.80 & 4.87 & 4.81 & 4.1 & Midtrain & Use & truncated or incomplete target (9\%); grammar or fluency defect (5\%) \\
+116 & \url{schneiderkamplab/sapient-synth-flan-flan-fsopt-data-opinion-abstracts-rotten-tomatoes} & 100 & 96 & 13 & 5.00 & 4.79 & 4.77 & 3.9 & SFT & Use & instruction or output-format mismatch (6\%); ungrounded or hallucinated content (4\%) \\
+117 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1376-newscomm-translation} & 100 & 96 & 10 & 4.91 & 4.88 & 4.79 & 3.7 & SFT & Use & translation mismatch or failure (6\%); instruction or output-format mismatch (5\%) \\
+118 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1373-newscomm-translation} & 100 & 97 & 21 & 4.97 & 4.88 & 4.63 & 3.6 & SFT & Use & translation mismatch or failure (9\%); instruction or output-format mismatch (3\%) \\
+119 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1371-newscomm-translation} & 100 & 97 & 23 & 4.92 & 4.92 & 4.63 & 3.6 & SFT & Use & translation mismatch or failure (7\%); instruction or output-format mismatch (5\%) \\
+120 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task590-amazonfood-summary-correction-classification} & 100 & 97 & 28 & 5.00 & 4.88 & 4.63 & 3.5 & SFT & Use & incorrect answer or reasoning (4\%); instruction or output-format mismatch (3\%) \\
+121 & \url{schneiderkamplab/sapient-synth-tasksource-reclor} & 100 & 96 & 21 & 5.00 & 4.93 & 4.75 & 3.3 & SFT & Use & incorrect answer or reasoning (5\%); truncated or incomplete target (1\%) \\
+122 & \url{schneiderkamplab/sapient-synth-flan-flan-fsnoopt-data-opinion-abstracts-rotten-tomatoes} & 100 & 97 & 19 & 5.00 & 4.84 & 4.74 & 3.3 & SFT & Use & instruction or output-format mismatch (8\%); ungrounded or hallucinated content (3\%) \\
+123 & \url{allenai/tulu-3-sft-personas-code} & 100 & 97 & 17 & 4.98 & 4.86 & 4.76 & 3.2 & SFT & Use & instruction or output-format mismatch (6\%); incorrect answer or reasoning (4\%) \\
+124 & \url{schneiderkamplab/dfm8-synthetic-native-tool-calling} & 100 & 98 & 19 & 4.99 & 4.81 & 4.69 & 3.2 & SFT & Use & tool-call or agent-trajectory defect (11\%); instruction or output-format mismatch (5\%) \\
+125 & \url{oliverkinch/danish-qa} & 100 & 98 & 19 & 4.98 & 4.84 & 4.73 & 2.9 & SFT & Use & incorrect answer or reasoning (2\%); truncated or incomplete target (2\%) \\
+126 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1373-newscomm-translation} & 100 & 97 & 6 & 4.95 & 4.89 & 4.85 & 2.8 & SFT & Use & translation mismatch or failure (5\%); instruction or output-format mismatch (4\%) \\
+127 & \url{schneiderkamplab/sapient-synth-tasksource-pragmeval-sarcasm} & 100 & 98 & 43 & 5.00 & 5.00 & 4.53 & 2.8 & SFT & Use & low-value, ambiguous, or overly narrow signal (2\%); incorrect answer or reasoning (2\%) \\
+128 & \url{schneiderkamplab/dfm8-openhermes-en} & 100 & 99 & 37 & 4.99 & 4.96 & 4.55 & 2.4 & SFT & Use & instruction or output-format mismatch (6\%); low-value, ambiguous, or overly narrow signal (5\%) \\
+129 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task635-allegro-reviews-answer-generation} & 100 & 97 & 4 & 5.00 & 4.93 & 4.86 & 2.4 & SFT & Use & instruction or output-format mismatch (3\%); truncated or incomplete target (2\%) \\
+130 & \url{Salesforce/xlam-function-calling-60k} & 100 & 97 & 3 & 4.97 & 4.92 & 4.91 & 2.4 & SFT & Use & incorrect answer or reasoning (3\%); tool-call or agent-trajectory defect (3\%) \\
+131 & \url{synquid/translation-100k} & 100 & 98 & 10 & 4.90 & 4.91 & 4.87 & 2.3 & SFT & Use & translation mismatch or failure (10\%); instruction or output-format mismatch (4\%) \\
+132 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1371-newscomm-translation} & 100 & 98 & 10 & 4.95 & 4.92 & 4.81 & 2.3 & SFT & Use & truncated or incomplete target (3\%); translation mismatch or failure (3\%) \\
+133 & \url{oliverkinch/multi-wiki-qa-high-quality-subset} & 100 & 98 & 8 & 4.96 & 4.89 & 4.86 & 2.2 & SFT & Use & truncated or incomplete target (3\%); scraping, OCR, or encoding noise (1\%) \\
+134 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1375-newscomm-translation} & 100 & 99 & 25 & 4.94 & 4.94 & 4.70 & 2.1 & SFT & Use & translation mismatch or failure (6\%); instruction or output-format mismatch (3\%) \\
+135 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task672-amazon-yelp-summarization} & 100 & 97 & 5 & 5.00 & 4.95 & 4.91 & 2.1 & SFT & Use & ungrounded or hallucinated content (3\%); instruction or output-format mismatch (2\%) \\
+136 & \url{nvidia/Nemotron-SFT-Instruction-Following-Chat-v2} & 100 & 99 & 21 & 5.00 & 4.94 & 4.66 & 2.1 & SFT & Use & instruction or output-format mismatch (8\%); low-value, ambiguous, or overly narrow signal (2\%) \\
+137 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1377-newscomm-translation} & 100 & 99 & 21 & 4.96 & 4.93 & 4.72 & 2.1 & SFT & Use & translation mismatch or failure (7\%); repetition or excessive verbosity (3\%) \\
+138 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task870-msmarco-answer-generation} & 100 & 98 & 11 & 5.00 & 4.91 & 4.84 & 2.1 & SFT & Use & truncated or incomplete target (2\%); incorrect answer or reasoning (2\%) \\
+139 & \url{allenai/verifiable-reasoning-filtered-gpt-41} & 100 & 98 & 6 & 4.99 & 4.88 & 4.90 & 2.0 & SFT & Use & instruction or output-format mismatch (4\%); incorrect answer or reasoning (2\%) \\
+140 & \url{schneiderkamplab/danish-dynaword-paragraph-reordering} & 100 & 98 & 12 & 4.89 & 4.95 & 4.93 & 1.9 & Aux-SFT & Use & grammar or fluency defect (5\%); scraping, OCR, or encoding noise (4\%) \\
+141 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1377-newscomm-translation} & 100 & 98 & 7 & 4.99 & 4.97 & 4.91 & 1.5 & SFT & Use & translation mismatch or failure (5\%); instruction or output-format mismatch (2\%) \\
+142 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task870-msmarco-answer-generation} & 100 & 99 & 15 & 5.00 & 4.94 & 4.82 & 1.5 & SFT & Use & instruction or output-format mismatch (4\%); incorrect answer or reasoning (3\%) \\
+143 & \url{synquid/wildchat-100k-qwen-messages} & 100 & 99 & 16 & 4.98 & 4.95 & 4.84 & 1.4 & SFT & Use & instruction or output-format mismatch (5\%); ungrounded or hallucinated content (2\%) \\
+144 & \url{schneiderkamplab/transformations-danish-danish} & 100 & 99 & 8 & 4.99 & 4.92 & 4.88 & 1.4 & SFT & Use & instruction or output-format mismatch (6\%); scraping, OCR, or encoding noise (1\%) \\
+145 & \url{schneiderkamplab/dfm8-synthetic-multiturn-danish-english-chat} & 100 & 99 & 13 & 5.00 & 4.95 & 4.85 & 1.3 & SFT & Use & instruction or output-format mismatch (2\%); ungrounded or hallucinated content (1\%) \\
+146 & \url{schneiderkamplab/dfm8-synthetic-danish-summarization-rewrite-controls} & 100 & 100 & 29 & 5.00 & 5.00 & 4.68 & 1.2 & SFT & Use & instruction or output-format mismatch (6\%); low-value, ambiguous, or overly narrow signal (3\%) \\
+147 & \url{schneiderkamplab/transformations-danish-english} & 100 & 99 & 8 & 5.00 & 4.96 & 4.88 & 1.2 & SFT & Use & instruction or output-format mismatch (2\%); translation mismatch or failure (2\%) \\
+148 & \url{schneiderkamplab/dfm8-synthetic-constrained-format-following} & 100 & 99 & 13 & 5.00 & 4.97 & 4.87 & 1.1 & SFT & Use & ungrounded or hallucinated content (5\%); instruction or output-format mismatch (2\%) \\
+149 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task903-deceptive-opinion-spam-classification} & 100 & 100 & 29 & 5.00 & 5.00 & 4.70 & 1.1 & SFT & Use & low-value, ambiguous, or overly narrow signal (6\%) \\
+150 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task909-dialogre-prevalent-speakers} & 100 & 99 & 3 & 5.00 & 4.92 & 4.94 & 1.1 & SFT & Use & low-value, ambiguous, or overly narrow signal (2\%); instruction or output-format mismatch (2\%) \\
+151 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1309-amazonreview-summary-classification} & 100 & 99 & 7 & 5.00 & 4.96 & 4.90 & 1.1 & SFT & Use & instruction or output-format mismatch (2\%); truncated or incomplete target (2\%) \\
+152 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task909-dialogre-prevalent-speakers} & 100 & 99 & 5 & 5.00 & 4.96 & 4.92 & 1.0 & SFT & Use & instruction or output-format mismatch (2\%); incorrect answer or reasoning (1\%) \\
+153 & \url{alexandrainst/dane} & 100 & 100 & 17 & 5.00 & 4.94 & 4.82 & 1.0 & SFT & Use & instruction or output-format mismatch (2\%); low-value, ambiguous, or overly narrow signal (2\%) \\
+154 & \url{schneiderkamplab/dfm8-openhermes-da} & 100 & 100 & 15 & 4.98 & 4.96 & 4.84 & 0.9 & SFT & Use & instruction or output-format mismatch (2\%); translation mismatch or failure (2\%) \\
+155 & \url{nvidia/Nemotron-SFT-Agentic-v2} & 100 & 99 & 3 & 5.00 & 4.95 & 4.97 & 0.9 & SFT & Use & truncated or incomplete target (2\%); instruction or output-format mismatch (1\%) \\
+156 & \url{allenai/big-reasoning-traces} & 100 & 100 & 10 & 4.99 & 4.94 & 4.88 & 0.8 & SFT & Use & instruction or output-format mismatch (3\%); low-value, ambiguous, or overly narrow signal (1\%) \\
+157 & \url{synquid/ifbench-train} & 100 & 100 & 12 & 4.97 & 4.98 & 4.88 & 0.7 & SFT & Use & low-value, ambiguous, or overly narrow signal (3\%); instruction or output-format mismatch (2\%) \\
+158 & \url{schneiderkamplab/common-pile-denoising} & 100 & 100 & 12 & 4.97 & 4.98 & 4.90 & 0.6 & Aux-SFT & Use & truncated or incomplete target (7\%); instruction or output-format mismatch (2\%) \\
+159 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task903-deceptive-opinion-spam-classification} & 100 & 100 & 14 & 5.00 & 5.00 & 4.86 & 0.5 & SFT & Use & instruction or output-format mismatch (1\%) \\
+160 & \url{common-pile/arxiv_papers_filtered} & 100 & 100 & 7 & 4.95 & 4.97 & 4.96 & 0.5 & SFT & Use & repetition or excessive verbosity (2\%); grammar or fluency defect (2\%) \\
+161 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task1375-newscomm-translation} & 100 & 100 & 12 & 4.99 & 5.00 & 4.88 & 0.5 & SFT & Use & translation mismatch or failure (7\%); low-value, ambiguous, or overly narrow signal (2\%) \\
+162 & \url{schneiderkamplab/common-pile-span-filling} & 100 & 100 & 9 & 4.96 & 4.99 & 4.96 & 0.3 & Aux-SFT & Use & grammar or fluency defect (4\%); truncated or incomplete target (1\%) \\
+163 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task635-allegro-reviews-answer-generation} & 100 & 100 & 6 & 5.00 & 4.97 & 4.95 & 0.3 & SFT & Use & instruction or output-format mismatch (2\%); repetition or excessive verbosity (1\%) \\
+164 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task672-amazon-yelp-summarization} & 100 & 100 & 5 & 5.00 & 4.99 & 4.95 & 0.2 & SFT & Use & instruction or output-format mismatch (3\%) \\
+165 & \url{schneiderkamplab/transformations-english-danish} & 100 & 100 & 2 & 4.99 & 4.99 & 4.98 & 0.2 & SFT & Use & truncated or incomplete target (1\%); translation mismatch or failure (1\%) \\
+166 & \url{synquid/danish-verifiable-reasoning} & 100 & 100 & 3 & 5.00 & 4.97 & 5.00 & 0.2 & SFT & Use & instruction or output-format mismatch (1\%); repetition or excessive verbosity (1\%) \\
+167 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task265-paper-reviews-language-identification} & 100 & 100 & 2 & 5.00 & 5.00 & 4.96 & 0.2 & SFT & Use & low-value, ambiguous, or overly narrow signal (1\%) \\
+168 & \url{oliverkinch/autodata-da-sft} & 100 & 100 & 2 & 5.00 & 4.99 & 4.98 & 0.1 & SFT & Use & ungrounded or hallucinated content (1\%) \\
+169 & \url{schneiderkamplab/danish-dynaword-denoising} & 100 & 100 & 2 & 4.98 & 4.99 & 5.00 & 0.1 & Aux-SFT & Use & instruction or output-format mismatch (1\%); truncated or incomplete target (1\%) \\
+170 & \url{schneiderkamplab/sapient-synth-flan-niv2-fsopt-data-task265-paper-reviews-language-identification} & 100 & 100 & 2 & 5.00 & 5.00 & 4.98 & 0.1 & SFT & Use & low-value, ambiguous, or overly narrow signal (2\%); instruction or output-format mismatch (1\%) \\
+171 & \url{synquid/mt-da-deepseek} & 100 & 100 & 1 & 5.00 & 5.00 & 4.99 & 0.0 & SFT & Use & Scattered judge complaints without a recurring taxonomy category (1\% of rows). \\
+172 & \url{allenai/open_math_2_50k_r1-original} & 100 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & SFT & Use & No issue identified in the sample. \\
+173 & \url{nvidia/Nemotron-Terminal-Corpus} & 100 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & SFT & Use & No issue identified in the sample. \\
+174 & \url{oliverkinch/danish-summarization} & 100 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & SFT & Use & No issue identified in the sample. \\
+175 & \url{schneiderkamplab/dfm8-synthetic-code-debugging} & 100 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & SFT & Use & No issue identified in the sample. \\
+176 & \url{schneiderkamplab/dfm8-synthetic-strict-math-answer-contract} & 100 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & SFT & Use & No issue identified in the sample. \\
+177 & \url{schneiderkamplab/sapient-synth-flan-niv2-zsopt-data-task1370-newscomm-classification} & 20 & 100 & 0 & 5.00 & 5.00 & 5.00 & 0.0 & SFT & Use & No issue identified in the sample. \\
 \end{longtable}
 
 \normalsize
 \section*{Interpretation limits}
 The 100-example cap gives useful source-level triage but wide uncertainty for
 rare defects and heterogeneous sources. Issue percentages can overlap because a
-single row may exhibit multiple problems. The post-training assessment is a
-pipeline decision aid, not a license, privacy, or safety determination. Before
-exclusion or high-repeat sampling, inspect the underlying rows and validate any
-converter repair on a fresh holdout sample.
+single row may exhibit multiple problems. The training-role and quality
+assessments are pipeline decision aids, not license, privacy, or safety
+determinations. Before exclusion or high-repeat sampling, inspect the underlying
+rows and validate any converter repair on a fresh holdout sample.
 
 \end{document}
