@@ -2,6 +2,10 @@
 
 ## 2026-08-27
 
+* **Fixed-membership SSH TorchRun launcher**: Added ordered-host SSH launch,
+  cross-node software/path/interface/clock preflight, NCCL all-reduce smoke,
+  atomic manifests, per-node logs, and exact process-group teardown. Added a
+  focused runbook; real two-node validation remains pending.
 * **FSDP2/HSDP implementation and XXL parity**: Added configurable local shard
   degree, explicit/preserved resharding behavior, communication-efficient GAS,
   run-aware no-carry checkpoints, and row-cursor world-size resume. Recorded

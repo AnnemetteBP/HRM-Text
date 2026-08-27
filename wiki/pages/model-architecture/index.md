@@ -18,3 +18,4 @@
 * [DFM Mimir Hugging Face Space Demo](dfm-mimir-space-demo.md) - ZeroGPU deployment, gated-model OAuth, and inference contract for the public Mimir demo.
 * [Distributed Long-Context Implementation Options](distributed-long-context-options.md) - Main-branch difficulty, risks, and recommended ordering for activation and model-parallel approaches.
 * [Multi-Node and 32K Training Plan](multinode-32k-training-plan.md) - Direct-SSH TorchRun, run-aware checkpoints, efficient GAS, HSDP, world-size resume, and staged B200 context extension.
+* [Fixed-Membership SSH TorchRun Launcher](multinode-ssh-launcher.md) - Host contract, preflight, NCCL smoke, launch, logging, and coordinated failure handling without Slurm.

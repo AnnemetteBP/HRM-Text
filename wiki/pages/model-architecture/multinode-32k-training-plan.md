@@ -40,7 +40,7 @@ torchrun \
   pretrain.py ...
 ```
 
-Add a repository launcher that reads an ordered host file, checks SSH and the
+The repository launcher now reads an ordered host file, checks SSH and the
 shared paths, chooses node zero as rendezvous host, starts all commands with
 per-node logs, records remote PIDs and exit statuses, and terminates the whole
 job if any TorchRun agent fails. Use fixed membership first; elastic membership
@@ -49,6 +49,9 @@ does not remove the need to restore application checkpoint and data state.
 Preflight checks must cover Python/Torch/CUDA/FA4 commit identity, eight visible
 GPUs per node, hostname/IP resolution, master-port reachability, NCCL interface,
 shared dataset and checkpoint paths, clock sanity, and an NCCL all-reduce smoke.
+The implementation and operating commands are documented in the
+[fixed-membership SSH launcher runbook](multinode-ssh-launcher.md). Local unit
+tests pass; actual SSH/NCCL behavior remains a two-node validation gate.
 
 ## Run-Aware Checkpoint Contract
 
@@ -184,7 +187,8 @@ conservatively and compare by processed tokens as well as optimizer steps.
 2. Implement and test accumulation-aware DDP/FSDP2 synchronization.
 3. Add `fsdp_shard_degree` and HSDP parity tests.
 4. Add world-size-changing DCP resume tests for the no-carry HRM.
-5. Add the fixed-membership SSH launcher and two-node preflight/smoke.
+5. Validate the implemented fixed-membership SSH launcher with a two-node
+   preflight/smoke and deliberate node-agent failure.
 6. Benchmark 2, 4, and 8 nodes at 4K with GBS 262,144 and GAS 1.
 7. Benchmark 8K none/L-only/full on four nodes, 16K L-only/full on two nodes,
    and 32K full on one node.
@@ -258,6 +262,7 @@ on multiple nodes because inter-node all-reduce changes that tradeoff.
 
 Artifacts and reproducible commands live under
 `logs/benchmarks/fsdp_hsdp_xxl/` and in
-`scripts/benchmark_fsdp_topology_xxl.sh`. The multi-node SSH launcher,
-multi-node NCCL measurements, HF export, and evaluation smoke remain open
+`scripts/benchmark_fsdp_topology_xxl.sh`. The multi-node SSH launcher is
+implemented and locally unit-tested; multi-node NCCL measurements, its
+two-node failure-handling test, HF export, and evaluation smoke remain open
 delivery gates.
