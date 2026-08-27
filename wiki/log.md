@@ -621,6 +621,10 @@
 - Verified LUMI XXL-32 used valid 4096-token local batches at 99.44% packing
   utilization. Recorded LR `1e-3`, BP max 3, update count, and absent clipping
   as more plausible divergence factors than batch geometry alone.
+- Added the implementation-gated multi-node and 32K plan: fixed-membership SSH
+  TorchRun, run-derived carry/checkpoint contracts, efficient accumulation,
+  native FSDP2 HSDP, world-size resume parity, and a 64/32/16/8-GPU staged
+  4K/8K/16K/32K curriculum at constant 262,144-token global batch.
 
 ## 2026-08-27 - DFM10 source-quality report
 
