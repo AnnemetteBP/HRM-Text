@@ -609,3 +609,15 @@
   but scheduler launch, carry/world-size handling, accumulation synchronization,
   and hybrid sharding remain production gaps. FSDP is the safe existing choice
   for XXL; hybrid within-node sharding is the recommended multi-node design.
+
+## 2026-08-27 - XXL pause and multi-node audit refinement
+
+- Stopped DFM8 XXL against complete `ephemeral_step_161000`; discarded the
+  unsaved tail through approximately step 161115 and left the scheduler stopped.
+- Verified HRM carry files contain `None`, making same-checkpoint world-size
+  changes substantially simpler than for stateful recurrent carries.
+- Confirmed native FSDP2 2D-mesh HSDP and accumulation synchronization APIs;
+  neither is wired into the trainer yet.
+- Verified LUMI XXL-32 used valid 4096-token local batches at 99.44% packing
+  utilization. Recorded LR `1e-3`, BP max 3, update count, and absent clipping
+  as more plausible divergence factors than batch geometry alone.

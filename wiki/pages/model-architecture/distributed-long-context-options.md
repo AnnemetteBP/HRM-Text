@@ -142,6 +142,35 @@ Known gaps and constraints:
 - `global_batch_size / (WORLD_SIZE * GAS)` must remain large enough to hold at
   least one complete packed training sequence on every rank.
 
+Clarifications from the 2026-08-27 audit:
+
+- TorchRun normally relies on a cluster scheduler such as Slurm to launch one
+  agent per node, then uses a c10d rendezvous to assign global and local ranks.
+  TorchRun does not allocate remote nodes or redistribute application state
+  when elastic membership changes.
+- Carry-rank requirements should come from checkpoint/run metadata, not a
+  default of eight. For the current no-carry HRM, every saved carry is literally
+  `None`, so changing world size does not require tensor redistribution. A
+  stateful architecture would need carry state keyed by global sample identity.
+- FSDP2 supports HSDP directly through a two-dimensional `DeviceMesh` whose
+  first dimension replicates and second dimension shards. The repository does
+  not yet construct or pass that mesh.
+- FSDP2 exposes `set_requires_gradient_sync` and
+  `set_requires_all_reduce` for accumulation-aware communication; DDP exposes
+  `no_sync`. The current accumulation loop uses none of these and synchronizes
+  each microbatch.
+
+The copied LUMI DFM9 XXL-32 configuration is internally valid at 256 GPUs:
+GBS 1,048,576, GAS 1, and 4096 tokens per rank for a 4096-token context. At
+step 10K its actual packed length was 1,042,679 tokens (99.44% utilization)
+across 2675 logical sequences. This geometry does not by itself explain the
+reported divergence. Material differences from the current XXL run include LR
+`1e-3`, only 89,665 optimizer updates per epoch, no gradient clipping, and
+`bp_max_steps=3` instead of 5. Relative to the current 262,144-token, `4e-4`
+run, square-root batch scaling suggests about `8e-4`; `1e-3` is 25% above that
+reference. Treat LR and optimization trajectory as stronger suspects than the
+one-packed-block-per-rank layout.
+
 For the current XXL model, choose FSDP rather than replicated DDP if using only
 the implemented paths. A production 2/4/8-node design should add hybrid
 sharding within each fast local GPU island and DDP-style replication across

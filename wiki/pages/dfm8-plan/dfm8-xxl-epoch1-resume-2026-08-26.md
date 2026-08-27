@@ -104,3 +104,10 @@ no checkpoint writes. It measured 90228 MiB peak allocated, 105344 MiB peak
 reserved, and a 5.59-second median optimizer step. The production campaign is
 then resumed from step 153500 with `activation_checkpointing=none`,
 `compile_train_batch=true`, and normal W&B logging, as requested.
+
+On 2026-08-27 the scheduler was soft-stopped again and the exact production
+TorchRun was terminated at approximately step 161115. The newest authoritative
+resume point is the fully written `ephemeral_step_161000`, with DCP metadata,
+state JSON, and all eight carry files. The 115-step unsaved tail is intentionally
+discarded. All carries contain `None`, confirming that this HRM variant has no
+cross-batch recurrent state to redistribute when changing world size.
