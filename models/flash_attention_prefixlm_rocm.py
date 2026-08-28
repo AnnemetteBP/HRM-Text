@@ -94,8 +94,10 @@ def flash_attn_varlen_prefixlm(
             v[active_key_idx],
             cu_seqlens_q=active_cu_seqlens_q,
             cu_seqlens_k=active_cu_seqlens_k,
-            max_seqlen_q=int(active_causal_lens.max().item()),
-            max_seqlen_k=int(active_total_lens.max().item()),
+            # FlashAttention accepts upper bounds here. Reuse the packed-batch
+            # metadata instead of synchronizing two device reductions to Python.
+            max_seqlen_q=info.max_seqlen_causal,
+            max_seqlen_k=info.max_seqlen_all,
             causal=True,
         )
         out[causal_idx] = out_causal

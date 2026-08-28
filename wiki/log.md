@@ -1,7 +1,26 @@
 # Knowledge Bundle Update Log
 
+## 2026-08-28
+
+* **PrefixLM device-synchronization fix**: Removed the two CUDA
+  `max().item()` reductions from each FA4 causal PrefixLM attention call by
+  reusing the packed batch's safe maximum-length bounds. Applied the same fix
+  to ROCm and added focused conservative-bound tests. Corrected the profile
+  interpretation: the other five metadata `.item()` calls consume CPU tensors.
+  An order-controlled XXL A/B benchmark measured a 2.04% median step-time
+  improvement (`3.5138 -> 3.4420 s`).
+* **DFM8 XXL Nsight profile**: Captured a checkpoint- and W&B-disabled
+  steady-state eight-B200 profile. Identified repeated four-byte `.item()`
+  synchronization in PrefixLM attention and extreme short-kernel launch
+  fragmentation as the first optimization targets; NCCL was substantial but
+  mostly overlapped, and FA4 represented under 10% of summed kernel time.
+
 ## 2026-08-27
 
+* **DFM8 XXL MFU baseline**: Calculated a recurrence-aware 25--29% estimated
+  MFU at 3.56 seconds per step on eight B200s, documented the 23.5--32.4%
+  attention-density bounds, and separated this from the misleading 9.8%
+  conventional `6ND` estimate.
 * **DFM8 XXL to DFM10 multi-node transition**: Recorded the planned clean
   epoch-boundary dataset change, four/eight-node GBS geometry, HSDP topology,
   DFM10 readiness blockers, validation gates, and checkpoint-cadence concerns.

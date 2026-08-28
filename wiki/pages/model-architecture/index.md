@@ -14,6 +14,7 @@
 * [Local-Global Attention Path](local-global-attention-path.md) - Part of Model Architecture: Local-Global Attention Path.
 * [Sparse Attention Path](sparse-attention-path.md) - Part of Model Architecture: Sparse Attention Path.
 * [HRM-Text XL Training FLOPs](hrm-xl-training-flops.md) - Recurrence-aware upper-bound calculation for XL training compute.
+* [DFM8 XXL MFU Baseline](dfm8-xxl-mfu-baseline.md) - Recurrence-aware single-node B200 utilization estimate and realistic throughput target.
 * [XL Parameter and Export Size](xl-parameter-and-export-size.md) - Parameter-count and export-size reference for the XL model.
 * [DFM Mimir Hugging Face Space Demo](dfm-mimir-space-demo.md) - ZeroGPU deployment, gated-model OAuth, and inference contract for the public Mimir demo.
 * [Distributed Long-Context Implementation Options](distributed-long-context-options.md) - Main-branch difficulty, risks, and recommended ordering for activation and model-parallel approaches.
