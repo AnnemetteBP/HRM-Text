@@ -1,5 +1,24 @@
 # Knowledge Bundle Update Log
 
+## 2026-08-27
+
+* **DFM8 XXL to DFM10 multi-node transition**: Recorded the planned clean
+  epoch-boundary dataset change, four/eight-node GBS geometry, HSDP topology,
+  DFM10 readiness blockers, validation gates, and checkpoint-cadence concerns.
+* **DFM8 XXL production resume at 161K**: Repaired the existing epoch-one
+  scheduler row under lock, resumed its existing W&B run from the latest fully
+  written ephemeral, and verified forward progress on the measured fastest
+  single-node FSDP2 path.
+* **Fixed-membership SSH TorchRun launcher**: Added ordered-host SSH launch,
+  cross-node software/path/interface/clock preflight, NCCL all-reduce smoke,
+  atomic manifests, per-node logs, and exact process-group teardown. Added a
+  focused runbook; real two-node validation remains pending.
+* **FSDP2/HSDP implementation and XXL parity**: Added configurable local shard
+  degree, explicit/preserved resharding behavior, communication-efficient GAS,
+  run-aware no-carry checkpoints, and row-cursor world-size resume. Recorded
+  deterministic DDP/FSDP/HSDP GAS parity plus the full XXL degree-8/4/2 timing
+  and memory matrix.
+
 ## 2026-08-26
 
 * **Distributed long-context implementation matrix**: Documented main-branch
@@ -14,6 +33,10 @@
   `DFM5/40j5y877`, evaluate 200K and 250K without long-context tasks, and
   recognize natural `epoch_1` completion. Added a delayed GPU-release watcher
   and recorded the verified `hrm` versus currently broken `hrm-cu132` state.
+* **DFM8 XXL pause at 152.5K**: Soft-stopped the scheduler and interrupted
+  training only after the complete eight-rank `ephemeral_step_152500`
+  checkpoint was written. Recorded the intentional `-15` row state and the
+  required resume-row update.
 * **Review hardening fixes**: Made Folketing audit partitions independent of
   physical GPU IDs and cleanup process-owned, keyed long-context caches by
   example cap, and prepared transactional/fail-closed long-context pipeline
@@ -596,6 +619,44 @@
 - Measured 41984 MiB peak allocated and 49970 MiB reserved per GPU, versus
   143027 MiB and 165168 MiB without checkpointing; recorded the approximately
   1.8x observed step-time cost of the current uncompiled checkpointed path.
+- Kept vanilla RoPE for the next longer-context experiment because the prior
+  YaRN comparison was confounded by an incorrectly exported checkpoint.
 - Added and measured L-only selective checkpointing on DFM8 XXL: 90228 MiB
   allocated, 105344 MiB reserved, and 5.59 seconds per optimizer step. The
   production campaign resumes from step 153500 without checkpointing.
+- Audited multi-node readiness: core rank/device/data/DCP handling is present,
+  but scheduler launch, carry/world-size handling, accumulation synchronization,
+  and hybrid sharding remain production gaps. FSDP is the safe existing choice
+  for XXL; hybrid within-node sharding is the recommended multi-node design.
+
+## 2026-08-27 - XXL pause and multi-node audit refinement
+
+- Stopped DFM8 XXL against complete `ephemeral_step_161000`; discarded the
+  unsaved tail through approximately step 161115 and left the scheduler stopped.
+- Verified HRM carry files contain `None`, making same-checkpoint world-size
+  changes substantially simpler than for stateful recurrent carries.
+- Confirmed native FSDP2 2D-mesh HSDP and accumulation synchronization APIs;
+  neither is wired into the trainer yet.
+- Verified LUMI XXL-32 used valid 4096-token local batches at 99.44% packing
+  utilization. Recorded LR `1e-3`, BP max 3, update count, and absent clipping
+  as more plausible divergence factors than batch geometry alone.
+- Added the implementation-gated multi-node and 32K plan: fixed-membership SSH
+  TorchRun, run-derived carry/checkpoint contracts, efficient accumulation,
+  native FSDP2 HSDP, world-size resume parity, and a 64/32/16/8-GPU staged
+  4K/8K/16K/32K curriculum at constant 262,144-token global batch.
+
+## 2026-08-27 - DFM10 source-quality report
+
+- Added a reproducible LaTeX/PDF report over the completed 17,455-row,
+  177-source audit, ranked most-severe first with quantitative scores and
+  recurring qualitative findings.
+- Superseded the initial combined post-training label after review. The initial
+  177-source report independently classified task role (169 SFT, 6 auxiliary SFT, 2
+  midtraining) and measured quality (135 use, 32 filter, 10 repair), so a broken
+  SFT conversion is no longer conflated with a sound midtraining source.
+- Extended the report to 178 sources and 17,555 judgments with a balanced
+  100-row sample of accepted Folketing transformations from completed audit
+  partitions 0--5. Added the DFM-Mimir category taxonomy and a source-specific
+  remediation table with full-row B200 repair/re-audit GPU-hour estimates. The
+  combined report has 169 SFT, 6 auxiliary SFT, 2 midtraining, and 1 mixed
+  source, independently of 136 use, 32 filter, and 10 repair dispositions.

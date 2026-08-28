@@ -1,10 +1,10 @@
 ---
 type: Plan Record
 title: DFM8 XXL Epoch 1 Resume
-description: Verified scheduler continuation from step 151K through the first DFM8 epoch.
+description: Verified scheduler continuation from the latest complete ephemeral through the first DFM8 epoch.
 tags: [dfm8, xxl, training, evaluation, scheduler]
 status: stable
-last_updated: 2026-08-26
+last_updated: 2026-08-27
 confidence: high
 part_of: /pages/dfm8-plan.md
 ---
@@ -55,6 +55,7 @@ watcher records to `start-watch.log`; it waits until every GPU has at least
 178000 MiB free, waits another two minutes, then checks scheduler state, the
 training process, and forward/backward progress. While the independent DFM10
 audit owns the GPUs, only the plan's CPU-side checkpoint waits run.
+
 ## Intentional pause at step 152500
 
 On 2026-08-26 the scheduler received a soft stop request. A detached watcher
@@ -103,3 +104,69 @@ no checkpoint writes. It measured 90228 MiB peak allocated, 105344 MiB peak
 reserved, and a 5.59-second median optimizer step. The production campaign is
 then resumed from step 153500 with `activation_checkpointing=none`,
 `compile_train_batch=true`, and normal W&B logging, as requested.
+
+On 2026-08-27 the scheduler was soft-stopped again and the exact production
+TorchRun was terminated at approximately step 161115. The newest authoritative
+resume point is the fully written `ephemeral_step_161000`, with DCP metadata,
+state JSON, and all eight carry files. The 115-step unsaved tail is intentionally
+discarded. All carries contain `None`, confirming that this HRM variant has no
+cross-batch recurrent state to redistribute when changing world size.
+
+## Production resume from step 161000
+
+On 2026-08-27 the existing scheduler plan was repaired under its advisory lock
+and resumed from `ephemeral_step_161000`. The plan repair utility now accepts an
+explicit `--resume-tag`; this avoids embedding an obsolete ephemeral in future
+recoveries. The failed 200K training row was reset to pending, its log directory
+was changed to `logs/training/dfm8_XXL_1epoch/step_161000_to_200000`, and the
+same evaluation and continuation graph was retained.
+
+The resumed command explicitly selects the measured fastest compatible
+single-node path:
+
+```text
+activation_checkpointing=none
+compile_train_batch=true
+fsdp_shard_degree=null
+fsdp_reshard_after_forward=false
+fsdp_accumulation_sync_mode=no_sync
+```
+
+It retains eight GPUs, GBS 262144, GAS 4, FP32 FSDP parameters, BF16 compute,
+FA4, and W&B run `DFM5/40j5y877`. All eight ranks restored `step=161000`,
+`start_epoch=1`, and `skip_batches=644000`. The run advanced past step 161015;
+post-compilation five-step intervals were approximately 18 seconds. W&B warns
+about non-monotonic points until the resumed process passes the previously
+logged unsaved tail at step 161111; those warnings are expected and do not
+alter checkpoint correctness.
+
+## Capacity crossover interpretation
+
+The configured XXL model has `3,978,299,136` parameters, versus
+`1,786,773,504` for XL. At GBS 262144, the 50K, 100K, and 150K checkpoints
+represent 13.11B, 26.21B, and 39.32B tokens, or only 3.3, 6.6, and 9.9 tokens
+per XXL parameter. The estimated end of epoch one at step 268857 is 70.48B
+tokens, or 17.7 tokens per parameter. A mature XL checkpoint from the long
+DFM6/DFM7/DFM8 lineage has seen hundreds of billions of tokens, so comparing
+it directly with the current sub-epoch XXL checkpoint conflates capacity with
+training maturity.
+
+The first three XXL headline/suite points are:
+
+| Metric | 50K | 100K | 150K |
+|---|---:|---:|---:|
+| Danish headline | 0.442 | 0.517 | 0.539 |
+| English headline | 0.460 | 0.543 | 0.542 |
+| Math/code headline | 0.434 | 0.488 | 0.438 |
+| Standard suite | 0.415 | 0.530 | 0.559 |
+| DFM suite | 0.492 | 0.587 | 0.614 |
+| EuroEval suite | 0.436 | 0.484 | 0.464 |
+
+This is not a broad plateau: standard and DFM continue to improve from 100K
+to 150K, while English is flat and math/code and EuroEval are volatile. Expect
+the first credible capacity separation on difficult benchmarks near the end
+of epoch one or during epoch two. A defensible ceiling comparison needs at
+least roughly 80--160B tokens (20--40 tokens per XXL parameter), corresponding
+to about 305K--610K optimizer steps at the current GBS. This range is an
+engineering forecast, not a scaling-law guarantee; the custom recurrent depth,
+data changes, and aggressive constant LR can move the crossover.

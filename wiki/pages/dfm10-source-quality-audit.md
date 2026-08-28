@@ -4,7 +4,7 @@ title: DFM10 Source Quality Audit
 description: Deterministic Gemma 4 26B-A4B review of up to 100 exact training examples from every logical DFM10 source.
 tags: [dfm10, data-quality, audit, gemma4, vllm]
 status: draft
-last_updated: 2026-08-26
+last_updated: 2026-08-27
 confidence: high
 ---
 # DFM10 Source Quality Audit
@@ -22,9 +22,16 @@ its explicit `max_per_file: 0` exclusions.
 For the 177 sources already tokenized, sampling decodes the exact prompt and
 assistant token spans visible to training. Each source receives a deterministic
 uniform sample of 100 eligible examples, or every example when fewer than 100
-exist. The Folketing derivative is sampled from its accepted chat tree after
-the separate row-level acceptance audit finishes; it cannot be sampled earlier
-because rejected candidate rows are not DFM10 training data.
+exist.
+
+**Superseded 2026-08-27:** the original plan required the fully merged
+Folketing accepted tree. The acceptance campaign's stable-hash partitions 0--5
+were complete while partitions 6--7 and the merged tree were not. The report
+therefore adds a deterministic, task-stratified sample of 100 accepted rows
+from the six complete partitions: 25 each from denoising, error correction,
+prefix continuation, and span filling. This is an unbiased accepted-row subset
+of those six partitions, not a claim that the full acceptance campaign was
+consolidated.
 
 ## Review dimensions
 
@@ -79,18 +86,89 @@ logs/data_audits/dfm10_source_quality_a4b_20260826/
   dfm10_source_quality_audit.summary.json
 ```
 
-The final requested artifact is
+The base 177-source artifact is
 `logs/data_audits/dfm10_source_quality_a4b_20260826/dfm10_source_quality_audit.jsonl`.
-The active partial pass contains the 177 ready tokenized sources. `prepare
---allow-pending-raw` records Folketing as pending. After the Folketing acceptance
-tree exists, rerun preparation without that option and resume the same four
-partitions; stable IDs preserve completed judgments and add only the new source
-before the verified atomic merge.
+The Folketing assessment is
+`logs/data_audits/dfm10_folketing_quality_a4b_20260827/folketing_quality_audit.jsonl`.
+The report builder combines these two immutable audit results rather than
+rewriting the completed base artifact.
 
 The ready-source pass completed on 2026-08-26 with 17,455 judgments across 177
 sources, zero judge errors, and 15,044 rows (`86.2%`) marked usable for training.
-All A4B servers owned by the pass were torn down after the merge. This is a
-partial DFM10 result until accepted Folketing rows are appended and audited.
+All A4B servers owned by the pass were torn down after the merge.
+
+The Folketing pass completed on 2026-08-27 with zero judge errors. It marked 87
+of 100 accepted examples usable, with mean language, coherence, and training
+value scores of 4.38, 4.59, and 4.48. Usable counts by task were 22/25
+denoising, 18/25 error correction, 23/25 prefix continuation, and 24/25 span
+filling. Error correction is the weakest family because residual OCR damage can
+make even an acceptance-audited reconstruction target unreliable.
+
+## Ranked PDF report
+
+The reproducible report builder is
+[`scripts/build_dfm10_quality_audit_report.py`](/../scripts/build_dfm10_quality_audit_report.py).
+It reads the authoritative merged JSONL and produces both the LaTeX source and
+the compiled report at:
+
+- [`docs/reports/dfm10-source-quality-audit.tex`](/../docs/reports/dfm10-source-quality-audit.tex)
+- [`docs/reports/dfm10-source-quality-audit.pdf`](/../docs/reports/dfm10-source-quality-audit.pdf)
+
+Rebuild the committed artifacts with:
+
+```bash
+python scripts/build_dfm10_quality_audit_report.py
+cd docs/reports
+pdflatex -interaction=nonstopmode -halt-on-error dfm10-source-quality-audit.tex
+pdflatex -interaction=nonstopmode -halt-on-error dfm10-source-quality-audit.tex
+```
+
+The report ranks all 178 audited sources and 17,555 judgments from most to least
+severe. Its severity
+index gives 50% weight to the unusable-row rate, 20% to coherence deficit, and
+15% each to language-quality and training-value deficits. The table also gives
+sample counts, usable and issue rates, all three mean scores, and the two most
+frequent qualitative issue categories for every source.
+
+**Superseded 2026-08-27:** the first report revision used one `Posttrain`
+column whose labels combined task role and observed quality. That conflated two
+independent decisions and must not be used.
+
+The corrected report has two columns. `LLM role` depends only on task semantics:
+`SFT` is ordinary supervised post-training, `Aux-SFT` is a reconstruction-style
+auxiliary objective, and `Midtrain` is continuation data better suited to
+continued pretraining or midtraining. `Quality` depends only on the audit:
+`Use` requires at least 80% usable rows, mean coherence of at least 4.0, and
+mean training value of at least 3.5; `Filter` is the intermediate disposition;
+and `Repair` applies below 50% usability or 3.0 mean coherence. Thus a source
+can be semantically appropriate for SFT while still requiring repair, or be a
+high-quality source whose semantics make it midtraining data.
+
+The combined report yields 169 `SFT`, 6 `Aux-SFT`, 2 `Midtrain`, and 1 `Mixed`
+role classifications, independently of 136 `Use`, 32 `Filter`, and 10 `Repair`
+quality dispositions. `Mixed` applies to the combined Folketing source because
+it contains both reconstruction and continuation families. These are pipeline
+triage judgments, not licensing, privacy, provenance, or safety determinations.
+
+The brief category column uses the eight functional categories from the
+[DFM-Mimir technical report](https://arxiv.org/html/2608.13517): Danish
+instruction and knowledge, English instruction, Sapient mixed, math and
+reasoning, Mimir synthetic, agentic and tool use, machine translation, and
+science and summarization. Compact labels in the PDF assign each source its
+dominant intended category.
+
+The report also contains a remediation table for every `Filter` or `Repair`
+source. It gives full eligible row counts, source-specific filtering or repair
+steps, and coarse B200-equivalent GPU-hour estimates. Planning ranges are
+10,000--40,000 A4B audit decisions per GPU-hour and 2,000--4,000 LLM
+repair/regeneration rows per GPU-hour, reflecting substantial prompt-length
+variance. Full-row re-audit of the 147,266,048 eligible rows in all 42 affected
+sources is estimated at about 3.7k--14.7k B200 GPU-hours. Processing all
+35,263,154 rows in the 14 sources marked for LLM repair would add about
+8.8k--17.6k B200 GPU-hours. Deterministic converter/filter work is marked
+`repair CPU`; the table still estimates the full re-audit cost. Startup,
+engineering, human review, and repeat passes after further failures are
+excluded.
 
 ## Initial source-level finding
 

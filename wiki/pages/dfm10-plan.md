@@ -287,6 +287,9 @@ pairs_chunked_val.jsonl   7d635eb87ecab1fd88be0e290fe029d4af183fbafc0097f516fce0
 
 ## Training Integration
 
+The planned XXL continuation after its first DFM8 epoch is documented in the
+[DFM8 XXL to DFM10 multi-node transition plan](model-architecture/dfm8-xxl-to-dfm10-multinode-transition.md).
+
 `scripts/prepare_dfm10_data.sh` validates Andersen, downloads only the selected
 Hugging Face train artifacts, converts each source to deterministic chat JSONL,
 tokenizes all additions with the Gemma 4 native chat template using 16 workers

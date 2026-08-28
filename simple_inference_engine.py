@@ -14,7 +14,15 @@ from torch.distributed.checkpoint.default_planner import DefaultLoadPlanner
 from torch.distributed.checkpoint.state_dict import StateDictOptions, get_optimizer_state_dict, set_state_dict
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 
-from pretrain import Carry, PretrainConfig, V1DatasetMeta, load_model_class, AdamATan2
+from pretrain import (
+    AdamATan2,
+    Carry,
+    PretrainConfig,
+    V1DatasetMeta,
+    checkpoint_carry_policy,
+    load_checkpoint_metadata,
+    load_model_class,
+)
 
 
 @dataclass
@@ -114,9 +122,13 @@ def resolve_checkpoint_tag(ckpt_path: str, ckpt_epoch: Optional[int], ckpt_tag: 
         print(f"Detected latest checkpoint tag: {resolved}")
 
     checkpoint_format = checkpoint_format_for_tag(ckpt_path, resolved)
-    carry_file = os.path.join(ckpt_path, f"carry_{resolved}.0.pt")
-    if not os.path.isfile(carry_file):
-        raise ValueError(f"Carry file not found: {carry_file}")
+    carry_policy = checkpoint_carry_policy(
+        ckpt_path, resolved, load_checkpoint_metadata(ckpt_path, resolved)
+    )
+    if carry_policy == "per_rank":
+        carry_file = os.path.join(ckpt_path, f"carry_{resolved}.0.pt")
+        if not os.path.isfile(carry_file):
+            raise ValueError(f"Carry file not found: {carry_file}")
     return resolved, checkpoint_format
 
 
@@ -228,7 +240,17 @@ def inference_load_checkpoint(
         load_unsharded_checkpoint(ckpt_path, resolved_tag, model, optim, use_ema=ckpt_use_ema and model_cfg.ema is not None)
     else:
         raise ValueError(f"Unsupported checkpoint format: {checkpoint_format}")
-    carry = torch.load(os.path.join(ckpt_path, f"carry_{resolved_tag}.0.pt"), map_location=device)
+    carry_policy = checkpoint_carry_policy(
+        ckpt_path,
+        resolved_tag,
+        load_checkpoint_metadata(ckpt_path, resolved_tag),
+    )
+    carry = None
+    if carry_policy == "per_rank":
+        carry = torch.load(
+            os.path.join(ckpt_path, f"carry_{resolved_tag}.0.pt"),
+            map_location=device,
+        )
 
     # Use EMA weights
     if ckpt_use_ema and optim is not None:
