@@ -213,3 +213,66 @@ The next target should be selected from this new profile. Exposed NCCL is now
 more prominent in relative terms, while repeated indexing and short-kernel
 launches remain material. FA4 itself remains below 10% of summed kernel time
 and is not the leading bottleneck.
+
+### Post-commit optimization profile
+
+A second post-commit capture on 2026-08-28 used the exact `e91d719` tree and a
+shorter 20-second steady-state window to reduce event loss. The report and
+SQLite export are under
+`logs/profiling/dfm8_xxl_prefixlm_postcommit_20260828/`. Nsight terminated the
+benchmark process when the requested capture duration ended; this is expected,
+and no checkpoint or W&B run was produced. GPUs 0, 3, 5, and 7 had complete
+and mutually consistent CUDA traces.
+
+| Observation | Post-commit result |
+|---|---:|
+| Kernel-active wall time | 95.3--96.1% |
+| Kernel launches | 29.3--29.7 K/GPU/s |
+| D2H copies | 197/GPU/20 s (9.85/s) |
+| NCCL overlap with non-NCCL kernels | 64.7--71.5% |
+| NCCL-only wall time | 9.1--11.9% |
+| GEMM summed kernel time | 32.5% |
+| NCCL summed kernel time | 29.2% |
+| FA4 summed kernel time | 10.0% |
+| Triton summed kernel time | 10.5% |
+| Index/gather/scatter summed kernel time | 8.2% |
+| Radix-sort summed kernel time | 2.2% |
+
+The top individual kernel family is FSDP all-gather. Each complete GPU launched
+about 4,464 all-gather kernels in 20 seconds. PrefixLM indexing is the other
+large fragmented family: index/gather/scatter plus radix sort accounts for
+about 10.4% of summed kernel time and hundreds of thousands of launches per
+GPU in the capture. The host also issued about 3.39 million
+`cudaLaunchKernel` calls across ranks during the window. High GPU-active time
+means host launch optimization has a smaller ceiling than these percentages
+alone suggest, but dependency-chain launch latency can still affect step time.
+
+Recommended experiments, in order:
+
+1. **Prototype an FA4 `seqused_q`/`seqused_k` PrefixLM path.** The installed
+   FA4 API supports these arguments, as the existing FA3 implementation does.
+   Running the prefix and causal passes over the original packed Q/K/V storage
+   could remove repeated Q/K/V gathers, output index-put, indexing backward,
+   and much of the radix-sort work. Start with the public FA4 API, require
+   bit-exact or tolerance-defined forward/backward parity, and measure extra
+   output-buffer memory. The profile supports a plausible 4--8% wall-time
+   improvement, with about 10% as a hard kernel-time ceiling.
+2. **Benchmark recurrence-aware FSDP wrapping.** The current configuration
+   wraps every Transformer block and the root model. Test wrapping H and L
+   recurrent levels as larger FSDP units while retaining
+   `reshard_after_forward=false`. The production run has roughly 19--22 GiB of
+   memory headroom, so retaining one level's unsharded parameters may fit. Use
+   checkpoint-load and optimizer-step parity tests before adoption. NCCL-only
+   time provides a 9--12% hard ceiling; a 3--8% gain is a reasonable initial
+   target.
+3. **Benchmark compile/autotuning modes after the two structural changes.** A
+   `max-autotune` comparison may improve the GEMM-heavy 32.5% portion without
+   changing numerics beyond normal kernel selection. CUDA graphs or
+   `reduce-overhead` should come later because dynamic packed shapes, FSDP
+   collectives, and the compiler-disabled FA4 call complicate capture, while
+   measured GPU-active time already exceeds 95%.
+4. **Do not prioritize BF16 persistent FSDP parameters as a neutral speed
+   optimization.** They would reduce communication volume, but previous runs
+   showed materially different training behavior. Activation checkpointing
+   likewise saves memory at a substantial measured speed cost and is not a
+   per-step optimization for the current 4K run.

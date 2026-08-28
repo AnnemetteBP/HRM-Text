@@ -695,3 +695,8 @@
   FA4/ROCm tests. Production-geometry XXL timing improved by 11.5--12.4%.
 - Reprofiled the optimized path: D2H copy rate fell 99.66%, kernel launch rate
   fell 26.7%, and index/gather/scatter share fell from about 10.2% to 8.3%.
+- Added a shorter post-commit profile with four complete rank traces. GPU
+  kernel-active time is 95--96%, NCCL-only time is 9--12%, and PrefixLM
+  indexing plus radix sort is about 10.4% of summed kernel time. Prioritized an
+  FA4 `seqused_q`/`seqused_k` prototype and recurrence-aware H/L-level FSDP
+  wrapping as the next performance experiments.
