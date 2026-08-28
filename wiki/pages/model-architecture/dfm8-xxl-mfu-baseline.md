@@ -389,3 +389,48 @@ choosing the next implementation. Use it to verify the expected collapse in
 index/radix kernels and then choose between recurrence-aware FSDP wrapping if
 exposed all-gather dominates, or remaining attention/output glue if short
 pointwise and masking kernels remain prominent.
+
+#### Post-`seqused` Nsight profile
+
+The recommended follow-up capture ran on 2026-08-28 with the corrected opt-in
+`seqused` implementation, the production XXL geometry, W&B and checkpoints
+disabled, an 80-second startup delay, and a 20-second steady-state trace. The
+report and SQLite export are under
+`logs/profiling/dfm8_xxl_fa4_seqused_20260828/`. Nsight intentionally
+terminated the benchmark after capture. GPUs 1, 2, and 4--7 have complete and
+consistent traces; GPUs 0 and 3 dropped events and are excluded below.
+
+| Observation | Pre-`seqused` | Post-`seqused` |
+|---|---:|---:|
+| Kernel launches per complete GPU/s | 29.3--29.7K | 20.2--20.5K |
+| D2H copies per complete GPU/s | 9.85 | about 9.93 |
+| Index plus radix summed kernel time | 11.01% | 0.70% |
+| Radix-sort kernels | 2.17% | none observed |
+| GEMM summed kernel time | 32.50% | 35.34% |
+| NCCL summed kernel time | 29.18% | 28.08% |
+| FA4 summed kernel time | 10.02% | 10.87% |
+| Triton summed kernel time | 10.49% | 11.51% |
+| RMSNorm summed kernel time | 2.19% | 2.01% |
+
+Kernel launch rate fell approximately 31%, while index/radix launch rate fell
+approximately 97.6%. This verifies that `seqused` removed the targeted gather,
+scatter, indexing-backward, and radix-sort machinery. D2H behavior remained
+unchanged and negligible.
+
+The replacement bottleneck is a generic CUDA `elementwise_kernel` with grid
+`(28672, 1, 1)` and block `(128, 1, 1)`: 354,849 launches across the six
+complete traces consumed 12.577 seconds, or 8.22% of summed kernel time. The
+grid covers one full 8192-by-14-by-128 BF16 Q/K/V tensor at four values per
+thread. Its launch count is approximately six per FA4 backward invocation,
+matching the six explicit prefix/causal Q/K/V undefined-gradient masks. This
+identification is an inference from dimensions and launch counts, but it is
+strong enough to define the next isolated experiment.
+
+GPU-active time remains 94.8--96.4%. NCCL-only wall time is 5.3--6.5% on five
+of the six complete traces; GPU 1 is lower at 2.5%. All-gather remains the
+largest individual kernel family but is substantially overlapped. Therefore,
+the next target should be reducing the six gradient-mask launches, initially
+with a conservative multi-tensor mask/combine boundary or pre-zeroed FA4
+backward buffers. Reprofile that change before attempting recurrence-aware
+FSDP wrapping. A lower-level custom backward may remove more memory traffic but
+couples the project to FA4 internals and carries higher maintenance risk.
