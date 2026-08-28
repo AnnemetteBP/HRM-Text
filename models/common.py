@@ -38,16 +38,16 @@ def prepare_prefixlm_batch(
 ) -> dict[str, Tensor | WrappedTensor]:
     from models.accelerator import get_accelerator_type
     from models.flash_attention_prefixlm_common import (
-        PREFIXLM_ROUTING_KEYS,
-        prefixlm_routing_from_tensors,
+        PREFIXLM_PREPARED_KEYS,
+        prefixlm_prepared_from_tensors,
     )
 
     if get_accelerator_type() not in ("sm100", "rocm"):
         return batch
-    if all(name in batch for name in PREFIXLM_ROUTING_KEYS):
+    if all(name in batch for name in PREFIXLM_PREPARED_KEYS):
         return batch
 
-    routing = prefixlm_routing_from_tensors(
+    routing = prefixlm_prepared_from_tensors(
         **{
             name: unwrap_tensor(batch[name])
             for name in (

@@ -282,8 +282,9 @@ Performance-to-MFU backlog status:
 - [x] Benchmark `max-autotune` and `max-autotune-no-cudagraphs` against the
   unchanged default compile mode. The no-graph mode was neutral and is not the
   production default; graph-enabled mode exposed an output-lifetime error.
-- [ ] Prototype FA4 PrefixLM using `seqused_q`/`seqused_k` and verify complete
-  forward/backward parity.
+- [x] Prototype FA4 PrefixLM using `seqused_q`/`seqused_k` and verify complete
+  forward/backward parity. The implementation remains opt-in pending a clean
+  bracketed control and a longer resumed-checkpoint stability run.
 - [ ] Benchmark H/L-level recurrence-aware FSDP wrapping and checkpoint-resume
   compatibility.
 - [ ] Evaluate CUDA graph capture only after dynamic routing and FSDP boundaries
@@ -317,3 +318,47 @@ tensor still needed by cross-entropy across recurrent/microbatch calls. Rather
 than adding a local clone or step marker without validating the full lifetime
 and FSDP/NCCL contract, graph-enabled modes are excluded from the supported
 configuration until the dedicated CUDA-graph backlog item is implemented.
+
+#### FA4 `seqused` PrefixLM prototype
+
+An opt-in SM100 implementation now runs both PrefixLM attention passes over
+the original fixed packed Q/K/V storage. It supplies `seqused_q` and
+`seqused_k` for the prefix pass, and shifted query cumulative lengths plus
+`seqused_q` for the causal pass. This removes the forward Q/K/V gathers and
+output index-put operations used by the existing implementation. Enable it
+with `+arch.prefixlm_fa4_impl=seqused`; the architecture default remains
+`gather`, and all non-SM100 backends retain their previous behavior.
+
+FA4 returns correct active output and gradient rows for this layout but leaves
+storage rows excluded by `seqused` undefined in backward. Production packed
+batches also use fixed 8192-token Q/K/V storage even when the real packed token
+count is slightly smaller. The implementation therefore precomputes distinct
+prefix and causal masks once per microbatch, masks undefined gradients at the
+FA4 autograd boundary, and zeroes output padding. Causal K/V must use the union
+of both masks: masking causal Q alone produced a fast but invalid 40-step run
+whose final loss was NaN.
+
+Direct B200 tests compare the opt-in implementation with the existing gather
+path using separate cloned inputs. Mixed prefix/causal batches, prefix-only
+sequences, and trailing packed-storage padding all produced bit-identical BF16
+outputs and `dq`, `dk`, and `dv`. Focused CPU/mocked-backend tests cover
+prepared metadata, original-storage launches, padding zeroing, and gradient
+mask semantics. The relevant regression set passes 24 tests.
+
+The corrected fresh-initialization XXL run used the same production geometry
+as the compile-mode benchmark and completed 40 optimizer steps with finite
+loss and accuracy:
+
+| Path | Median step | Mean step | Peak observed GPU memory | Final loss |
+|---|---:|---:|---:|---:|
+| Gather, earlier controlled benchmark | 2.9873 s | 3.0621 s | not recorded | finite |
+| FA4 `seqused`, corrected | 2.8654 s | 2.9107 s | 154148 MiB | 9.7411 |
+
+Against the earlier controlled gather result, this is 4.1% faster by median
+and 4.9% faster by mean. A same-tree gather control was attempted immediately
+afterward, but unrelated vLLM servers materialized concurrently on every GPU
+and caused OOM; that run is invalid and must not be used for comparison. Before
+changing the default, run a clean gather/seqused/gather bracket without other
+GPU services and a longer resume from identical model/optimizer state. The
+healthy opt-in log is `/tmp/hrm_fa4_seqused_prod3/train.log`; the NaN diagnostic
+run is `/tmp/hrm_fa4_seqused_prod2/train.log`.

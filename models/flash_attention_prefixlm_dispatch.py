@@ -97,6 +97,10 @@ def flash_attn_varlen_prefixlm(
     active_key_idx: Optional[Tensor] = None,
     active_cu_seqlens_q: Optional[Tensor] = None,
     active_cu_seqlens_k: Optional[Tensor] = None,
+    cu_seqlens_shifted: Optional[Tensor] = None,
+    prefix_mask: Optional[Tensor] = None,
+    causal_mask: Optional[Tensor] = None,
+    fa4_impl: str = "gather",
 ) -> Tensor:
     match get_accelerator_type():
         case "sm90":
@@ -123,6 +127,10 @@ def flash_attn_varlen_prefixlm(
                 active_key_idx=active_key_idx,
                 active_cu_seqlens_q=active_cu_seqlens_q,
                 active_cu_seqlens_k=active_cu_seqlens_k,
+                cu_seqlens_shifted=cu_seqlens_shifted,
+                prefix_mask=prefix_mask,
+                causal_mask=causal_mask,
+                impl=fa4_impl,
             )
         case "rocm":
             from models.flash_attention_prefixlm_rocm import flash_attn_varlen_prefixlm as rocm_prefixlm

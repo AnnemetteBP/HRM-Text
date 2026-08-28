@@ -4,7 +4,12 @@ import pytest
 import torch
 
 from models.common import prepare_prefixlm_batch, wrap_tensor
-from models.flash_attention_prefixlm_common import PREFIXLM_ROUTING_KEYS, prefixlm_routing_from_tensors
+from models.flash_attention_prefixlm_common import (
+    PREFIXLM_PREPARED_KEYS,
+    PREFIXLM_ROUTING_KEYS,
+    prefixlm_prepared_from_tensors,
+    prefixlm_routing_from_tensors,
+)
 
 
 def packed_inputs() -> tuple[torch.Tensor, ...]:
@@ -81,11 +86,20 @@ def test_prepare_prefixlm_batch_is_complete_and_idempotent() -> None:
 
     prepared = prepare_prefixlm_batch(batch)
 
-    assert all(name in prepared for name in PREFIXLM_ROUTING_KEYS)
+    assert all(name in prepared for name in PREFIXLM_PREPARED_KEYS)
     assert prepare_prefixlm_batch(prepared) is prepared
     assert torch.equal(prepared["prefix_idx"], torch.tensor([0, 1, 2, 5, 6, 7, 8, 9, 10, 11]))
     assert torch.equal(prepared["causal_idx"], torch.tensor([3, 4]))
     assert torch.equal(prepared["active_key_idx"], torch.tensor([0, 1, 2, 3, 4]))
+    assert torch.equal(prepared["cu_seqlens_shifted"], torch.tensor([3, 12, 12]))
+    assert torch.equal(
+        prepared["prefix_mask"],
+        torch.tensor([True, True, True, False, False, True, True, True, True, True, True, True]),
+    )
+    assert torch.equal(
+        prepared["causal_mask"],
+        torch.tensor([False, False, False, True, True, False, False, False, False, False, False, False]),
+    )
 
 
 def test_prepare_prefixlm_batch_leaves_other_backends_unchanged(
@@ -146,3 +160,50 @@ def test_precomputed_routing_matches_backend_fallback(
                 assert torch.equal(prepared_value, fallback_value)
             else:
                 assert prepared_value == fallback_value
+
+
+def test_seqused_launches_use_original_packed_storage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = import_module("models.flash_attention_prefixlm_fa4")
+    launches: list[tuple[torch.Tensor, dict[str, object]]] = []
+
+    def fake_varlen(q: torch.Tensor, _k: torch.Tensor, _v: torch.Tensor, **kwargs: object) -> torch.Tensor:
+        launches.append((q, kwargs))
+        return q.clone()
+
+    monkeypatch.setattr(module, "_fa4_varlen", fake_varlen)
+    packed = packed_inputs()
+    prepared = prefixlm_prepared_from_tensors(*packed)
+    q = torch.randn(16, 2, 8)
+
+    output = module.flash_attn_varlen_prefixlm(
+        q,
+        q,
+        q,
+        False,
+        *packed,
+        **prepared,
+        impl="seqused",
+    )
+
+    assert torch.equal(output[:12], q[:12])
+    assert torch.equal(output[12:], torch.zeros_like(output[12:]))
+    assert len(launches) == 2
+    assert launches[0][0].shape == q.shape
+    assert launches[1][0].shape == q.shape
+    assert torch.equal(launches[0][1]["seqused_q"], packed[0][:2])
+    assert torch.equal(launches[0][1]["seqused_k"], packed[0][:2])
+    assert torch.equal(launches[1][1]["seqused_q"], packed[1][:2])
+    assert launches[1][1].get("seqused_k") is None
+
+
+def test_seqused_gradient_mask_zeros_only_unused_rows() -> None:
+    module = import_module("models.flash_attention_prefixlm_fa4")
+    tensor = torch.randn(4, 2, 3, requires_grad=True)
+    used = torch.tensor([True, False, True, False])
+
+    module._mask_undefined_seqused_grad(tensor, used).sum().backward()
+
+    assert torch.equal(tensor.grad[used], torch.ones_like(tensor.grad[used]))
+    assert torch.equal(tensor.grad[~used], torch.zeros_like(tensor.grad[~used]))

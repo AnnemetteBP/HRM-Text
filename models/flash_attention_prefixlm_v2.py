@@ -297,7 +297,11 @@ def flash_attn_varlen_prefixlm(q: Tensor,
                                causal_idx: Optional[Tensor] = None,
                                active_key_idx: Optional[Tensor] = None,
                                active_cu_seqlens_q: Optional[Tensor] = None,
-                               active_cu_seqlens_k: Optional[Tensor] = None):
+                               active_cu_seqlens_k: Optional[Tensor] = None,
+                               cu_seqlens_shifted: Optional[Tensor] = None,
+                               prefix_mask: Optional[Tensor] = None,
+                               causal_mask: Optional[Tensor] = None,
+                               fa4_impl: str = "gather"):
     if get_accelerator_type() != "sm90":
         from models.flash_attention_prefixlm_dispatch import flash_attn_varlen_prefixlm as backend_prefixlm
 
@@ -311,6 +315,10 @@ def flash_attn_varlen_prefixlm(q: Tensor,
             active_key_idx=active_key_idx,
             active_cu_seqlens_q=active_cu_seqlens_q,
             active_cu_seqlens_k=active_cu_seqlens_k,
+            cu_seqlens_shifted=cu_seqlens_shifted,
+            prefix_mask=prefix_mask,
+            causal_mask=causal_mask,
+            fa4_impl=fa4_impl,
         )
     # Apply function
     return FlashAttnVarlenPrefixLM.apply(q, k, v, is_causal,

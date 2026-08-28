@@ -5,7 +5,10 @@ from torch import Tensor
 
 __all__ = [
     "PrefixLMSeqInfo",
+    "PREFIXLM_PREPARED_KEYS",
     "PREFIXLM_ROUTING_KEYS",
+    "PREFIXLM_SEQUSED_KEYS",
+    "prefixlm_prepared_from_tensors",
     "prefixlm_routing_from_tensors",
     "prefixlm_seq_info_from_tensors",
     "prefixlm_sequence_indices",
@@ -20,6 +23,14 @@ PREFIXLM_ROUTING_KEYS = (
     "active_cu_seqlens_q",
     "active_cu_seqlens_k",
 )
+
+PREFIXLM_SEQUSED_KEYS = (
+    "cu_seqlens_shifted",
+    "prefix_mask",
+    "causal_mask",
+)
+
+PREFIXLM_PREPARED_KEYS = PREFIXLM_ROUTING_KEYS + PREFIXLM_SEQUSED_KEYS
 
 
 @dataclass(frozen=True)
@@ -73,7 +84,7 @@ def prefixlm_sequence_indices(info: PrefixLMSeqInfo) -> tuple[Tensor, Tensor, Te
     return seq_idx, token_idx, torch.arange(info.total_seqlen, device=info.prefix_lens.device)
 
 
-def prefixlm_routing_from_tensors(
+def prefixlm_prepared_from_tensors(
     prefix_lens: Tensor,
     causal_lens: Tensor,
     cu_seqlens: Tensor,
@@ -103,10 +114,12 @@ def prefixlm_routing_from_tensors(
     active_total_lens = total_lens[active]
     active_causal_lens = info.causal_lens[active]
 
+    causal_mask = (~prefix_mask) & active[seq_idx]
+
     return {
         "prefix_cu_seqlens": prefix_cu_seqlens,
         "prefix_idx": valid_idx[prefix_mask],
-        "causal_idx": valid_idx[(~prefix_mask) & active[seq_idx]],
+        "causal_idx": valid_idx[causal_mask],
         "active_key_idx": valid_idx[active[seq_idx]],
         "active_cu_seqlens_q": torch.nn.functional.pad(
             torch.cumsum(active_causal_lens, dim=0, dtype=torch.int32), (1, 0)
@@ -114,4 +127,30 @@ def prefixlm_routing_from_tensors(
         "active_cu_seqlens_k": torch.nn.functional.pad(
             torch.cumsum(active_total_lens, dim=0, dtype=torch.int32), (1, 0)
         ),
+        "cu_seqlens_shifted": info.cu_seqlens_shifted,
+        "prefix_mask": prefix_mask,
+        "causal_mask": causal_mask,
     }
+
+
+def prefixlm_routing_from_tensors(
+    prefix_lens: Tensor,
+    causal_lens: Tensor,
+    cu_seqlens: Tensor,
+    total_seqlen: Tensor,
+    numseqs: Tensor,
+    max_seqlen_prefix: Tensor,
+    max_seqlen_causal: Tensor,
+    max_seqlen_all: Tensor,
+) -> dict[str, Tensor]:
+    prepared = prefixlm_prepared_from_tensors(
+        prefix_lens,
+        causal_lens,
+        cu_seqlens,
+        total_seqlen,
+        numseqs,
+        max_seqlen_prefix,
+        max_seqlen_causal,
+        max_seqlen_all,
+    )
+    return {name: prepared[name] for name in PREFIXLM_ROUTING_KEYS}

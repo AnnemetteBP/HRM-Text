@@ -3,7 +3,11 @@ from typing import Optional
 import torch
 from torch import Tensor
 
-from models.flash_attention_prefixlm_common import PREFIXLM_ROUTING_KEYS, prefixlm_routing_from_tensors
+from models.flash_attention_prefixlm_common import (
+    PREFIXLM_ROUTING_KEYS,
+    prefixlm_prepared_from_tensors,
+    prefixlm_routing_from_tensors,
+)
 
 __all__ = ["flash_attn_varlen_prefixlm"]
 
@@ -18,6 +22,8 @@ def _fa4_varlen(
     max_seqlen_q: int,
     max_seqlen_k: int,
     causal: bool,
+    seqused_q: Optional[Tensor] = None,
+    seqused_k: Optional[Tensor] = None,
 ) -> Tensor:
     try:
         from flash_attn.cute import flash_attn_varlen_func
@@ -34,10 +40,84 @@ def _fa4_varlen(
         cu_seqlens_k=cu_seqlens_k,
         max_seqlen_q=max_seqlen_q,
         max_seqlen_k=max_seqlen_k,
+        seqused_q=seqused_q,
+        seqused_k=seqused_k,
         causal=causal,
         return_lse=True,
     )
     return out
+
+
+class _MaskUndefinedSequsedGrad(torch.autograd.Function):
+    """Zero FA4 gradients for storage rows excluded by ``seqused``."""
+
+    @staticmethod
+    def forward(ctx, tensor: Tensor, used: Tensor) -> Tensor:
+        ctx.save_for_backward(used)
+        return tensor
+
+    @staticmethod
+    def backward(ctx, grad: Tensor) -> tuple[Tensor, None]:
+        (used,) = ctx.saved_tensors
+        return grad.masked_fill(~used[:, None, None], 0), None
+
+
+def _mask_undefined_seqused_grad(tensor: Tensor, used: Tensor) -> Tensor:
+    return _MaskUndefinedSequsedGrad.apply(tensor, used)
+
+
+def _flash_attn_varlen_prefixlm_seqused(
+    q: Tensor,
+    k: Tensor,
+    v: Tensor,
+    *,
+    is_causal: bool,
+    prefix_lens: Tensor,
+    causal_lens: Tensor,
+    cu_seqlens: Tensor,
+    cu_seqlens_shifted: Tensor,
+    prefix_mask: Tensor,
+    causal_mask: Tensor,
+    max_seqlen_prefix: Tensor,
+    max_seqlen_causal: Tensor,
+    max_seqlen_all: Tensor,
+) -> Tensor:
+    prefix_q = _mask_undefined_seqused_grad(q, prefix_mask)
+    prefix_k = _mask_undefined_seqused_grad(k, prefix_mask)
+    prefix_v = _mask_undefined_seqused_grad(v, prefix_mask)
+    out_prefix = _fa4_varlen(
+        prefix_q,
+        prefix_k,
+        prefix_v,
+        cu_seqlens_q=cu_seqlens,
+        cu_seqlens_k=cu_seqlens,
+        seqused_q=prefix_lens,
+        seqused_k=prefix_lens,
+        max_seqlen_q=int(max_seqlen_prefix.item()),
+        max_seqlen_k=int(max_seqlen_prefix.item()),
+        causal=is_causal,
+    )
+
+    if int(max_seqlen_causal.item()) == 0:
+        return out_prefix.masked_fill(~prefix_mask[:, None, None], 0)
+
+    causal_q = _mask_undefined_seqused_grad(q, causal_mask)
+    valid_mask = prefix_mask | causal_mask
+    causal_k = _mask_undefined_seqused_grad(k, valid_mask)
+    causal_v = _mask_undefined_seqused_grad(v, valid_mask)
+    out_causal = _fa4_varlen(
+        causal_q,
+        causal_k,
+        causal_v,
+        cu_seqlens_q=cu_seqlens_shifted,
+        cu_seqlens_k=cu_seqlens,
+        seqused_q=causal_lens,
+        max_seqlen_q=int(max_seqlen_causal.item()),
+        max_seqlen_k=int(max_seqlen_all.item()),
+        causal=True,
+    )
+    out = torch.where(prefix_mask[:, None, None], out_prefix, out_causal)
+    return out.masked_fill(~valid_mask[:, None, None], 0)
 
 
 def flash_attn_varlen_prefixlm(
@@ -60,7 +140,58 @@ def flash_attn_varlen_prefixlm(
     active_key_idx: Optional[Tensor] = None,
     active_cu_seqlens_q: Optional[Tensor] = None,
     active_cu_seqlens_k: Optional[Tensor] = None,
+    cu_seqlens_shifted: Optional[Tensor] = None,
+    prefix_mask: Optional[Tensor] = None,
+    causal_mask: Optional[Tensor] = None,
+    impl: str = "gather",
 ) -> Tensor:
+    if impl not in ("gather", "seqused"):
+        raise ValueError(f"Unsupported FA4 PrefixLM implementation: {impl}")
+
+    if impl == "seqused":
+        if (
+            cu_seqlens_shifted is None
+            or prefix_mask is None
+            or causal_mask is None
+        ):
+            fallback_routing = prefixlm_prepared_from_tensors(
+                prefix_lens,
+                causal_lens,
+                cu_seqlens,
+                total_seqlen,
+                numseqs,
+                max_seqlen_prefix,
+                max_seqlen_causal,
+                max_seqlen_all,
+            )
+            cu_seqlens_shifted = fallback_routing["cu_seqlens_shifted"]
+            prefix_mask = fallback_routing["prefix_mask"]
+            causal_mask = fallback_routing["causal_mask"]
+        if prefix_mask.shape[0] > q.shape[0]:
+            raise ValueError(
+                f"PrefixLM metadata length {prefix_mask.shape[0]} exceeds Q length {q.shape[0]}"
+            )
+        if prefix_mask.shape[0] < q.shape[0]:
+            padding = q.shape[0] - prefix_mask.shape[0]
+            prefix_mask = torch.nn.functional.pad(prefix_mask, (0, padding), value=False)
+            causal_mask = torch.nn.functional.pad(causal_mask, (0, padding), value=False)
+        numseqs_int = int(numseqs.item())
+        return _flash_attn_varlen_prefixlm_seqused(
+            q,
+            k,
+            v,
+            is_causal=is_causal,
+            prefix_lens=prefix_lens[:numseqs_int],
+            causal_lens=causal_lens[:numseqs_int],
+            cu_seqlens=cu_seqlens[: numseqs_int + 1],
+            cu_seqlens_shifted=cu_seqlens_shifted,
+            prefix_mask=prefix_mask,
+            causal_mask=causal_mask,
+            max_seqlen_prefix=max_seqlen_prefix,
+            max_seqlen_causal=max_seqlen_causal,
+            max_seqlen_all=max_seqlen_all,
+        )
+
     routing_values = (
         prefix_cu_seqlens,
         prefix_idx,
