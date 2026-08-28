@@ -1,7 +1,9 @@
+from typing import Optional
+
 import torch
 from torch import Tensor
 
-from models.flash_attention_prefixlm_common import prefixlm_seq_info_from_tensors, prefixlm_sequence_indices
+from models.flash_attention_prefixlm_common import PREFIXLM_ROUTING_KEYS, prefixlm_routing_from_tensors
 
 __all__ = ["flash_attn_varlen_prefixlm"]
 
@@ -49,55 +51,68 @@ def flash_attn_varlen_prefixlm(
     max_seqlen_prefix: Tensor,
     max_seqlen_causal: Tensor,
     max_seqlen_all: Tensor,
+    *,
+    prefix_cu_seqlens: Optional[Tensor] = None,
+    prefix_idx: Optional[Tensor] = None,
+    causal_idx: Optional[Tensor] = None,
+    active_key_idx: Optional[Tensor] = None,
+    active_cu_seqlens_q: Optional[Tensor] = None,
+    active_cu_seqlens_k: Optional[Tensor] = None,
 ) -> Tensor:
-    info = prefixlm_seq_info_from_tensors(
-        prefix_lens,
-        causal_lens,
-        cu_seqlens,
-        total_seqlen,
-        numseqs,
-        max_seqlen_prefix,
-        max_seqlen_causal,
-        max_seqlen_all,
+    routing_values = (
+        prefix_cu_seqlens,
+        prefix_idx,
+        causal_idx,
+        active_key_idx,
+        active_cu_seqlens_q,
+        active_cu_seqlens_k,
     )
-    prefix_cu_seqlens = torch.nn.functional.pad(torch.cumsum(info.prefix_lens, dim=0, dtype=torch.int32), (1, 0))
-    seq_idx, token_idx, valid_idx = prefixlm_sequence_indices(info)
-    mask = token_idx < info.prefix_lens[seq_idx]
+    if all(value is None for value in routing_values):
+        routing = prefixlm_routing_from_tensors(
+            prefix_lens,
+            causal_lens,
+            cu_seqlens,
+            total_seqlen,
+            numseqs,
+            max_seqlen_prefix,
+            max_seqlen_causal,
+            max_seqlen_all,
+        )
+    elif any(value is None for value in routing_values):
+        raise ValueError(f"PrefixLM routing tensors must provide all of {PREFIXLM_ROUTING_KEYS}")
+    else:
+        routing = dict(
+            zip(PREFIXLM_ROUTING_KEYS, routing_values, strict=True)
+        )  # type: ignore[arg-type]
+
+    max_prefix = int(max_seqlen_prefix.item())
 
     out = torch.zeros_like(q)
-    prefix_idx = valid_idx[mask]
+    prefix_idx = routing["prefix_idx"]
     out_bidir = _rocm_varlen(
         q[prefix_idx],
         k[prefix_idx],
         v[prefix_idx],
-        cu_seqlens_q=prefix_cu_seqlens,
-        cu_seqlens_k=prefix_cu_seqlens,
-        max_seqlen_q=info.max_seqlen_prefix,
-        max_seqlen_k=info.max_seqlen_prefix,
+        cu_seqlens_q=routing["prefix_cu_seqlens"],
+        cu_seqlens_k=routing["prefix_cu_seqlens"],
+        max_seqlen_q=max_prefix,
+        max_seqlen_k=max_prefix,
         causal=is_causal,
     )
     out[prefix_idx] = out_bidir
 
-    active = info.causal_lens > 0
-    causal_idx = valid_idx[(~mask) & active[seq_idx]]
+    causal_idx = routing["causal_idx"]
     if causal_idx.numel() > 0:
-        total_lens = info.prefix_lens + info.causal_lens
-        active_total_lens = total_lens[active]
-        active_causal_lens = info.causal_lens[active]
-        active_key_idx = valid_idx[active[seq_idx]]
-        active_cu_seqlens_k = torch.nn.functional.pad(torch.cumsum(active_total_lens, dim=0, dtype=torch.int32), (1, 0))
-        active_cu_seqlens_q = torch.nn.functional.pad(torch.cumsum(active_causal_lens, dim=0, dtype=torch.int32), (1, 0))
-
         out_causal = _rocm_varlen(
             q[causal_idx],
-            k[active_key_idx],
-            v[active_key_idx],
-            cu_seqlens_q=active_cu_seqlens_q,
-            cu_seqlens_k=active_cu_seqlens_k,
+            k[routing["active_key_idx"]],
+            v[routing["active_key_idx"]],
+            cu_seqlens_q=routing["active_cu_seqlens_q"],
+            cu_seqlens_k=routing["active_cu_seqlens_k"],
             # FlashAttention accepts upper bounds here. Reuse the packed-batch
             # metadata instead of synchronizing two device reductions to Python.
-            max_seqlen_q=info.max_seqlen_causal,
-            max_seqlen_k=info.max_seqlen_all,
+            max_seqlen_q=int(max_seqlen_causal.item()),
+            max_seqlen_k=int(max_seqlen_all.item()),
             causal=True,
         )
         out[causal_idx] = out_causal

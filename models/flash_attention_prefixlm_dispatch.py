@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from torch import Tensor
 
@@ -88,6 +90,13 @@ def flash_attn_varlen_prefixlm(
     max_seqlen_prefix: Tensor,
     max_seqlen_causal: Tensor,
     max_seqlen_all: Tensor,
+    *,
+    prefix_cu_seqlens: Optional[Tensor] = None,
+    prefix_idx: Optional[Tensor] = None,
+    causal_idx: Optional[Tensor] = None,
+    active_key_idx: Optional[Tensor] = None,
+    active_cu_seqlens_q: Optional[Tensor] = None,
+    active_cu_seqlens_k: Optional[Tensor] = None,
 ) -> Tensor:
     match get_accelerator_type():
         case "sm90":
@@ -108,6 +117,12 @@ def flash_attn_varlen_prefixlm(
                 max_seqlen_prefix,
                 max_seqlen_causal,
                 max_seqlen_all,
+                prefix_cu_seqlens=prefix_cu_seqlens,
+                prefix_idx=prefix_idx,
+                causal_idx=causal_idx,
+                active_key_idx=active_key_idx,
+                active_cu_seqlens_q=active_cu_seqlens_q,
+                active_cu_seqlens_k=active_cu_seqlens_k,
             )
         case "rocm":
             from models.flash_attention_prefixlm_rocm import flash_attn_varlen_prefixlm as rocm_prefixlm
@@ -125,6 +140,12 @@ def flash_attn_varlen_prefixlm(
                 max_seqlen_prefix,
                 max_seqlen_causal,
                 max_seqlen_all,
+                prefix_cu_seqlens=prefix_cu_seqlens,
+                prefix_idx=prefix_idx,
+                causal_idx=causal_idx,
+                active_key_idx=active_key_idx,
+                active_cu_seqlens_q=active_cu_seqlens_q,
+                active_cu_seqlens_k=active_cu_seqlens_k,
             )
         case "mps":
             if _mps_kernel_supported(q, k, v):

@@ -35,7 +35,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from models.layers import Carry
 from models.activation_checkpointing import apply_activation_checkpointing
-from models.common import IGNORE_LABEL_ID, wrap_tensor
+from models.common import IGNORE_LABEL_ID, prepare_prefixlm_batch, wrap_tensor
 from models.accelerator import (
     AcceleratorType,
     empty_accelerator_cache,
@@ -813,9 +813,11 @@ def _add_metrics(total_metrics: Optional[dict[str, tuple[Tensor, Tensor]]], metr
 def _supervised_token_count(config: PretrainConfig, rank: int, batch: dict[str, Tensor]) -> Tensor:
     count = (batch["labels"] != IGNORE_LABEL_ID).sum().to(torch.float32)
     if dist.is_available() and dist.is_initialized():
-        trace_print(config, rank, f"supervised_count_all_reduce_begin local={count.item()}")
+        if config.resume_trace:
+            trace_print(config, rank, f"supervised_count_all_reduce_begin local={count.item()}")
         dist.all_reduce(count, op=dist.ReduceOp.AVG)
-        trace_print(config, rank, f"supervised_count_all_reduce_end avg={count.item()}")
+        if config.resume_trace:
+            trace_print(config, rank, f"supervised_count_all_reduce_end avg={count.item()}")
     return count
 
 
@@ -859,7 +861,12 @@ def train_accumulated_batches(
                     train_state.model.set_requires_gradient_sync(is_final_microbatch, recurse=True)
 
             loss_scale = supervised_count / total_supervised
-            trace_print(config, rank, f"forward_backward_begin step={train_state.step} microbatch={microbatch_idx} loss_scale={loss_scale.item()}")
+            if config.resume_trace:
+                trace_print(
+                    config,
+                    rank,
+                    f"forward_backward_begin step={train_state.step} microbatch={microbatch_idx} loss_scale={loss_scale.item()}",
+                )
             with sync_context:
                 metrics = _add_metrics(metrics, backward_step(train_state, batch, loss_scale, **kwargs))
             trace_print(config, rank, f"forward_backward_end step={train_state.step} microbatch={microbatch_idx}")
@@ -908,7 +915,9 @@ def validate_batches(
             break
         batch = move_batch_to_device(batch, device)
         batch_info.pop("resume_info", None)
-        batch = batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()}
+        batch = prepare_prefixlm_batch(
+            batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()}
+        )
         device_type = batch["inputs"].device.type
         use_autocast = (
             (device_type in ("mps", "cpu") and train_state.fwd_bwd_dtype != torch.float32)
@@ -1342,7 +1351,9 @@ def launch(hydra_config: DictConfig):
             if config.resume_trace and batch_in_epoch == batch_start:
                 trace_print(config, RANK, f"first_batch_moved batch_in_epoch={batch_in_epoch}")
             resume_info = batch_info.pop("resume_info", None)
-            accumulation_batches.append(batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()})
+            accumulation_batches.append(
+                prepare_prefixlm_batch(batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()})
+            )
             if resume_info is not None:
                 accumulation_resume_info = resume_info
             if len(accumulation_batches) < config.gradient_accumulation_steps:

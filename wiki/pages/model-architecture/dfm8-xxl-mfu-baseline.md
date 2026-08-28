@@ -154,8 +154,62 @@ conservative maximum-length bounds is smaller than the synchronization cost it
 replaces for this workload. It does not establish the isolated kernel-level
 cost or account for all remaining D2H copies.
 
-After scalar synchronization is removed, profile again before choosing the
-next target. Likely follow-ups are reducing eager index/gather/scatter work,
-eliminating graph breaks and fusing short kernels, then testing FSDP wrapping
-or sharding changes to reduce exposed all-gather. FA4 itself is under 10% of
-summed kernel time in this run and is not the leading bottleneck.
+### PrefixLM routing reuse
+
+On 2026-08-28, PrefixLM routing construction was moved from every recurrent
+attention invocation to batch preparation. The data loader's packed metadata
+now produces prefix, causal, and active-key indices plus cumulative sequence
+lengths once per microbatch. FA4 and ROCm consume those tensors directly;
+their public fallback path still computes routing internally for callers that
+do not supply it. SM90, dense, and MPS attention retain their previous paths.
+
+The routing tensors have data-dependent lengths. Marking their leading
+dimensions dynamic before they enter the compiled train step is required: an
+initial implementation specialized the graph for each packed shape and
+eventually exhausted GPU memory with compiled variants. The dynamic-marked
+implementation completed production-shaped compiled XXL runs without a
+recompilation warning.
+
+Disabled resume tracing no longer evaluates the three diagnostic `.item()`
+calls around supervised-count reduction and loss scaling. The three `.item()`
+calls remaining in each FA4 invocation read deliberately wrapped CPU launch
+metadata; they do not synchronize CUDA. A real B200 FA4 comparison between
+fallback and precomputed routing produced bit-identical outputs and `dq`,
+`dk`, and `dv`. Focused mocked-backend tests cover both FA4 and ROCm routing
+and launch parity.
+
+Fresh-initialization, W&B-disabled production-geometry XXL runs gave:
+
+| Implementation | Median step | Mean step |
+|---|---:|---:|
+| Bound-only predecessor (`27f55a4`) | 3.5452 s | 3.5975 s |
+| Routing reuse, run 1 | 3.1068 s | 3.2791 s |
+| Routing reuse, run 2 | 3.1372 s | 3.2455 s |
+
+This is an **11.5--12.4% median-step improvement** over the controlled
+predecessor. Final short-run loss varied naturally across repeated optimized
+runs by more than the predecessor-versus-optimized difference, so aggregate
+short-run loss is not a bitwise parity test; the direct FA4 forward/backward
+comparison is.
+
+The 45-second optimized Nsight trace is at
+`logs/profiling/dfm8_xxl_prefixlm_precompute_20260828/steady.nsys-rep`, with
+its SQLite export alongside it. Nsight again produced incomplete CUDA traces
+on some ranks, so comparisons use complete GPU traces. Relative to the earlier
+steady profile:
+
+- D2H copies fell from about `2,609/GPU/s` to `8.8/GPU/s`, a **99.66%**
+  reduction; the optimized trace contains only 395 four-byte D2H copies per
+  GPU over 45 seconds;
+- kernel launch rate fell from about `40,500/GPU/s` to `29,700/GPU/s`, a
+  **26.7%** reduction;
+- index/gather/scatter kernels excluding radix-sort machinery fell from about
+  `10.2%` to `8.3%` of summed kernel time;
+- kernels shorter than 10 microseconds fell from `71.6%` to about `50.1%` of
+  launches, while kernels shorter than 50 microseconds fell from `92.0%` to
+  about `85.1%`.
+
+The next target should be selected from this new profile. Exposed NCCL is now
+more prominent in relative terms, while repeated indexing and short-kernel
+launches remain material. FA4 itself remains below 10% of summed kernel time
+and is not the leading bottleneck.

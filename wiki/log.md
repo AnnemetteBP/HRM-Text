@@ -2,6 +2,10 @@
 
 ## 2026-08-28
 
+* **OpenMathInstruct-2 repair completed**: Verified 13.97M canonical rows,
+  scored 13.96M with Qwen2.5-Math-PRM-7B, calibrated thresholds against E4B,
+  built 7.49M deduplicated/decontaminated CoT and direct rows, passed exhaustive
+  format validation, and completed a zero-error 4,000-row E4B quality audit.
 * **PrefixLM device-synchronization fix**: Removed the two CUDA
   `max().item()` reductions from each FA4 causal PrefixLM attention call by
   reusing the packed batch's safe maximum-length bounds. Applied the same fix
@@ -679,3 +683,15 @@
   remediation table with full-row B200 repair/re-audit GPU-hour estimates. The
   combined report has 169 SFT, 6 auxiliary SFT, 2 midtraining, and 1 mixed
   source, independently of 136 use, 32 filter, and 10 repair dispositions.
+
+## 2026-08-28 - PrefixLM routing reuse
+
+- Precomputed data-dependent PrefixLM routing tensors once per microbatch and
+  reused them across recurrent FA4/ROCm attention calls while preserving the
+  existing backend fallback API.
+- Marked routing dimensions dynamic before compilation to prevent packed-shape
+  graph specialization, and guarded disabled resume-trace `.item()` calls.
+- Verified bit-exact real-B200 FA4 forward and gradient parity plus focused
+  FA4/ROCm tests. Production-geometry XXL timing improved by 11.5--12.4%.
+- Reprofiled the optimized path: D2H copy rate fell 99.66%, kernel launch rate
+  fell 26.7%, and index/gather/scatter share fell from about 10.2% to 8.3%.

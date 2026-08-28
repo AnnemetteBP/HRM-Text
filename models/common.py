@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+import torch
 from torch import Tensor
 import torch.nn.functional as F
 
@@ -30,3 +31,40 @@ def wrap_tensor(value: Tensor) -> WrappedTensor:
 
 def unwrap_tensor(wrapped: Tensor | WrappedTensor) -> Tensor:
     return wrapped.value if isinstance(wrapped, WrappedTensor) else wrapped
+
+
+def prepare_prefixlm_batch(
+    batch: dict[str, Tensor | WrappedTensor],
+) -> dict[str, Tensor | WrappedTensor]:
+    from models.accelerator import get_accelerator_type
+    from models.flash_attention_prefixlm_common import (
+        PREFIXLM_ROUTING_KEYS,
+        prefixlm_routing_from_tensors,
+    )
+
+    if get_accelerator_type() not in ("sm100", "rocm"):
+        return batch
+    if all(name in batch for name in PREFIXLM_ROUTING_KEYS):
+        return batch
+
+    routing = prefixlm_routing_from_tensors(
+        **{
+            name: unwrap_tensor(batch[name])
+            for name in (
+                "prefix_lens",
+                "causal_lens",
+                "cu_seqlens",
+                "total_seqlen",
+                "numseqs",
+                "max_seqlen_prefix",
+                "max_seqlen_causal",
+                "max_seqlen_all",
+            )
+        }
+    )
+    # Routing lengths vary with packing, but these tensors are consumed only by
+    # the compiler-disabled attention backend. Prevent Dynamo from specializing
+    # the enclosing train step on every packed shape.
+    for tensor in routing.values():
+        torch._dynamo.mark_dynamic(tensor, 0)
+    return batch | routing

@@ -5,9 +5,21 @@ from torch import Tensor
 
 __all__ = [
     "PrefixLMSeqInfo",
+    "PREFIXLM_ROUTING_KEYS",
+    "prefixlm_routing_from_tensors",
     "prefixlm_seq_info_from_tensors",
     "prefixlm_sequence_indices",
 ]
+
+
+PREFIXLM_ROUTING_KEYS = (
+    "prefix_cu_seqlens",
+    "prefix_idx",
+    "causal_idx",
+    "active_key_idx",
+    "active_cu_seqlens_q",
+    "active_cu_seqlens_k",
+)
 
 
 @dataclass(frozen=True)
@@ -59,3 +71,47 @@ def prefixlm_sequence_indices(info: PrefixLMSeqInfo) -> tuple[Tensor, Tensor, Te
     seq_idx = torch.repeat_interleave(torch.arange(info.numseqs, device=info.prefix_lens.device), total_lens)
     token_idx = torch.arange(info.total_seqlen, device=info.prefix_lens.device) - info.cu_seqlens[:info.numseqs][seq_idx]
     return seq_idx, token_idx, torch.arange(info.total_seqlen, device=info.prefix_lens.device)
+
+
+def prefixlm_routing_from_tensors(
+    prefix_lens: Tensor,
+    causal_lens: Tensor,
+    cu_seqlens: Tensor,
+    total_seqlen: Tensor,
+    numseqs: Tensor,
+    max_seqlen_prefix: Tensor,
+    max_seqlen_causal: Tensor,
+    max_seqlen_all: Tensor,
+) -> dict[str, Tensor]:
+    info = prefixlm_seq_info_from_tensors(
+        prefix_lens,
+        causal_lens,
+        cu_seqlens,
+        total_seqlen,
+        numseqs,
+        max_seqlen_prefix,
+        max_seqlen_causal,
+        max_seqlen_all,
+    )
+    prefix_cu_seqlens = torch.nn.functional.pad(
+        torch.cumsum(info.prefix_lens, dim=0, dtype=torch.int32), (1, 0)
+    )
+    seq_idx, token_idx, valid_idx = prefixlm_sequence_indices(info)
+    prefix_mask = token_idx < info.prefix_lens[seq_idx]
+    active = info.causal_lens > 0
+    total_lens = info.prefix_lens + info.causal_lens
+    active_total_lens = total_lens[active]
+    active_causal_lens = info.causal_lens[active]
+
+    return {
+        "prefix_cu_seqlens": prefix_cu_seqlens,
+        "prefix_idx": valid_idx[prefix_mask],
+        "causal_idx": valid_idx[(~prefix_mask) & active[seq_idx]],
+        "active_key_idx": valid_idx[active[seq_idx]],
+        "active_cu_seqlens_q": torch.nn.functional.pad(
+            torch.cumsum(active_causal_lens, dim=0, dtype=torch.int32), (1, 0)
+        ),
+        "active_cu_seqlens_k": torch.nn.functional.pad(
+            torch.cumsum(active_total_lens, dim=0, dtype=torch.int32), (1, 0)
+        ),
+    }
