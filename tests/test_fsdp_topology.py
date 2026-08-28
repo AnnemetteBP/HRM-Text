@@ -27,6 +27,19 @@ def test_explicit_reshard_overrides_checkpointing(value: bool) -> None:
     assert pretrain.fsdp_reshard_after_forward(cfg, checkpointed=True) is value
 
 
+@pytest.mark.parametrize(
+    "mode",
+    ["default", "max-autotune-no-cudagraphs"],
+)
+def test_compile_mode_resolves_to_prebuilt_callable(mode: str) -> None:
+    assert callable(pretrain.compiled_forward_backward_batch(mode))
+
+
+def test_unknown_compile_mode_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Unsupported compile_train_batch_mode"):
+        pretrain.compiled_forward_backward_batch("unknown")
+
+
 def test_hsdp_mesh_uses_replicate_then_shard(monkeypatch) -> None:
     mesh = MagicMock()
     init_mesh = MagicMock(return_value=mesh)

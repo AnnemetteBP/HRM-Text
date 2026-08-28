@@ -2,6 +2,28 @@
 
 ## 2026-08-28
 
+* **Scientific Summaries grounded rebuild**: Replaced the truncating DFM4
+  conversion with an atomic 16-process, Gemma-token-aware rebuild from complete
+  structured fields. Added a deterministic eight-GPU E4B audit with exact
+  merge and constrained-decoding recovery; its 320-row pilot passed at 91.88%
+  usable, and the full rebuild/audit campaign was launched.
+* **Nemotron SWE structural repair**: Replaced the duplicated/contextless
+  inherited windowing design with complete Gemma-native next-action examples
+  and one explicitly selected assistant target per row. Preserved matched
+  shell/editor call-result cycles, removed obsolete `think` actions, normalized
+  `finish` as text, and separated agentless file-location supervision from
+  interactive tool use. Corrected an over-broad phase-heading cleanup before
+  tokenization, added exhaustive validation and a deterministic 1,000-row
+  behavior-stratified E4B audit, and wired the repaired prefix into DFM10 while
+  disabling the superseded prefix.
+
+* **DOLCI native tool-use repair**: Identified that the inherited converter
+  dropped all `environment` tool results and reused call IDs, then added an
+  isolated validated converter, a conservative Gemma mapping-response template
+  fix, deterministic tokenized-target audit tooling, and DFM10 union hooks. The
+  repaired corpus contains 996,180 targets/1.531B stored tokens; its E4B audit
+  passed at 674/700 usable with zero judge errors, so DFM10 now samples it in
+  place of the old native conversion.
 * **OpenMathInstruct-2 repair completed**: Verified 13.97M canonical rows,
   scored 13.96M with Qwen2.5-Math-PRM-7B, calibrated thresholds against E4B,
   built 7.49M deduplicated/decontaminated CoT and direct rows, passed exhaustive
@@ -700,3 +722,8 @@
   indexing plus radix sort is about 10.4% of summed kernel time. Prioritized an
   FA4 `seqused_q`/`seqused_k` prototype and recurrence-aware H/L-level FSDP
   wrapping as the next performance experiments.
+- Added an explicit compile-mode selector with an unchanged `default` and a
+  safe `max-autotune-no-cudagraphs` diagnostic. Two autotuned XXL runs were
+  neutral versus default (`2.982--2.986 s` versus `2.987 s` median), so default
+  remains recommended. Graph-enabled max-autotune exposed an output-lifetime
+  error and remains a separate CUDA-graph integration task.

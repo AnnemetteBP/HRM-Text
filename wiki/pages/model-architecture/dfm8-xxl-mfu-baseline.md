@@ -276,3 +276,44 @@ Recommended experiments, in order:
    showed materially different training behavior. Activation checkpointing
    likewise saves memory at a substantial measured speed cost and is not a
    per-step optimization for the current 4K run.
+
+Performance-to-MFU backlog status:
+
+- [x] Benchmark `max-autotune` and `max-autotune-no-cudagraphs` against the
+  unchanged default compile mode. The no-graph mode was neutral and is not the
+  production default; graph-enabled mode exposed an output-lifetime error.
+- [ ] Prototype FA4 PrefixLM using `seqused_q`/`seqused_k` and verify complete
+  forward/backward parity.
+- [ ] Benchmark H/L-level recurrence-aware FSDP wrapping and checkpoint-resume
+  compatibility.
+- [ ] Evaluate CUDA graph capture only after dynamic routing and FSDP boundaries
+  are stabilized.
+- [ ] Evaluate custom Triton fusion for residual routing, masking, output
+  combination, or optimizer fragments that remain after the FA4 seqused path;
+  do not replace efficient FA4/GEMM kernels with Triton merely for uniformity.
+
+#### Compile-mode benchmark
+
+The production-shaped XXL compile-mode comparison used fresh initialization,
+W&B disabled, no checkpoint writes, GAS 4, BP 5, and 40 optimizer steps. The
+default remains unchanged.
+
+| Mode | Median step | Mean step | Result |
+|---|---:|---:|---|
+| Default control | 2.9873 s | 3.0621 s | Baseline |
+| Max autotune, no CUDA graphs | 2.9820 s | 3.1528 s | Neutral median; worse outlier-sensitive mean |
+| Max autotune, no CUDA graphs, cached repeat | 2.9859 s | 3.0948 s | Neutral |
+
+The controlled median difference is below 0.2% and therefore noise at this
+run length. Autotuning also adds substantial first-run compilation work, with
+some generated Triton GEMM candidates rejected for exceeding the SM100
+per-block resource limit. Valid candidates remained, and training completed.
+This mode is retained only as an explicit diagnostic and should not replace
+`default` for the current XXL geometry.
+
+PyTorch's graph-enabled `max-autotune` was also tested. It failed before the
+first completed optimizer step because a CUDA-graph replay overwrote a logits
+tensor still needed by cross-entropy across recurrent/microbatch calls. Rather
+than adding a local clone or step marker without validating the full lifetime
+and FSDP/NCCL contract, graph-enabled modes are excluded from the supported
+configuration until the dedicated CUDA-graph backlog item is implemented.

@@ -95,6 +95,9 @@ class PretrainConfig(pydantic.BaseModel):
     ddp_params_precision: Literal["fp32", "bf16"] = "fp32"
     ddp_find_unused_parameters: bool = True
     compile_train_batch: bool = True
+    compile_train_batch_mode: Literal[
+        "default", "max-autotune-no-cudagraphs"
+    ] = "default"
     memory_log_interval: int = 0
     empty_cache_interval: int = 0
     resume_trace: bool = False
@@ -761,19 +764,6 @@ def save_unsharded_train_state(config: PretrainConfig, train_state: TrainState, 
         )
 
 
-@torch.compile(dynamic=False)
-def forward_backward_batch(train_state: TrainState, batch: dict[str, Tensor], loss_scale: Tensor, **kwargs):
-    device_type = batch["inputs"].device.type
-    use_autocast = (
-        (device_type in ("mps", "cpu") and train_state.fwd_bwd_dtype != torch.float32)
-        or (device_type == "cuda" and train_state.use_cuda_autocast)
-    )
-    with torch.autocast(device_type=device_type, dtype=train_state.fwd_bwd_dtype, enabled=use_autocast, cache_enabled=False):
-        train_state.carry, loss, metrics = train_state.model(batch=batch, carry=train_state.carry, **kwargs)
-    (loss * loss_scale).backward()
-    return metrics
-
-
 def forward_backward_batch_uncompiled(train_state: TrainState, batch: dict[str, Tensor], loss_scale: Tensor, **kwargs):
     device_type = batch["inputs"].device.type
     use_autocast = (
@@ -784,6 +774,24 @@ def forward_backward_batch_uncompiled(train_state: TrainState, batch: dict[str, 
         train_state.carry, loss, metrics = train_state.model(batch=batch, carry=train_state.carry, **kwargs)
     (loss * loss_scale).backward()
     return metrics
+
+
+forward_backward_batch = torch.compile(forward_backward_batch_uncompiled, dynamic=False)
+_COMPILED_FORWARD_BACKWARD = {
+    "default": forward_backward_batch,
+    "max-autotune-no-cudagraphs": torch.compile(
+        forward_backward_batch_uncompiled,
+        dynamic=False,
+        mode="max-autotune-no-cudagraphs",
+    ),
+}
+
+
+def compiled_forward_backward_batch(mode: str):
+    try:
+        return _COMPILED_FORWARD_BACKWARD[mode]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported compile_train_batch_mode: {mode}") from exc
 
 
 def train_batch(train_state: TrainState, batch: dict[str, Tensor], **kwargs):
@@ -833,7 +841,11 @@ def train_accumulated_batches(
     trace_print(config, rank, f"train_accumulated_begin step={train_state.step} microbatches={len(batches)} compiled={use_compiled}")
     supervised_counts = [_supervised_token_count(config, rank, batch) for batch in batches]
     total_supervised = torch.stack(supervised_counts).sum().clamp_min(1.0)
-    backward_step = forward_backward_batch if use_compiled else forward_backward_batch_uncompiled
+    backward_step = (
+        compiled_forward_backward_batch(config.compile_train_batch_mode)
+        if use_compiled
+        else forward_backward_batch_uncompiled
+    )
 
     trace_print(config, rank, f"zero_grad_begin step={train_state.step}")
     train_state.optim.zero_grad()
