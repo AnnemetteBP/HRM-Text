@@ -4,7 +4,7 @@ title: DFM8 XXL MFU Baseline
 description: Recurrence-aware model-FLOP utilization estimate for the single-node DFM8 XXL production geometry.
 tags: [dfm8, xxl, training, performance, mfu, b200]
 status: stable
-last_updated: 2026-08-28
+last_updated: 2026-08-29
 confidence: medium
 sources:
   - id: nvidia-hgx-b200-spec
@@ -522,3 +522,52 @@ FA4 output for each row, write zero for storage padding, and route output
 gradients in one boundary. Its hard ceiling is smaller than this experiment:
 the current `where` family consumes about 0.77 seconds/GPU over the 20-second
 capture, before accounting for overlap.
+
+#### 1,000-step `main` versus `seqused+triton` resume
+
+On 2026-08-29, `scripts/benchmark_fa4_long_ab.sh` completed the recommended
+longer comparison. Both arms resumed the exact model, optimizer, EMA, and
+global row cursor from
+`checkpoints/dfm8/XXL-1epoch/fsdp2_ephemeral_step_175000`, then trained through
+step 176000 on the same eight B200 GPUs and production XXL geometry. The main
+arm used commit `3c7ca80`; the optimized arm used commit `8cd7af1` with
+`prefixlm_fa4_impl=seqused` and `prefixlm_fa4_grad_mask_impl=triton`. W&B and
+checkpoint writes were disabled. Metrics were reduced and retained every five
+steps, giving 200 aligned trajectory observations.
+
+The source checkpoint's sidecar contains an exact global row cursor but marks
+its legacy batch cursor exact. A read-only resume view copied that sidecar and
+set only `batch_in_epoch_exact=false`, forcing both arms to seek directly to
+row 141,196,506 instead of replaying 700,000 microbatches. The source
+checkpoint was not modified.
+
+| Path | Median step | Mean step | Mean loss | Mean token accuracy |
+|---|---:|---:|---:|---:|
+| `main` | 3.4980 s | 3.5850 s | 1.099601 | 0.749248 |
+| `seqused+triton` | 2.9120 s | 2.9077 s | 1.094871 | 0.750004 |
+
+The complete optimized path is **16.75% faster by median** and **18.89% faster
+by mean** than main. This is a cumulative comparison of all performance-branch
+PrefixLM work plus Triton masking, not the isolated contribution of the Triton
+mask kernel.
+
+Across the 200 aligned observations, optimized-minus-main mean loss was
+`-0.004731`, mean token-accuracy delta was `+0.000756`, and mean exact-accuracy
+delta was `+0.001440`. The final minibatch losses were 1.129384 and 1.129457, a
+difference of only `0.000073`. Individual 100-step windows fluctuate in both
+directions, with no sustained adverse trajectory. Distributed parameter,
+optimizer, and EMA fingerprints differ, as expected from the previously
+documented nondeterministic training behavior; direct FA4 operation parity
+remains the relevant exactness test.
+
+Artifacts are under `/tmp/hrm_fa4_long_ab_1000step`: `RESULTS.md` contains the
+summary and 100-step windows, `comparison.json` contains machine-readable
+deltas, and each arm has its own `summary.json` and `train.log`. No training or
+benchmark process remained after completion.
+
+One first optimized launch is invalid and excluded: eight unrelated E4B vLLM
+servers appeared after the final idle poll but before the training process
+established CUDA contexts, causing immediate OOM. The retry controller now
+also detects pre-CUDA `VLLM::EngineCore` processes, preserves completed arms,
+and rechecks immediately before launch. The clean retry used 154.6--156.9 GiB
+per GPU, compared with approximately 162.9--165.7 GiB for main.

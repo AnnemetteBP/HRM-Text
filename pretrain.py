@@ -1312,6 +1312,7 @@ def launch(hydra_config: DictConfig):
     bench_step_times: list[float] = []
     bench_last_time: Optional[float] = None
     bench_last_metrics: dict[str, float] = {}
+    bench_metric_history: list[dict[str, float | int]] = []
 
     # Progress bar and logger
     progress_bar = None
@@ -1406,6 +1407,8 @@ def launch(hydra_config: DictConfig):
                 trace_print(config, RANK, f"reduce_metrics_end step={train_state.step}")
                 if RANK == 0:
                     bench_last_metrics = dict(metrics)
+                    if config.max_steps is not None:
+                        bench_metric_history.append({"step": train_state.step, **metrics})
                     progress_bar.update(train_state.step - progress_bar.n)  # type: ignore
                     trace_print(config, RANK, f"wandb_log_begin step={train_state.step}")
                     wandb.log(metrics | train_extra_args | {"train/lr": lr}, step=train_state.step)
@@ -1508,6 +1511,7 @@ def launch(hydra_config: DictConfig):
             "max_step_seconds": max(steady),
             "all_step_seconds": bench_step_times,
             "last_metrics": bench_last_metrics,
+            "metric_history": bench_metric_history,
         }
         if benchmark_fingerprint is not None:
             summary["state_fingerprint"] = benchmark_fingerprint
