@@ -367,3 +367,25 @@ bracketing control is optional if machine conditions change. The healthy logs
 are `/tmp/hrm_fa4_gather_control_clean/train.log` and
 `/tmp/hrm_fa4_seqused_prod3/train.log`; the NaN diagnostic run is
 `/tmp/hrm_fa4_seqused_prod2/train.log`.
+
+#### RMSNorm fusion status
+
+The active XXL configuration is pre-norm, not post-norm. Each transformer block
+applies RMSNorm before attention and before the MLP, plus a final RMSNorm at the
+end of each pre-norm transformer. In the post-routing Nsight trace these appear
+as separate Triton reduction kernels named
+`triton_red_fused__fused_rms_norm_0` and
+`triton_red_fused__fused_rms_norm_add_0`; backward has corresponding separate
+Triton reductions. The `_add_0` variants fuse RMSNorm with residual/addition
+pointwise work, but none is fused into the following `nvjet` matrix
+multiplication. RMSNorm-related kernels account for 2.895 seconds out of
+132.266 seconds of summed device-kernel time, about 2.19%, in that pre-seqused
+trace. A custom RMSNorm-GEMM prologue therefore has a small hard ceiling and
+risks replacing highly tuned nvJet GEMMs; it is not the next low-risk target.
+
+Because the `seqused` path directly removes work that represented roughly 10%
+of the preceding profile, take a short steady-state Nsight Systems trace before
+choosing the next implementation. Use it to verify the expected collapse in
+index/radix kernels and then choose between recurrence-aware FSDP wrapping if
+exposed all-gather dominates, or remaining attention/output glue if short
+pointwise and masking kernels remain prominent.
