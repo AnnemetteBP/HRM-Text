@@ -351,14 +351,19 @@ loss and accuracy:
 
 | Path | Median step | Mean step | Peak observed GPU memory | Final loss |
 |---|---:|---:|---:|---:|
-| Gather, earlier controlled benchmark | 2.9873 s | 3.0621 s | not recorded | finite |
+| Gather, clean same-tree control | 2.9784 s | 3.0345 s | 161524 MiB | 9.7407 |
 | FA4 `seqused`, corrected | 2.8654 s | 2.9107 s | 154148 MiB | 9.7411 |
 
-Against the earlier controlled gather result, this is 4.1% faster by median
-and 4.9% faster by mean. A same-tree gather control was attempted immediately
-afterward, but unrelated vLLM servers materialized concurrently on every GPU
-and caused OOM; that run is invalid and must not be used for comparison. Before
-changing the default, run a clean gather/seqused/gather bracket without other
-GPU services and a longer resume from identical model/optimizer state. The
-healthy opt-in log is `/tmp/hrm_fa4_seqused_prod3/train.log`; the NaN diagnostic
-run is `/tmp/hrm_fa4_seqused_prod2/train.log`.
+The clean same-tree control ran after confirming that all eight GPUs were free
+and retained exactly eight training processes throughout. Relative to that
+control, `seqused` is **3.79% faster by median and 4.08% faster by mean**. Peak
+observed allocation was 7,376 MiB lower, a 4.57% reduction relative to gather.
+Final loss differed by 0.0004 and final token accuracy by approximately 0.0001.
+
+An earlier same-tree gather attempt remains invalid because unrelated vLLM
+servers materialized concurrently on every GPU and caused OOM. Before changing
+the default, run a longer resume from identical model/optimizer state; a second
+bracketing control is optional if machine conditions change. The healthy logs
+are `/tmp/hrm_fa4_gather_control_clean/train.log` and
+`/tmp/hrm_fa4_seqused_prod3/train.log`; the NaN diagnostic run is
+`/tmp/hrm_fa4_seqused_prod2/train.log`.
