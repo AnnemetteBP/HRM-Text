@@ -576,3 +576,26 @@
   publication of one JSONL result.
 - Queued execution behind the active Folketing acceptance audit because its
   eight E4B servers leave insufficient headroom for a second server set.
+
+## 2026-08-26 - Full recurrent-call activation checkpointing
+
+- Added opt-in `activation_checkpointing=full` training support while keeping
+  `none` as the default and preserving existing checkpoint/EMA formats.
+- Full mode applies non-reentrant PyTorch checkpointing only to differentiable
+  recurrent calls. At BP=5 these are `H0`, `L3`, `L4`, `L5`, and `H1`; the
+  detached `L0--L2` calls are not checkpointed.
+- Added CPU parity, recomputation-count, evaluation-inactivity, and compile
+  checks. CUDA FSDP2/FA4 memory and throughput benchmarking remains pending.
+
+## 2026-08-26 - FSDP2 composable activation checkpointing validation
+
+- Superseded functional recurrent-call checkpointing after CUDA validation
+  exposed an FSDP2 BF16-versus-FP32 recomputation metadata mismatch.
+- Switched full mode to composable per-Transformer-block checkpoint wrappers
+  applied before FSDP2 wrapping and resumed DFM8 XXL from step 152500.
+- Measured 41984 MiB peak allocated and 49970 MiB reserved per GPU, versus
+  143027 MiB and 165168 MiB without checkpointing; recorded the approximately
+  1.8x observed step-time cost of the current uncompiled checkpointed path.
+- Added and measured L-only selective checkpointing on DFM8 XXL: 90228 MiB
+  allocated, 105344 MiB reserved, and 5.59 seconds per optimizer step. The
+  production campaign resumes from step 153500 without checkpointing.

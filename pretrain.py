@@ -32,6 +32,7 @@ import pydantic
 from omegaconf import DictConfig, OmegaConf
 
 from models.layers import Carry
+from models.activation_checkpointing import apply_activation_checkpointing
 from models.common import IGNORE_LABEL_ID, wrap_tensor
 from models.accelerator import (
     AcceleratorType,
@@ -82,6 +83,7 @@ class PretrainConfig(pydantic.BaseModel):
     beta2: float
     ema: Optional[float] = None
     fwd_bwd_dtype: str = "bfloat16"
+    activation_checkpointing: Literal["none", "full", "l_only"] = "none"
     accelerator_type: AcceleratorType = "sm100"
     distributed_strategy: Literal["fsdp", "ddp", "none"] = "fsdp"
     fsdp_params_precision: Literal["fp32", "bf16"] = "fp32"
@@ -202,11 +204,11 @@ def create_dataloader(
     return dataloader, dataset.metadata
 
 
-def apply_fsdp(module: nn.Module, param_dtype: torch.dtype):
+def apply_fsdp(module: nn.Module, param_dtype: torch.dtype, *, reshard_after_forward: bool = False):
     fully_shard(module,
                 mp_policy=MixedPrecisionPolicy(param_dtype=param_dtype,
                                                reduce_dtype=torch.get_default_dtype()),  # Use master dtype for reduction
-                reshard_after_forward=False)  # Trade off VRAM for less comms
+                reshard_after_forward=reshard_after_forward)
     
     assert isinstance(module, FSDPModule)
     # Disable gradient division. Adams is scale invariant.
@@ -263,7 +265,15 @@ def optimizer_ema_dtype(config: PretrainConfig) -> Optional[torch.dtype]:
 
 
 def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta, local_batch_size: int, device: torch.device):
-    model_cfg = config.arch.model_dump() | train_metadata.model_dump() | config.data.model_dump() | {"fwd_bwd_dtype": config.fwd_bwd_dtype}
+    model_cfg = (
+        config.arch.model_dump()
+        | train_metadata.model_dump()
+        | config.data.model_dump()
+        | {
+            "fwd_bwd_dtype": config.fwd_bwd_dtype,
+            "activation_checkpointing": config.activation_checkpointing,
+        }
+    )
     fwd_bwd_dtype = getattr(torch, config.fwd_bwd_dtype)
 
     # Instantiate model with head
@@ -275,6 +285,14 @@ def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta
         carry = model.initial_carry(local_batch_size, dtype=fwd_bwd_dtype)  # pyright: ignore[reportCallIssue]
         # Attach loss head
         model = head_cls(model, model_cfg)
+
+    checkpointed_blocks: set[nn.Module] = set()
+    if config.activation_checkpointing != "none":
+        checkpointed_blocks = apply_activation_checkpointing(model, config.activation_checkpointing)
+        if not checkpointed_blocks:
+            raise ValueError(
+                f"activation_checkpointing={config.activation_checkpointing} found no matching TransformerBlock modules"
+            )
 
     if dist.is_available() and dist.is_initialized():
         if config.distributed_strategy == "fsdp":
@@ -289,9 +307,13 @@ def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta
             # Detect TransformerBlock recursively and apply FSDP
             for module in model.modules():
                 if isinstance(module, TransformerBlock):
-                    apply_fsdp(module, fwd_bwd_dtype)
+                    apply_fsdp(
+                        module,
+                        fwd_bwd_dtype,
+                        reshard_after_forward=module in checkpointed_blocks,
+                    )
 
-            apply_fsdp(model, fwd_bwd_dtype)
+            apply_fsdp(model, fwd_bwd_dtype, reshard_after_forward=bool(checkpointed_blocks))
         elif config.distributed_strategy == "ddp":
             if device.type != "cuda":
                 raise RuntimeError("distributed_strategy=ddp is currently only supported for CUDA torchrun jobs")

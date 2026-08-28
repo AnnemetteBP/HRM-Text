@@ -43,6 +43,7 @@ beta2: 0.95
 
 ema: 0.9999
 fwd_bwd_dtype: bfloat16
+activation_checkpointing: none  # none, full, or l_only; checkpoint selected Transformer blocks during backward
 accelerator_type: sm100
 distributed_strategy: fsdp
 fsdp_params_precision: fp32  # FSDP only: fp32 persistent sharded weights by default; set bf16 for bf16 optimizer/master params with fp32 EMA
