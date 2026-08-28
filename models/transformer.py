@@ -29,6 +29,7 @@ class TransformerConfig(BaseModel):
 
     attn_type: AttnType = "prefixlm"
     prefixlm_fa4_impl: Literal["gather", "seqused"] = "gather"
+    prefixlm_fa4_grad_mask_impl: Literal["eager", "triton"] = "eager"
 
     init_type: Literal["fixed_normal", "lecun_normal", "megatron"]
     init_std: Optional[float] = None
@@ -73,6 +74,7 @@ class TransformerBlock(nn.Module):
             num_key_value_heads=config.num_heads,
             attn_type=config.attn_type,
             prefixlm_fa4_impl=config.prefixlm_fa4_impl,
+            prefixlm_fa4_grad_mask_impl=config.prefixlm_fa4_grad_mask_impl,
 
             init_std_in=config.init_config.in_std,
             init_std_out=config.init_config.attn_out_std

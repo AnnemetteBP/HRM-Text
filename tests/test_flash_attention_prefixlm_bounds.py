@@ -198,12 +198,46 @@ def test_seqused_launches_use_original_packed_storage(
     assert launches[1][1].get("seqused_k") is None
 
 
-def test_seqused_gradient_mask_zeros_only_unused_rows() -> None:
+@pytest.mark.parametrize("impl", ["eager", "triton"])
+def test_seqused_gradient_mask_zeros_only_unused_rows(impl: str) -> None:
     module = import_module("models.flash_attention_prefixlm_fa4")
-    tensor = torch.randn(4, 2, 3, requires_grad=True)
-    used = torch.tensor([True, False, True, False])
+    q = torch.randn(4, 2, 3, requires_grad=True)
+    k = torch.randn(4, 1, 3, requires_grad=True)
+    v = torch.randn(4, 1, 3, requires_grad=True)
+    q_used = torch.tensor([True, False, True, False])
+    kv_used = torch.tensor([True, True, True, False])
 
-    module._mask_undefined_seqused_grad(tensor, used).sum().backward()
+    masked = module._mask_undefined_seqused_grads(
+        q, k, v, q_used, kv_used, impl
+    )
+    sum(tensor.sum() for tensor in masked).backward()
 
-    assert torch.equal(tensor.grad[used], torch.ones_like(tensor.grad[used]))
-    assert torch.equal(tensor.grad[~used], torch.zeros_like(tensor.grad[~used]))
+    assert torch.equal(q.grad[q_used], torch.ones_like(q.grad[q_used]))
+    assert torch.equal(q.grad[~q_used], torch.zeros_like(q.grad[~q_used]))
+    for tensor in (k, v):
+        assert torch.equal(tensor.grad[kv_used], torch.ones_like(tensor.grad[kv_used]))
+        assert torch.equal(tensor.grad[~kv_used], torch.zeros_like(tensor.grad[~kv_used]))
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA and Triton")
+def test_triton_seqused_gradient_mask_matches_eager_on_cuda() -> None:
+    module = import_module("models.flash_attention_prefixlm_fa4")
+    q = torch.randn(17, 4, 8, device="cuda", dtype=torch.bfloat16)
+    k = torch.randn(17, 2, 8, device="cuda", dtype=torch.bfloat16)
+    v = torch.randn_like(k)
+    q_used = torch.arange(17, device="cuda") % 3 != 0
+    kv_used = torch.arange(17, device="cuda") % 4 != 0
+    q[~q_used] = torch.nan
+    k[~kv_used] = torch.nan
+    v[~kv_used] = torch.nan
+
+    actual = module._mask_undefined_seqused_grads_triton(
+        q, k, v, q_used, kv_used
+    )
+    expected = (
+        q.masked_fill(~q_used[:, None, None], 0),
+        k.masked_fill(~kv_used[:, None, None], 0),
+        v.masked_fill(~kv_used[:, None, None], 0),
+    )
+
+    assert all(torch.equal(left, right) for left, right in zip(actual, expected))

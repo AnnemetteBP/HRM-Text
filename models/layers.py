@@ -113,13 +113,14 @@ class Cache(NamedTuple):
 
 
 class Attention(nn.Module):
-    def __init__(self, hidden_size, head_dim, num_heads, num_key_value_heads, attn_type, prefixlm_fa4_impl="gather", init_std_in=None, init_std_out=None, **kwargs):
+    def __init__(self, hidden_size, head_dim, num_heads, num_key_value_heads, attn_type, prefixlm_fa4_impl="gather", prefixlm_fa4_grad_mask_impl="eager", init_std_in=None, init_std_out=None, **kwargs):
         super().__init__()
         self.head_dim = head_dim
         self.num_heads = num_heads
         self.num_key_value_heads = num_key_value_heads
         self.attn_type = attn_type
         self.prefixlm_fa4_impl = prefixlm_fa4_impl
+        self.prefixlm_fa4_grad_mask_impl = prefixlm_fa4_grad_mask_impl
 
         self.gqkv_proj = LinearInit(hidden_size, self.head_dim, batch_out_features=(2 * self.num_heads + 2 * self.num_key_value_heads, ),
                                    bias=False, init_std=init_std_in, **kwargs)
@@ -182,6 +183,7 @@ class Attention(nn.Module):
                 value,
                 is_causal,
                 fa4_impl=self.prefixlm_fa4_impl,
+                fa4_grad_mask_impl=self.prefixlm_fa4_grad_mask_impl,
                 **{name: unwrap_tensor(tensor) for name, tensor in seq_info.items()},
             )
         else:

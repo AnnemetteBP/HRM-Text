@@ -101,6 +101,7 @@ def flash_attn_varlen_prefixlm(
     prefix_mask: Optional[Tensor] = None,
     causal_mask: Optional[Tensor] = None,
     fa4_impl: str = "gather",
+    fa4_grad_mask_impl: str = "eager",
 ) -> Tensor:
     match get_accelerator_type():
         case "sm90":
@@ -131,6 +132,7 @@ def flash_attn_varlen_prefixlm(
                 prefix_mask=prefix_mask,
                 causal_mask=causal_mask,
                 impl=fa4_impl,
+                grad_mask_impl=fa4_grad_mask_impl,
             )
         case "rocm":
             from models.flash_attention_prefixlm_rocm import flash_attn_varlen_prefixlm as rocm_prefixlm

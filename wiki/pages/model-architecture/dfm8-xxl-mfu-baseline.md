@@ -417,14 +417,19 @@ approximately 97.6%. This verifies that `seqused` removed the targeted gather,
 scatter, indexing-backward, and radix-sort machinery. D2H behavior remained
 unchanged and negligible.
 
-The replacement bottleneck is a generic CUDA `elementwise_kernel` with grid
+**Corrected on 2026-08-28 after the Triton follow-up profile:** the original
+attribution below grouped gradient `masked_fill` and output `where` kernels
+together. The dimensions correctly identified the affected attention glue, but
+the launch count was not exclusively six gradient masks per FA4 invocation.
+
+The replacement bottleneck appeared as generic CUDA `elementwise_kernel`
+families with grid
 `(28672, 1, 1)` and block `(128, 1, 1)`: 354,849 launches across the six
 complete traces consumed 12.577 seconds, or 8.22% of summed kernel time. The
 grid covers one full 8192-by-14-by-128 BF16 Q/K/V tensor at four values per
-thread. Its launch count is approximately six per FA4 backward invocation,
-matching the six explicit prefix/causal Q/K/V undefined-gradient masks. This
-identification is an inference from dimensions and launch counts, but it is
-strong enough to define the next isolated experiment.
+thread. This was sufficient to define the isolated fusion experiment, but the
+later name-resolved query showed that the count included both `masked_fill`
+and `where` operations.
 
 GPU-active time remains 94.8--96.4%. NCCL-only wall time is 5.3--6.5% on five
 of the six complete traces; GPU 1 is lower at 2.5%. All-gather remains the
@@ -434,3 +439,86 @@ with a conservative multi-tensor mask/combine boundary or pre-zeroed FA4
 backward buffers. Reprofile that change before attempting recurrence-aware
 FSDP wrapping. A lower-level custom backward may remove more memory traffic but
 couples the project to FA4 internals and carries higher maintenance risk.
+
+#### Multi-tensor `seqused` gradient masking
+
+On 2026-08-28, the conservative follow-up was implemented behind the separate
+`+arch.prefixlm_fa4_grad_mask_impl=triton` option. The existing eager masks
+remain the default, and the architecture-wide FA4 path itself remains
+`gather` by default. The Triton option combines Q/K/V masking into one launch
+for the prefix FA4 pass and one launch for the causal pass. It conditionally
+loads only rows that FA4 defined, rather than multiplying undefined values by
+zero, and therefore preserves the NaN-safety requirement discovered during
+the original `seqused` experiment. Non-CUDA and non-contiguous gradients use
+the unchanged eager operation as a defensive fallback.
+
+Direct B200 comparison of gather, eager-mask `seqused`, and Triton-mask
+`seqused` produced bit-identical BF16 output and `dq`, `dk`, and `dv` for mixed
+prefix/causal batches, prefix-only sequences, and padded fixed storage. A
+separate CUDA test verified exact masking with different Q and K/V head counts.
+The focused regression suite passes 26 tests, including a CUDA test with
+different Q and K/V head counts and NaNs in excluded rows.
+
+For two full-shape FA4 passes over 8192-by-14-by-128 gradients, three repeated
+CUDA-event measurements gave `0.253--0.260 ms` for the six eager masks and
+`0.083--0.087 ms` for the two Triton launches. This is an isolated roughly 3x
+mask-operation speedup, not an end-to-end training claim.
+
+A reproducible 100-step, eight-B200 comparison is provided by
+`scripts/benchmark_fa4_grad_mask_100step.sh`. It runs a detached `main`
+worktree, performance-branch `seqused+eager`, and performance-branch
+`seqused+triton` from identical fresh initialization and data order, with W&B
+and checkpoint writes disabled. A second eager run measures nondeterministic
+run-to-run spread. It records timing, final metrics, and
+distributed model/optimizer/EMA fingerprints under
+`/tmp/hrm_fa4_grad_mask_100step`.
+
+| 100-step path | Median step | Mean step | Final loss |
+|---|---:|---:|---:|
+| `main` (`3c7ca80`) | 3.5253 s | 3.6091 s | 7.46164 |
+| `seqused+eager` | 2.8612 s | 2.9258 s | 7.45494 |
+| `seqused+eager`, repeat | 2.8614 s | 2.9177 s | 7.44713 |
+| `seqused+triton` | 2.7617 s | 2.8620 s | 7.47232 |
+
+The Triton mask reduces median step time by **3.48%** and mean step time by
+**2.18%** relative to the first eager-mask control. Relative to `main`, the
+complete performance branch plus Triton reduces median step time by **21.66%**
+and mean step time by **20.70%**. The two eager medians differ by only 0.007%,
+so the timing result is stable at this run length.
+
+The 100-step runs are not bitwise reproducible: even the two eager controls
+produce different final model, optimizer, and EMA fingerprints. Their final
+losses differ by 0.00781; Triton differs from the first eager control by
+0.01737. Several Triton fingerprint deltas fall within the corresponding
+eager-to-eager spread, but not every aggregate does. Therefore the correct
+claim is **direct-operation bit parity and short-run numerical training
+parity**, not bitwise end-state parity. Before making Triton masking the
+`seqused` default, run a longer identical-checkpoint A/B and compare smoothed
+loss rather than a single final minibatch.
+
+The follow-up Nsight report is
+`logs/profiling/dfm8_xxl_fa4_triton_masks_20260828/steady.nsys-rep`, with its
+SQLite export alongside it. GPUs 0--4 and 7 have complete traces; GPUs 5 and 6
+dropped roughly half their events and are excluded. Relative to the eager-mask
+profile:
+
+- total kernel launch rate fell from `20.23--20.50K/GPU/s` to
+  `18.23--18.26K/GPU/s`, a further reduction of roughly 9.8%;
+- generic `masked_fill` launches fell from approximately 41,720 to 12,894 per
+  complete GPU over 20 seconds;
+- the new multi-tensor kernel launched approximately 9,917 times per complete
+  GPU, giving the expected 3:1 replacement of the removed mask launches;
+- `where` launches remained approximately 17,850 per GPU, confirming that the
+  earlier aggregate had included output combination rather than only gradient
+  masking;
+- eager `masked_fill` consumed about 1.34 seconds/GPU, while residual
+  `masked_fill` plus the custom kernel consumed about 0.79 seconds/GPU, a 41%
+  reduction for these mask families.
+
+The next low-risk attention-glue target is therefore the remaining
+prefix/causal output `where` plus padding zeroing, not another Q/K/V gradient
+mask. A fused custom-autograd combine could conditionally load only the defined
+FA4 output for each row, write zero for storage padding, and route output
+gradients in one boundary. Its hard ceiling is smaller than this experiment:
+the current `where` family consumes about 0.77 seconds/GPU over the 20-second
+capture, before accounting for overlap.

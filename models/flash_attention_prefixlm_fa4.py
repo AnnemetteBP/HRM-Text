@@ -1,6 +1,8 @@
 from typing import Optional
 
 import torch
+import triton
+import triton.language as tl
 from torch import Tensor
 
 from models.flash_attention_prefixlm_common import (
@@ -66,6 +68,136 @@ def _mask_undefined_seqused_grad(tensor: Tensor, used: Tensor) -> Tensor:
     return _MaskUndefinedSequsedGrad.apply(tensor, used)
 
 
+@triton.jit
+def _mask_undefined_seqused_grads_kernel(
+    dq_ptr,
+    dk_ptr,
+    dv_ptr,
+    q_used_ptr,
+    kv_used_ptr,
+    dq_out_ptr,
+    dk_out_ptr,
+    dv_out_ptr,
+    q_numel: tl.constexpr,
+    k_numel: tl.constexpr,
+    v_numel: tl.constexpr,
+    q_row_numel: tl.constexpr,
+    k_row_numel: tl.constexpr,
+    v_row_numel: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+
+    q_in_bounds = offsets < q_numel
+    q_used = tl.load(q_used_ptr + offsets // q_row_numel, mask=q_in_bounds, other=False)
+    dq = tl.load(dq_ptr + offsets, mask=q_in_bounds & q_used, other=0.0)
+    tl.store(dq_out_ptr + offsets, dq, mask=q_in_bounds)
+
+    k_in_bounds = offsets < k_numel
+    k_used = tl.load(kv_used_ptr + offsets // k_row_numel, mask=k_in_bounds, other=False)
+    dk = tl.load(dk_ptr + offsets, mask=k_in_bounds & k_used, other=0.0)
+    tl.store(dk_out_ptr + offsets, dk, mask=k_in_bounds)
+
+    v_in_bounds = offsets < v_numel
+    v_used = tl.load(kv_used_ptr + offsets // v_row_numel, mask=v_in_bounds, other=False)
+    dv = tl.load(dv_ptr + offsets, mask=v_in_bounds & v_used, other=0.0)
+    tl.store(dv_out_ptr + offsets, dv, mask=v_in_bounds)
+
+
+def _mask_undefined_seqused_grads_triton(
+    dq: Tensor,
+    dk: Tensor,
+    dv: Tensor,
+    q_used: Tensor,
+    kv_used: Tensor,
+) -> tuple[Tensor, Tensor, Tensor]:
+    if not (dq.is_cuda and dk.is_cuda and dv.is_cuda):
+        return (
+            dq.masked_fill(~q_used[:, None, None], 0),
+            dk.masked_fill(~kv_used[:, None, None], 0),
+            dv.masked_fill(~kv_used[:, None, None], 0),
+        )
+    if not (dq.is_contiguous() and dk.is_contiguous() and dv.is_contiguous()):
+        return (
+            dq.masked_fill(~q_used[:, None, None], 0),
+            dk.masked_fill(~kv_used[:, None, None], 0),
+            dv.masked_fill(~kv_used[:, None, None], 0),
+        )
+
+    dq_out = torch.empty_like(dq)
+    dk_out = torch.empty_like(dk)
+    dv_out = torch.empty_like(dv)
+    block_size = 1024
+    max_numel = max(dq.numel(), dk.numel(), dv.numel())
+    _mask_undefined_seqused_grads_kernel[(triton.cdiv(max_numel, block_size),)](
+        dq,
+        dk,
+        dv,
+        q_used,
+        kv_used,
+        dq_out,
+        dk_out,
+        dv_out,
+        dq.numel(),
+        dk.numel(),
+        dv.numel(),
+        dq.shape[1] * dq.shape[2],
+        dk.shape[1] * dk.shape[2],
+        dv.shape[1] * dv.shape[2],
+        BLOCK_SIZE=block_size,
+        num_warps=8,
+    )
+    return dq_out, dk_out, dv_out
+
+
+class _MaskUndefinedSequsedGradsTriton(torch.autograd.Function):
+    """Mask Q/K/V gradients in one launch without reading undefined rows."""
+
+    @staticmethod
+    def forward(
+        ctx,
+        q: Tensor,
+        k: Tensor,
+        v: Tensor,
+        q_used: Tensor,
+        kv_used: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        ctx.save_for_backward(q_used, kv_used)
+        return q, k, v
+
+    @staticmethod
+    def backward(
+        ctx,
+        dq: Tensor,
+        dk: Tensor,
+        dv: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, None, None]:
+        q_used, kv_used = ctx.saved_tensors
+        dq, dk, dv = _mask_undefined_seqused_grads_triton(
+            dq, dk, dv, q_used, kv_used
+        )
+        return dq, dk, dv, None, None
+
+
+def _mask_undefined_seqused_grads(
+    q: Tensor,
+    k: Tensor,
+    v: Tensor,
+    q_used: Tensor,
+    kv_used: Tensor,
+    impl: str,
+) -> tuple[Tensor, Tensor, Tensor]:
+    if impl == "eager":
+        return (
+            _mask_undefined_seqused_grad(q, q_used),
+            _mask_undefined_seqused_grad(k, kv_used),
+            _mask_undefined_seqused_grad(v, kv_used),
+        )
+    if impl == "triton":
+        return _MaskUndefinedSequsedGradsTriton.apply(q, k, v, q_used, kv_used)
+    raise ValueError(f"Unsupported FA4 seqused gradient-mask implementation: {impl}")
+
+
 def _flash_attn_varlen_prefixlm_seqused(
     q: Tensor,
     k: Tensor,
@@ -81,10 +213,11 @@ def _flash_attn_varlen_prefixlm_seqused(
     max_seqlen_prefix: Tensor,
     max_seqlen_causal: Tensor,
     max_seqlen_all: Tensor,
+    grad_mask_impl: str,
 ) -> Tensor:
-    prefix_q = _mask_undefined_seqused_grad(q, prefix_mask)
-    prefix_k = _mask_undefined_seqused_grad(k, prefix_mask)
-    prefix_v = _mask_undefined_seqused_grad(v, prefix_mask)
+    prefix_q, prefix_k, prefix_v = _mask_undefined_seqused_grads(
+        q, k, v, prefix_mask, prefix_mask, grad_mask_impl
+    )
     out_prefix = _fa4_varlen(
         prefix_q,
         prefix_k,
@@ -101,10 +234,10 @@ def _flash_attn_varlen_prefixlm_seqused(
     if int(max_seqlen_causal.item()) == 0:
         return out_prefix.masked_fill(~prefix_mask[:, None, None], 0)
 
-    causal_q = _mask_undefined_seqused_grad(q, causal_mask)
     valid_mask = prefix_mask | causal_mask
-    causal_k = _mask_undefined_seqused_grad(k, valid_mask)
-    causal_v = _mask_undefined_seqused_grad(v, valid_mask)
+    causal_q, causal_k, causal_v = _mask_undefined_seqused_grads(
+        q, k, v, causal_mask, valid_mask, grad_mask_impl
+    )
     out_causal = _fa4_varlen(
         causal_q,
         causal_k,
@@ -144,6 +277,7 @@ def flash_attn_varlen_prefixlm(
     prefix_mask: Optional[Tensor] = None,
     causal_mask: Optional[Tensor] = None,
     impl: str = "gather",
+    grad_mask_impl: str = "eager",
 ) -> Tensor:
     if impl not in ("gather", "seqused"):
         raise ValueError(f"Unsupported FA4 PrefixLM implementation: {impl}")
@@ -190,6 +324,7 @@ def flash_attn_varlen_prefixlm(
             max_seqlen_prefix=max_seqlen_prefix,
             max_seqlen_causal=max_seqlen_causal,
             max_seqlen_all=max_seqlen_all,
+            grad_mask_impl=grad_mask_impl,
         )
 
     routing_values = (
