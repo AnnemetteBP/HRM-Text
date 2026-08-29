@@ -2,6 +2,12 @@
 
 ## 2026-08-29
 
+- 2026-08-29: Merged `origin/main` through `7bf17c8` into the active
+  `multinode` branch without interrupting the DFM8 XXL 178K-to-200K process.
+  The next scheduler-launched 200K-to-250K process will inherit optimized FA4
+  seqused/Triton defaults while retaining the production transformer-block
+  FSDP wrap policy; documented the intentional implementation boundary.
+
 - 2026-08-29: Added the post-profile strategic performance roadmap for DFM8
   XXL. It separates measured bottlenecks from estimated opportunities and
   prioritizes FP8 compute with FP32 state, larger fusion boundaries, reduced

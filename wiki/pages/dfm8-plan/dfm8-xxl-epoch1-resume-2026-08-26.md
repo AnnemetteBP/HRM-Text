@@ -4,7 +4,7 @@ title: DFM8 XXL Epoch 1 Resume
 description: Verified scheduler continuation from the latest complete ephemeral through the first DFM8 epoch.
 tags: [dfm8, xxl, training, evaluation, scheduler]
 status: stable
-last_updated: 2026-08-28
+last_updated: 2026-08-29
 confidence: high
 part_of: /pages/dfm8-plan.md
 ---
@@ -199,3 +199,16 @@ The existing scheduler was then resumed with persistent vLLM. Its
 step 200000, and retains the downstream 200K evaluation, 250K continuation and
 evaluation, and epoch-one completion graph. The Rich scheduler monitor runs in
 tmux window `hrm-0:eval-monitor`.
+
+## Main Performance Update At The 200K Boundary
+
+On 2026-08-29, `origin/main` through commit `7bf17c8` was merged into the
+active `multinode` branch without stopping the old-code 178K-to-200K process.
+That process had already loaded and compiled its modules, so it remains on the
+established implementation through the 200K checkpoint. The pending
+200K-to-250K command does not override the new PrefixLM implementation fields;
+its fresh Python process will therefore inherit main's optimized FA4 defaults:
+`seqused` routing, Triton gradient masking, and Triton output combination. It
+also inherits `fsdp_wrap_policy=transformer_block`, preserving the production
+FSDP topology. This creates an intentional implementation boundary at 200K;
+compare post-resume step time only after compilation warmup.
