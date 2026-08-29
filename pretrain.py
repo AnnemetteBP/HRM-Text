@@ -35,7 +35,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from models.layers import Carry
 from models.activation_checkpointing import apply_activation_checkpointing
-from models.common import IGNORE_LABEL_ID, wrap_tensor
+from models.common import IGNORE_LABEL_ID, prepare_prefixlm_batch, wrap_tensor
 from models.accelerator import (
     AcceleratorType,
     empty_accelerator_cache,
@@ -44,7 +44,7 @@ from models.accelerator import (
     synchronize_device,
     torch_device_for_accelerator,
 )
-from models.transformer import TransformerBlock
+from models.transformer import Transformer, TransformerBlock
 from models.adam_atan2 import AdamATan2
 from utils.functions import load_model_class, get_model_source_path
 from dataset_new import V1Dataset, V1DatasetConfig, V1DatasetMeta
@@ -89,12 +89,16 @@ class PretrainConfig(pydantic.BaseModel):
     accelerator_type: AcceleratorType = "sm100"
     distributed_strategy: Literal["fsdp", "ddp", "none"] = "fsdp"
     fsdp_params_precision: Literal["fp32", "bf16"] = "fp32"
+    fsdp_wrap_policy: Literal["transformer_block", "recurrent_level"] = "transformer_block"
     fsdp_shard_degree: Optional[int] = pydantic.Field(default=None, ge=2)
     fsdp_reshard_after_forward: Optional[bool] = None
     fsdp_accumulation_sync_mode: Literal["no_sync", "reduce_scatter"] = "no_sync"
     ddp_params_precision: Literal["fp32", "bf16"] = "fp32"
     ddp_find_unused_parameters: bool = True
     compile_train_batch: bool = True
+    compile_train_batch_mode: Literal[
+        "default", "max-autotune-no-cudagraphs"
+    ] = "default"
     memory_log_interval: int = 0
     empty_cache_interval: int = 0
     resume_trace: bool = False
@@ -270,6 +274,22 @@ def fsdp_reshard_after_forward(config: PretrainConfig, *, checkpointed: bool) ->
     return checkpointed
 
 
+def fsdp_wrap_modules(model: nn.Module, policy: str) -> list[nn.Module]:
+    """Select bottom-up FSDP units while leaving the root wrapper unchanged."""
+    if policy == "transformer_block":
+        return [module for module in model.modules() if isinstance(module, TransformerBlock)]
+    if policy == "recurrent_level":
+        return [module for module in model.modules() if isinstance(module, Transformer)]
+    raise ValueError(f"Unsupported fsdp_wrap_policy: {policy}")
+
+
+def contains_checkpointed_block(
+    module: nn.Module,
+    checkpointed_blocks: set[nn.Module],
+) -> bool:
+    return any(child in checkpointed_blocks for child in module.modules())
+
+
 def unwrap_model(model: nn.Module) -> nn.Module:
     if isinstance(model, DistributedDataParallel):
         return model.module
@@ -354,18 +374,18 @@ def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta
             for buffer in model.buffers():
                 dist.broadcast(buffer, src=0)
 
-            # Detect TransformerBlock recursively and apply FSDP
-            for module in model.modules():
-                if isinstance(module, TransformerBlock):
-                    apply_fsdp(
-                        module,
-                        fwd_bwd_dtype,
-                        mesh=fsdp_mesh,
-                        reshard_after_forward=fsdp_reshard_after_forward(
-                            config,
-                            checkpointed=module in checkpointed_blocks,
+            for module in fsdp_wrap_modules(model, config.fsdp_wrap_policy):
+                apply_fsdp(
+                    module,
+                    fwd_bwd_dtype,
+                    mesh=fsdp_mesh,
+                    reshard_after_forward=fsdp_reshard_after_forward(
+                        config,
+                        checkpointed=contains_checkpointed_block(
+                            module, checkpointed_blocks
                         ),
-                    )
+                    ),
+                )
 
             apply_fsdp(
                 model,
@@ -761,19 +781,6 @@ def save_unsharded_train_state(config: PretrainConfig, train_state: TrainState, 
         )
 
 
-@torch.compile(dynamic=False)
-def forward_backward_batch(train_state: TrainState, batch: dict[str, Tensor], loss_scale: Tensor, **kwargs):
-    device_type = batch["inputs"].device.type
-    use_autocast = (
-        (device_type in ("mps", "cpu") and train_state.fwd_bwd_dtype != torch.float32)
-        or (device_type == "cuda" and train_state.use_cuda_autocast)
-    )
-    with torch.autocast(device_type=device_type, dtype=train_state.fwd_bwd_dtype, enabled=use_autocast, cache_enabled=False):
-        train_state.carry, loss, metrics = train_state.model(batch=batch, carry=train_state.carry, **kwargs)
-    (loss * loss_scale).backward()
-    return metrics
-
-
 def forward_backward_batch_uncompiled(train_state: TrainState, batch: dict[str, Tensor], loss_scale: Tensor, **kwargs):
     device_type = batch["inputs"].device.type
     use_autocast = (
@@ -784,6 +791,24 @@ def forward_backward_batch_uncompiled(train_state: TrainState, batch: dict[str, 
         train_state.carry, loss, metrics = train_state.model(batch=batch, carry=train_state.carry, **kwargs)
     (loss * loss_scale).backward()
     return metrics
+
+
+forward_backward_batch = torch.compile(forward_backward_batch_uncompiled, dynamic=False)
+_COMPILED_FORWARD_BACKWARD = {
+    "default": forward_backward_batch,
+    "max-autotune-no-cudagraphs": torch.compile(
+        forward_backward_batch_uncompiled,
+        dynamic=False,
+        mode="max-autotune-no-cudagraphs",
+    ),
+}
+
+
+def compiled_forward_backward_batch(mode: str):
+    try:
+        return _COMPILED_FORWARD_BACKWARD[mode]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported compile_train_batch_mode: {mode}") from exc
 
 
 def train_batch(train_state: TrainState, batch: dict[str, Tensor], **kwargs):
@@ -813,9 +838,11 @@ def _add_metrics(total_metrics: Optional[dict[str, tuple[Tensor, Tensor]]], metr
 def _supervised_token_count(config: PretrainConfig, rank: int, batch: dict[str, Tensor]) -> Tensor:
     count = (batch["labels"] != IGNORE_LABEL_ID).sum().to(torch.float32)
     if dist.is_available() and dist.is_initialized():
-        trace_print(config, rank, f"supervised_count_all_reduce_begin local={count.item()}")
+        if config.resume_trace:
+            trace_print(config, rank, f"supervised_count_all_reduce_begin local={count.item()}")
         dist.all_reduce(count, op=dist.ReduceOp.AVG)
-        trace_print(config, rank, f"supervised_count_all_reduce_end avg={count.item()}")
+        if config.resume_trace:
+            trace_print(config, rank, f"supervised_count_all_reduce_end avg={count.item()}")
     return count
 
 
@@ -831,7 +858,11 @@ def train_accumulated_batches(
     trace_print(config, rank, f"train_accumulated_begin step={train_state.step} microbatches={len(batches)} compiled={use_compiled}")
     supervised_counts = [_supervised_token_count(config, rank, batch) for batch in batches]
     total_supervised = torch.stack(supervised_counts).sum().clamp_min(1.0)
-    backward_step = forward_backward_batch if use_compiled else forward_backward_batch_uncompiled
+    backward_step = (
+        compiled_forward_backward_batch(config.compile_train_batch_mode)
+        if use_compiled
+        else forward_backward_batch_uncompiled
+    )
 
     trace_print(config, rank, f"zero_grad_begin step={train_state.step}")
     train_state.optim.zero_grad()
@@ -859,7 +890,12 @@ def train_accumulated_batches(
                     train_state.model.set_requires_gradient_sync(is_final_microbatch, recurse=True)
 
             loss_scale = supervised_count / total_supervised
-            trace_print(config, rank, f"forward_backward_begin step={train_state.step} microbatch={microbatch_idx} loss_scale={loss_scale.item()}")
+            if config.resume_trace:
+                trace_print(
+                    config,
+                    rank,
+                    f"forward_backward_begin step={train_state.step} microbatch={microbatch_idx} loss_scale={loss_scale.item()}",
+                )
             with sync_context:
                 metrics = _add_metrics(metrics, backward_step(train_state, batch, loss_scale, **kwargs))
             trace_print(config, rank, f"forward_backward_end step={train_state.step} microbatch={microbatch_idx}")
@@ -908,7 +944,9 @@ def validate_batches(
             break
         batch = move_batch_to_device(batch, device)
         batch_info.pop("resume_info", None)
-        batch = batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()}
+        batch = prepare_prefixlm_batch(
+            batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()}
+        )
         device_type = batch["inputs"].device.type
         use_autocast = (
             (device_type in ("mps", "cpu") and train_state.fwd_bwd_dtype != torch.float32)
@@ -1291,6 +1329,7 @@ def launch(hydra_config: DictConfig):
     bench_step_times: list[float] = []
     bench_last_time: Optional[float] = None
     bench_last_metrics: dict[str, float] = {}
+    bench_metric_history: list[dict[str, float | int]] = []
 
     # Progress bar and logger
     progress_bar = None
@@ -1342,7 +1381,9 @@ def launch(hydra_config: DictConfig):
             if config.resume_trace and batch_in_epoch == batch_start:
                 trace_print(config, RANK, f"first_batch_moved batch_in_epoch={batch_in_epoch}")
             resume_info = batch_info.pop("resume_info", None)
-            accumulation_batches.append(batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()})
+            accumulation_batches.append(
+                prepare_prefixlm_batch(batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()})
+            )
             if resume_info is not None:
                 accumulation_resume_info = resume_info
             if len(accumulation_batches) < config.gradient_accumulation_steps:
@@ -1383,6 +1424,8 @@ def launch(hydra_config: DictConfig):
                 trace_print(config, RANK, f"reduce_metrics_end step={train_state.step}")
                 if RANK == 0:
                     bench_last_metrics = dict(metrics)
+                    if config.max_steps is not None:
+                        bench_metric_history.append({"step": train_state.step, **metrics})
                     progress_bar.update(train_state.step - progress_bar.n)  # type: ignore
                     trace_print(config, RANK, f"wandb_log_begin step={train_state.step}")
                     wandb.log(metrics | train_extra_args | {"train/lr": lr}, step=train_state.step)
@@ -1485,6 +1528,7 @@ def launch(hydra_config: DictConfig):
             "max_step_seconds": max(steady),
             "all_step_seconds": bench_step_times,
             "last_metrics": bench_last_metrics,
+            "metric_history": bench_metric_history,
         }
         if benchmark_fingerprint is not None:
             summary["state_fingerprint"] = benchmark_fingerprint

@@ -365,7 +365,7 @@ def audit(args: argparse.Namespace) -> None:
 
     existing_ids: set[str] = set()
     existing_rows: list[dict[str, Any]] = []
-    for skip_path in args.skip_id_file:
+    for skip_path in getattr(args, "skip_id_file", []):
         with skip_path.open("r", encoding="utf-8") as skip_file:
             existing_ids.update(line.strip() for line in skip_file if line.strip())
     if args.resume and audit_path.exists():

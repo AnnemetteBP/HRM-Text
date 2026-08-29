@@ -1,5 +1,24 @@
 # Knowledge Bundle Update Log
 
+## 2026-08-29
+
+- 2026-08-29: Added the post-profile strategic performance roadmap for DFM8
+  XXL. It separates measured bottlenecks from estimated opportunities and
+  prioritizes FP8 compute with FP32 state, larger fusion boundaries, reduced
+  GAS, static recurrent execution, recurrent-aware distribution, and
+  time-to-quality improvements. No new experiment was approved by this entry.
+
+- 2026-08-29: Fused seqused FA4 prefix/causal output selection and padding
+  zeroing in a NaN-safe custom-autograd Triton boundary. Direct FA4 outputs
+  and gradients are bit-identical; a 100-step XXL A/B reduced median step time
+  by 4.01% and mean step time by 3.39%.
+
+- 2026-08-29: Completed a checkpoint-based 1,000-step eight-B200 comparison of
+  `main` against FA4 `seqused+triton`. The optimized path reduced median step
+  time by 16.75% and mean step time by 18.89%, while aligned mean loss and
+  accuracy showed no adverse trajectory. Documented exact row-cursor resume,
+  benchmark artifacts, memory use, and an excluded vLLM-contaminated launch.
+
 ## 2026-08-28
 
 * **DFM8 XXL one-node return at step 178000**: Restarted the existing
@@ -19,8 +38,8 @@
 * **One-node multi-node scheduler deployment**: Migrated the active DFM8 XXL
   campaign from the legacy runner to one coordinator plus one local eight-GPU
   worker, resuming from `ephemeral_step_176000`. Fixed cluster handoff so
-  independent future `wait_checkpoint` jobs coexist with training instead of
-  holding the coordinator in `draining`; added a regression test.
+  independent future `wait_checkpoint` control jobs coexist with training
+  instead of holding the coordinator in `draining`; added a regression test.
 * **Cluster training monitor attribution**: Fixed plain and Rich aggregate
   monitors to attribute coordinator-owned cluster training to every worker GPU
   instead of labeling heavily utilized training devices as idle.
@@ -30,7 +49,7 @@
   the pending training row prepared to resume from that protected tag.
 * **Multi-node scheduler implementation**: Implemented the coordinator-worker
   scheduler, node-qualified fenced leases, authenticated heartbeats, SSH
-  worker lifecycle, node-local persistent vLLM reuse, cluster training drain
+  worker lifecycle, node-local persistent-vLLM reuse, cluster training drain
   and handoff, restart reconciliation, and aggregate Rich/plain monitoring.
   The 47 local scheduler tests pass; real two-node validation remains gated on
   an allocation.
@@ -40,6 +59,45 @@
   handoff, and heartbeat-backed aggregate monitoring. Defined phased delivery
   and two-node through eight-node acceptance gates while preserving the
   existing single-node scheduler path.
+
+* **Scientific Summaries grounded rebuild**: Replaced the truncating DFM4
+  conversion with an atomic 16-process, Gemma-token-aware rebuild from complete
+  structured fields. Added a deterministic eight-GPU E4B audit with exact
+  merge and constrained-decoding recovery; its 320-row pilot passed at 91.88%
+  usable, and the full rebuild/audit campaign was launched.
+* **Nemotron SWE structural repair**: Replaced the duplicated/contextless
+  inherited windowing design with complete Gemma-native next-action examples
+  and one explicitly selected assistant target per row. Preserved matched
+  shell/editor call-result cycles, removed obsolete `think` actions, normalized
+  `finish` as text, and separated agentless file-location supervision from
+  interactive tool use. Corrected an over-broad phase-heading cleanup before
+  tokenization, added exhaustive validation and a deterministic 1,000-row
+  behavior-stratified E4B audit, and wired the repaired prefix into DFM10 while
+  disabling the superseded prefix.
+
+* **DOLCI native tool-use repair**: Identified that the inherited converter
+  dropped all `environment` tool results and reused call IDs, then added an
+  isolated validated converter, a conservative Gemma mapping-response template
+  fix, deterministic tokenized-target audit tooling, and DFM10 union hooks. The
+  repaired corpus contains 996,180 targets/1.531B stored tokens; its E4B audit
+  passed at 674/700 usable with zero judge errors, so DFM10 now samples it in
+  place of the old native conversion.
+* **OpenMathInstruct-2 repair completed**: Verified 13.97M canonical rows,
+  scored 13.96M with Qwen2.5-Math-PRM-7B, calibrated thresholds against E4B,
+  built 7.49M deduplicated/decontaminated CoT and direct rows, passed exhaustive
+  format validation, and completed a zero-error 4,000-row E4B quality audit.
+* **PrefixLM device-synchronization fix**: Removed the two CUDA
+  `max().item()` reductions from each FA4 causal PrefixLM attention call by
+  reusing the packed batch's safe maximum-length bounds. Applied the same fix
+  to ROCm and added focused conservative-bound tests. Corrected the profile
+  interpretation: the other five metadata `.item()` calls consume CPU tensors.
+  An order-controlled XXL A/B benchmark measured a 2.04% median step-time
+  improvement (`3.5138 -> 3.4420 s`).
+* **DFM8 XXL Nsight profile**: Captured a checkpoint- and W&B-disabled
+  steady-state eight-B200 profile. Identified repeated four-byte `.item()`
+  synchronization in PrefixLM attention and extreme short-kernel launch
+  fragmentation as the first optimization targets; NCCL was substantial but
+  mostly overlapped, and FA4 represented under 10% of summed kernel time.
 
 ## 2026-08-27
 
@@ -705,3 +763,25 @@
   remediation table with full-row B200 repair/re-audit GPU-hour estimates. The
   combined report has 169 SFT, 6 auxiliary SFT, 2 midtraining, and 1 mixed
   source, independently of 136 use, 32 filter, and 10 repair dispositions.
+
+## 2026-08-28 - PrefixLM routing reuse
+
+- Precomputed data-dependent PrefixLM routing tensors once per microbatch and
+  reused them across recurrent FA4/ROCm attention calls while preserving the
+  existing backend fallback API.
+- Marked routing dimensions dynamic before compilation to prevent packed-shape
+  graph specialization, and guarded disabled resume-trace `.item()` calls.
+- Verified bit-exact real-B200 FA4 forward and gradient parity plus focused
+  FA4/ROCm tests. Production-geometry XXL timing improved by 11.5--12.4%.
+- Reprofiled the optimized path: D2H copy rate fell 99.66%, kernel launch rate
+  fell 26.7%, and index/gather/scatter share fell from about 10.2% to 8.3%.
+- Added a shorter post-commit profile with four complete rank traces. GPU
+  kernel-active time is 95--96%, NCCL-only time is 9--12%, and PrefixLM
+  indexing plus radix sort is about 10.4% of summed kernel time. Prioritized an
+  FA4 `seqused_q`/`seqused_k` prototype and recurrence-aware H/L-level FSDP
+  wrapping as the next performance experiments.
+- Added an explicit compile-mode selector with an unchanged `default` and a
+  safe `max-autotune-no-cudagraphs` diagnostic. Two autotuned XXL runs were
+  neutral versus default (`2.982--2.986 s` versus `2.987 s` median), so default
+  remains recommended. Graph-enabled max-autotune exposed an output-lifetime
+  error and remains a separate CUDA-graph integration task.
