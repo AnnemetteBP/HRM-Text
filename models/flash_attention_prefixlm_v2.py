@@ -301,8 +301,8 @@ def flash_attn_varlen_prefixlm(q: Tensor,
                                cu_seqlens_shifted: Optional[Tensor] = None,
                                prefix_mask: Optional[Tensor] = None,
                                causal_mask: Optional[Tensor] = None,
-                               fa4_impl: str = "gather",
-                               fa4_grad_mask_impl: str = "eager"):
+                               fa4_impl: str = "seqused",
+                               fa4_grad_mask_impl: str = "triton"):
     if get_accelerator_type() != "sm90":
         from models.flash_attention_prefixlm_dispatch import flash_attn_varlen_prefixlm as backend_prefixlm
 

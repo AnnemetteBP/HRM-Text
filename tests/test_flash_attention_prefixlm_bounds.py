@@ -1,4 +1,5 @@
 from importlib import import_module
+from inspect import signature
 
 import pytest
 import torch
@@ -10,6 +11,30 @@ from models.flash_attention_prefixlm_common import (
     prefixlm_prepared_from_tensors,
     prefixlm_routing_from_tensors,
 )
+from models.layers import Attention
+from models.transformer import TransformerConfig
+
+
+def test_fa4_optimized_path_is_the_consistent_default() -> None:
+    assert TransformerConfig.model_fields["prefixlm_fa4_impl"].default == "seqused"
+    assert TransformerConfig.model_fields["prefixlm_fa4_grad_mask_impl"].default == "triton"
+    assert signature(Attention).parameters["prefixlm_fa4_impl"].default == "seqused"
+    assert signature(Attention).parameters["prefixlm_fa4_grad_mask_impl"].default == "triton"
+
+    wrappers = (
+        import_module("models.flash_attention_prefixlm_dispatch").flash_attn_varlen_prefixlm,
+        import_module("models.flash_attention_prefixlm_v2").flash_attn_varlen_prefixlm,
+    )
+    for wrapper in wrappers:
+        parameters = signature(wrapper).parameters
+        assert parameters["fa4_impl"].default == "seqused"
+        assert parameters["fa4_grad_mask_impl"].default == "triton"
+
+    fa4_parameters = signature(
+        import_module("models.flash_attention_prefixlm_fa4").flash_attn_varlen_prefixlm
+    ).parameters
+    assert fa4_parameters["impl"].default == "seqused"
+    assert fa4_parameters["grad_mask_impl"].default == "triton"
 
 
 def packed_inputs() -> tuple[torch.Tensor, ...]:

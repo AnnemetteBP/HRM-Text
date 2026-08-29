@@ -28,8 +28,8 @@ class TransformerConfig(BaseModel):
     expansion: float
 
     attn_type: AttnType = "prefixlm"
-    prefixlm_fa4_impl: Literal["gather", "seqused"] = "gather"
-    prefixlm_fa4_grad_mask_impl: Literal["eager", "triton"] = "eager"
+    prefixlm_fa4_impl: Literal["gather", "seqused"] = "seqused"
+    prefixlm_fa4_grad_mask_impl: Literal["eager", "triton"] = "triton"
 
     init_type: Literal["fixed_normal", "lecun_normal", "megatron"]
     init_std: Optional[float] = None

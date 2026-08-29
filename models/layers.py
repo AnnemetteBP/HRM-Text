@@ -113,7 +113,7 @@ class Cache(NamedTuple):
 
 
 class Attention(nn.Module):
-    def __init__(self, hidden_size, head_dim, num_heads, num_key_value_heads, attn_type, prefixlm_fa4_impl="gather", prefixlm_fa4_grad_mask_impl="eager", init_std_in=None, init_std_out=None, **kwargs):
+    def __init__(self, hidden_size, head_dim, num_heads, num_key_value_heads, attn_type, prefixlm_fa4_impl="seqused", prefixlm_fa4_grad_mask_impl="triton", init_std_in=None, init_std_out=None, **kwargs):
         super().__init__()
         self.head_dim = head_dim
         self.num_heads = num_heads

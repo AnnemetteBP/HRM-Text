@@ -276,8 +276,8 @@ def flash_attn_varlen_prefixlm(
     cu_seqlens_shifted: Optional[Tensor] = None,
     prefix_mask: Optional[Tensor] = None,
     causal_mask: Optional[Tensor] = None,
-    impl: str = "gather",
-    grad_mask_impl: str = "eager",
+    impl: str = "seqused",
+    grad_mask_impl: str = "triton",
 ) -> Tensor:
     if impl not in ("gather", "seqused"):
         raise ValueError(f"Unsupported FA4 PrefixLM implementation: {impl}")

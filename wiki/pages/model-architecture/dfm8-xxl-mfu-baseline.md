@@ -571,3 +571,42 @@ established CUDA contexts, causing immediate OOM. The retry controller now
 also detects pre-CUDA `VLLM::EngineCore` processes, preserves completed arms,
 and rechecks immediately before launch. The clean retry used 154.6--156.9 GiB
 per GPU, compared with approximately 162.9--165.7 GiB for main.
+
+#### Default promotion and post-promotion profile
+
+On 2026-08-29, the validated FA4 defaults changed from `gather+eager` to
+`seqused+triton` at every configuration and wrapper boundary. Both former paths
+remain available through explicit `prefixlm_fa4_impl=gather` and
+`prefixlm_fa4_grad_mask_impl=eager` overrides. A regression test verifies that
+the Transformer config, Attention constructor, dispatch wrappers, and direct
+FA4 entry point all select the same optimized defaults.
+
+A 40-step checkpoint resume used no FA4 command-line override and completed
+with finite loss. It recorded a 2.746-second median step and used
+154.6--156.9 GiB per GPU. W&B and checkpoint writes were disabled. The summary
+and log are under `/tmp/hrm_fa4_default_smoke`.
+
+The subsequent 20-second default-path Nsight capture is at
+`logs/profiling/dfm8_xxl_fa4_default_20260829/steady.nsys-rep`, with its SQLite
+export alongside it. GPU 3 dropped roughly half its events and is excluded;
+the other seven traces are complete and mutually consistent.
+
+| Observation | Default-path result |
+|---|---:|
+| Kernel launches | 18.52--18.54 K/GPU/s |
+| Kernel-active wall time | 96.0--96.7% |
+| NCCL-only wall time | 3.5--6.9% |
+| GEMM summed kernel time | 36.2--41.0% |
+| NCCL summed kernel time | 16.1--29.2% |
+| FA4 summed kernel time | 10.6--15.5% |
+| Output `where` summed kernel time | 3.0--3.3% |
+| Residual `masked_fill` summed kernel time | 1.7--1.9% |
+| Triton gradient-mask summed kernel time | 1.4--1.6% |
+| Index/sort summed kernel time | below 0.01% |
+
+FSDP all-gather is the largest individual kernel family, but most communication
+still overlaps compute. The output `where` family remains a smaller,
+well-isolated low-risk target. The next experiment should fuse prefix/causal
+output selection and storage-padding zeroing at one custom-autograd boundary;
+its summed-kernel ceiling is about 3%, before overlap. Reprofile before moving
+to recurrence-aware FSDP wrapping.
