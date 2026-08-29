@@ -1,5 +1,11 @@
 # Knowledge Bundle Update Log
 
+- 2026-08-29: Added the post-profile strategic performance roadmap for DFM8
+  XXL. It separates measured bottlenecks from estimated opportunities and
+  prioritizes FP8 compute with FP32 state, larger fusion boundaries, reduced
+  GAS, static recurrent execution, recurrent-aware distribution, and
+  time-to-quality improvements. No new experiment was approved by this entry.
+
 - 2026-08-29: Fused seqused FA4 prefix/causal output selection and padding
   zeroing in a NaN-safe custom-autograd Triton boundary. Direct FA4 outputs
   and gradients are bit-identical; a 100-step XXL A/B reduced median step time

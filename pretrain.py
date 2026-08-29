@@ -44,7 +44,7 @@ from models.accelerator import (
     synchronize_device,
     torch_device_for_accelerator,
 )
-from models.transformer import TransformerBlock
+from models.transformer import Transformer, TransformerBlock
 from models.adam_atan2 import AdamATan2
 from utils.functions import load_model_class, get_model_source_path
 from dataset_new import V1Dataset, V1DatasetConfig, V1DatasetMeta
@@ -89,6 +89,7 @@ class PretrainConfig(pydantic.BaseModel):
     accelerator_type: AcceleratorType = "sm100"
     distributed_strategy: Literal["fsdp", "ddp", "none"] = "fsdp"
     fsdp_params_precision: Literal["fp32", "bf16"] = "fp32"
+    fsdp_wrap_policy: Literal["transformer_block", "recurrent_level"] = "transformer_block"
     fsdp_shard_degree: Optional[int] = pydantic.Field(default=None, ge=2)
     fsdp_reshard_after_forward: Optional[bool] = None
     fsdp_accumulation_sync_mode: Literal["no_sync", "reduce_scatter"] = "no_sync"
@@ -273,6 +274,22 @@ def fsdp_reshard_after_forward(config: PretrainConfig, *, checkpointed: bool) ->
     return checkpointed
 
 
+def fsdp_wrap_modules(model: nn.Module, policy: str) -> list[nn.Module]:
+    """Select bottom-up FSDP units while leaving the root wrapper unchanged."""
+    if policy == "transformer_block":
+        return [module for module in model.modules() if isinstance(module, TransformerBlock)]
+    if policy == "recurrent_level":
+        return [module for module in model.modules() if isinstance(module, Transformer)]
+    raise ValueError(f"Unsupported fsdp_wrap_policy: {policy}")
+
+
+def contains_checkpointed_block(
+    module: nn.Module,
+    checkpointed_blocks: set[nn.Module],
+) -> bool:
+    return any(child in checkpointed_blocks for child in module.modules())
+
+
 def unwrap_model(model: nn.Module) -> nn.Module:
     if isinstance(model, DistributedDataParallel):
         return model.module
@@ -357,18 +374,18 @@ def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta
             for buffer in model.buffers():
                 dist.broadcast(buffer, src=0)
 
-            # Detect TransformerBlock recursively and apply FSDP
-            for module in model.modules():
-                if isinstance(module, TransformerBlock):
-                    apply_fsdp(
-                        module,
-                        fwd_bwd_dtype,
-                        mesh=fsdp_mesh,
-                        reshard_after_forward=fsdp_reshard_after_forward(
-                            config,
-                            checkpointed=module in checkpointed_blocks,
+            for module in fsdp_wrap_modules(model, config.fsdp_wrap_policy):
+                apply_fsdp(
+                    module,
+                    fwd_bwd_dtype,
+                    mesh=fsdp_mesh,
+                    reshard_after_forward=fsdp_reshard_after_forward(
+                        config,
+                        checkpointed=contains_checkpointed_block(
+                            module, checkpointed_blocks
                         ),
-                    )
+                    ),
+                )
 
             apply_fsdp(
                 model,

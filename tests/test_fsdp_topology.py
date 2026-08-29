@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 import pretrain
+from models.transformer import Transformer, TransformerBlock, TransformerConfig
 
 
 def config(*, shard_degree=None, reshard=None):
@@ -25,6 +26,46 @@ def test_explicit_reshard_overrides_checkpointing(value: bool) -> None:
     cfg = config(reshard=value)
     assert pretrain.fsdp_reshard_after_forward(cfg, checkpointed=False) is value
     assert pretrain.fsdp_reshard_after_forward(cfg, checkpointed=True) is value
+
+
+def tiny_transformer() -> Transformer:
+    return Transformer(
+        TransformerConfig(
+            max_seq_len=8,
+            n_layers=2,
+            hidden_size=16,
+            num_heads=2,
+            expansion=2,
+            init_type="fixed_normal",
+            norm_type="pre",
+            norm_eps=1e-6,
+            pos_emb_type="rope",
+            rope_theta=10_000,
+        )
+    )
+
+
+def test_fsdp_block_policy_preserves_existing_units() -> None:
+    model = tiny_transformer()
+    units = pretrain.fsdp_wrap_modules(model, "transformer_block")
+    assert units == list(model.layers)
+    assert all(isinstance(unit, TransformerBlock) for unit in units)
+
+
+def test_fsdp_recurrent_level_policy_selects_transformer_unit() -> None:
+    model = tiny_transformer()
+    assert pretrain.fsdp_wrap_modules(model, "recurrent_level") == [model]
+
+
+def test_parent_unit_inherits_checkpointed_child_state() -> None:
+    model = tiny_transformer()
+    assert pretrain.contains_checkpointed_block(model, {model.layers[1]})
+    assert not pretrain.contains_checkpointed_block(model, set())
+
+
+def test_unknown_fsdp_wrap_policy_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Unsupported fsdp_wrap_policy"):
+        pretrain.fsdp_wrap_modules(tiny_transformer(), "unknown")
 
 
 @pytest.mark.parametrize(

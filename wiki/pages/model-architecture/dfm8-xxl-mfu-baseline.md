@@ -285,8 +285,10 @@ Performance-to-MFU backlog status:
 - [x] Prototype FA4 PrefixLM using `seqused_q`/`seqused_k` and verify complete
   forward/backward parity. The implementation remains opt-in pending a clean
   bracketed control and a longer resumed-checkpoint stability run.
-- [ ] Benchmark H/L-level recurrence-aware FSDP wrapping and checkpoint-resume
-  compatibility.
+- [x] Benchmark H/L-level recurrence-aware FSDP wrapping and checkpoint-resume
+  compatibility. The first single-node result is a small speed win with a
+  substantial allocator-reservation cost; retain it as opt-in pending a
+  bracketed control and real multi-node HSDP measurement.
 - [ ] Evaluate CUDA graph capture only after dynamic routing and FSDP boundaries
   are stabilized.
 - [ ] Evaluate custom Triton fusion for residual routing, masking, output
@@ -661,3 +663,208 @@ present. Do not use its family percentages for ranking. The next capture must
 start from observed optimizer progress or use a conservatively longer delay;
 an immediate retry was left unlaunched when an unrelated eight-GPU audit
 claimed the machine.
+
+#### Recurrence-level FSDP wrapping
+
+On 2026-08-29, an opt-in `fsdp_wrap_policy=recurrent_level` experiment wrapped
+the complete H and L `Transformer` stacks as two FSDP2 units, while the root
+FSDP unit retained embeddings, the head, and other parameters outside those
+stacks. This remains data parallel: each selected unit is sharded over every
+rank in the FSDP shard group rather than assigning H and L to different GPUs.
+The production default remains `transformer_block`.
+
+Both arms resumed the exact step-175000 XXL checkpoint and row cursor, used
+eight B200 GPUs, GAS 4, BP 5, FP32 FSDP parameters, BF16 forward/backward, and
+the optimized FA4 path, and completed 100 optimizer steps. Loading the same DCP
+checkpoint into the coarser FSDP topology succeeded.
+
+| FSDP unit | Median step | Mean step | Peak allocated | Peak reserved |
+|---|---:|---:|---:|---:|
+| Transformer block | 2.6288 s | 2.7496 s | 148031 MiB | 152256 MiB |
+| Complete H/L level | 2.5792 s | 2.6895 s | 149353 MiB | 164096 MiB |
+
+The closing block-level bracket control measured 2.6303 seconds median and
+2.7585 seconds mean, nearly identical to the opening control. Against the
+center of those two controls, H/L wrapping is therefore **1.91% faster by
+median** and **2.34% faster by mean**. It reserved approximately 11.6 GiB more
+memory per GPU; `nvidia-smi` process usage likewise rose from roughly 154.6 GiB
+to 166.4 GiB. Final losses across block/H-L/block were 1.14528, 1.14558, and
+1.14505, within the already measured process-level trajectory variation.
+Artifacts are under `/tmp/hrm_fsdp_wrap_policy_100step_1787980616`.
+
+This is promising only as a high-memory single-node mode. For HSDP, keep
+block-level wrapping as the default until a real two-node benchmark: coarse
+H/L units reduce intra-node collective launch count but delay shard-gradient
+replica all-reduces and reduce their overlap with backward computation.
+
+#### Valid post-output-fusion profile
+
+The valid steady profile is
+`logs/profiling/dfm8_xxl_fa4_output_fused_steady_v3_20260829/steady.nsys-rep`.
+It uses the same `cuda,nvtx,nccl` trace set as the preceding baseline and sets
+`--cuda-flush-interval=100000`. This detail is required at the present launch
+rate: default profiler-buffer flushing paused ranks unevenly and produced
+spurious 2.8--3.5 second NCCL all-gathers in two discarded attempts. The valid
+10-second capture has no such stalls; maximum all-gather duration is
+10.7--17.4 ms. GPUs 2, 3, and 6 dropped roughly half their events and are
+excluded. The other five traces are complete and consistent.
+
+| Observation | Complete-trace range |
+|---|---:|
+| Kernel launches | 17.67--17.70 K/GPU/s |
+| Kernel-active wall time | 97.7--98.1% |
+| NCCL-only wall time | 2.45--6.41% |
+| NCCL overlap with non-NCCL kernels | 85.3--87.5% |
+| GEMM summed kernel time | 36.9--42.6% |
+| NCCL summed kernel time | 16.4--31.7% |
+| FA4 summed kernel time | 11.0--17.0% |
+| Other Triton summed kernel time | 10.0--11.6% |
+| RMSNorm summed kernel time | 2.08--2.40% |
+| FA4 gradient-mask summed kernel time | 1.42--1.62% |
+| FA4 output-combine summed kernel time | 0.60--0.71% |
+
+Relative to the preceding default-path profile, launch rate fell from
+18.52--18.54 K/GPU/s by about 4.5%, and output selection fell from 3.0--3.3%
+to below 0.71%. This validates the output-combine fusion and removes it from
+the optimization shortlist.
+
+The largest remaining non-GEMM compute family is the compiled SwiGLU chain.
+Its named forward/backward split, SiLU, multiply, concatenate,
+sigmoid-gradient, and associated copy kernels collectively occupy a
+low-double-digit share of summed device time. A dedicated custom-autograd
+Triton prototype fused this elementwise boundary into one forward and one
+backward launch. At the production `8192 x 9728` projected activation shape,
+the isolated boundary was 2.8x faster than unfused eager PyTorch; forward was
+bit-exact and only four of roughly 79.7 million BF16 gradient values differed,
+by at most 0.0009766.
+
+The full compiled XXL result was neutral and the prototype was removed. Its
+100-step checkpoint resume measured 2.6249 seconds median and 2.7674 seconds
+mean, versus 2.6295 and 2.7541 seconds at the center of the two eager controls:
+0.18% faster by median but 0.48% slower by mean. TorchInductor already fuses
+this region effectively, while the explicit autograd boundary prevents some
+surrounding fusion. Do not pursue standalone SwiGLU fusion further without a
+design that spans the adjacent projection or residual operation.
+
+FSDP2 already prefetches one next module by default; looking ahead by two or
+more modules increases reserved memory, and `reshard_after_forward=false`
+limits the forward benefit after the first recurrent traversal.
+
+## Strategic Performance Roadmap
+
+The valid post-fusion profile changes the optimization problem. GPU kernel
+activity is already 97.7--98.1%, exposed NCCL occupies only 2.45--6.41% of
+wall time, and standalone pointwise fusion has proven neutral. There is no
+large loader, host, or scheduling bubble left to remove. Material gains must
+make executed math cheaper, reduce activation and parameter traffic, or reduce
+the number of training tokens needed to reach a target quality.
+
+The opportunities below are estimates and research directions, not measured
+results or approved experiments. Their gains overlap and must not be added
+linearly.
+
+| Direction | Plausible end-to-end gain | Effort | Quality risk |
+|---|---:|---:|---:|
+| FP8 compute with FP32 master parameters, optimizer state, and EMA | 15--30% | high | medium |
+| Projection-spanning transformer fusion | 5--15% | high | low--medium |
+| Static-shape whole-step CUDA graphs | 2--8% | medium--high | low |
+| Recurrent-aware FSDP grouping and communication scheduling | 2--6% single-node | medium | low |
+| Larger local microbatches and reduced GAS | 2--10% | medium | low |
+| Fused optimizer and EMA updates | 1--4% | medium | low |
+| Context/tensor parallelism | primarily enables scale | very high | low |
+| Better data and curriculum reducing required tokens | potentially larger than any kernel change | high | medium |
+| Adaptive recurrence or architectural changes | potentially 1.5--3x | very high | high |
+
+### FP8 compute with FP32 state
+
+The largest architecture-preserving bet is FP8 for suitable forward/backward
+GEMMs while retaining FP32 master parameters, optimizer states, and EMA. Keep
+normalization, logits, sensitive reductions, and unsupported operators in
+BF16 or FP32 initially. GEMMs occupy approximately 37--43% of summed kernel
+time in the valid profile, so making only GEMMs twice as fast has an Amdahl
+ceiling of roughly 23--27% end-to-end. Reduced activation traffic may also
+allow larger local microbatches. Any implementation requires controlled loss,
+gradient, and convergence comparisons; FP8 attention is not a prerequisite
+for the first phase.
+
+### Projection-spanning fusion
+
+The removed standalone SwiGLU prototype showed that local pointwise fusion is
+already handled well by TorchInductor. Useful fusion boundaries must span
+projection or residual boundaries, for example:
+
+- RMSNorm into QKV projection;
+- RMSNorm into gate/up projection;
+- gate/up projection through SwiGLU into down projection;
+- residual add into RMSNorm;
+- projection scale, cast, or bias epilogues and their backward operations.
+
+This suggests established Blackwell-oriented fused modules or larger
+Transformer Engine, CUTLASS, or carefully scoped custom kernels rather than
+additional isolated Triton expressions. A block-level implementation could
+reduce activation materialization, memory traffic, and launches together.
+
+### Static recurrent execution
+
+A larger compiler project could bucket packed batches into a small set of
+static shapes, allocate persistent input/carry/loss/gradient buffers, and
+capture a complete recurrent microbatch or optimizer-step schedule. Previous
+CUDA-graph difficulties involved dynamic shapes and tensor lifetime across
+recurrent and GAS calls, not a demonstrated architectural impossibility.
+Graph replay alone has a limited ceiling at the current GPU-active fraction,
+but static execution may enable broader compiler fusion and stable kernel
+selection.
+
+### Recurrent-aware distributed execution
+
+HRM repeatedly applies the same H and L weights. A purpose-built schedule
+could gather a recurrent group once, execute all immediately available uses
+while its parameters remain resident, prefetch the next group, and delay
+resharding until no further use remains. The measured whole-H/L policy is
+about 2% faster but reserves approximately 12 GiB more GPU memory. Intermediate
+groups of two to four blocks may provide a better trade-off. Coarse wrapping
+must remain opt-in until tested on multiple nodes because it can delay replica
+reductions and reduce cross-node overlap under HSDP.
+
+### Spend memory to reduce GAS
+
+The production XXL geometry uses GAS 4. FP8, improved activation lifetimes, or
+selective checkpointing may permit larger local microbatches and fewer GAS
+boundaries, yielding larger GEMMs and less per-microbatch scheduling work.
+Full activation checkpointing is not a throughput optimization; its
+recomputation cost must be compared with the benefit of a larger microbatch.
+Selective checkpointing should target only the largest attention or MLP
+activations and be retained only if measured tokens/second improves.
+
+### Time-to-quality and architectural research
+
+Improving useful learning per token can exceed the return from systems work.
+Relevant levers include coherent math answer formats, grounded tool-call
+supervision, deliberate long-context curricula, difficulty progression,
+deduplication, reduced repetition, and targeted cooldown or post-training. A
+20% reduction in tokens required for a target evaluation score is more useful
+than most remaining low-level kernel opportunities.
+
+More radical options include adaptive BP steps, learned early exit, phase- or
+example-dependent H/L cycle counts, conditional recurrent blocks, and sparse
+or MoE sublayers. Reducing average BP work from five steps toward four would
+have a large arithmetic effect, but these options change training semantics
+and capability and belong in a separate model-research program.
+
+### Recommended order
+
+No new experiment was approved when this roadmap was recorded. If work
+resumes, prioritize:
+
+1. FP8 GEMMs with FP32 state and strict convergence controls.
+2. Use any FP8 memory gain to test larger local microbatches and lower GAS.
+3. Projection-spanning fused transformer operations.
+4. Static-shape bucketing and whole-step CUDA graphs.
+5. Intermediate recurrent-aware FSDP groups and scheduling.
+6. HSDP plus context parallelism for multi-node 8K--32K training.
+7. Adaptive recurrence as a separate quality-and-architecture study.
+
+The realistic architecture-preserving objective remains approximately
+1.8--2.5 seconds per optimizer step. Going materially below this range is
+unlikely to come from more isolated pointwise kernels; it likely requires FP8,
+larger fusion boundaries, or fewer tokens to the target quality.
