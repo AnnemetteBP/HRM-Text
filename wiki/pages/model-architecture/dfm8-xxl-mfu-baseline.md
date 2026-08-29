@@ -651,3 +651,13 @@ This experiment realizes the output-glue target from the post-promotion
 profile. The next optimization investigation should reprofile this default,
 then examine recurrence-aware FSDP wrapping; do not assume the remaining
 residual masks are the next largest wall-time opportunity.
+
+A first post-fusion Nsight attempt at
+`logs/profiling/dfm8_xxl_fa4_output_fused_20260829/` is **not** a steady-state
+profile. Its fixed 80-second delay expired during cold compile/restore and the
+trace contains only one partial backward. It is sufficient only to confirm
+that generic output `where` is absent and `_combine_seqused_outputs_kernel` is
+present. Do not use its family percentages for ranking. The next capture must
+start from observed optimizer progress or use a conservatively longer delay;
+an immediate retry was left unlaunched when an unrelated eight-GPU audit
+claimed the machine.
