@@ -4,7 +4,7 @@ title: DFM8 XXL Epoch 1 Resume
 description: Verified scheduler continuation from the latest complete ephemeral through the first DFM8 epoch.
 tags: [dfm8, xxl, training, evaluation, scheduler]
 status: stable
-last_updated: 2026-08-27
+last_updated: 2026-08-28
 confidence: high
 part_of: /pages/dfm8-plan.md
 ---
@@ -170,3 +170,32 @@ least roughly 80--160B tokens (20--40 tokens per XXL parameter), corresponding
 to about 305K--610K optimizer steps at the current GBS. This range is an
 engineering forecast, not a scaling-law guarantee; the custom recurrent depth,
 data changes, and aggressive constant LR can move the crossover.
+
+## Mimir resume from step 175000
+
+Update 2026-08-28: the authoritative checkpoint is the fully written
+`ephemeral_step_175000`, with eight DCP shards, checkpoint metadata, exact
+batch state, and `carry_policy=none`. The repository and scheduler artifacts
+were transferred from `/work/dfm/HRM-Text` to `/work/mimir/HRM-Text`. The
+existing plan remains:
+
+```text
+logs/scheduler/dfm8_XXL_1epoch_steps50k_100k_persistent_vllm_20260725
+```
+
+Its structured TSV/JSON path fields were migrated under the plan lock from the
+old repository root to the new root. The pre-migration backup is
+`plan.tsv.before_mimir_root_migration_20260828`. Job IDs, dependency state,
+attempts, and training commands were otherwise preserved.
+
+A direct TorchRun probe from step 175000 reached only step 175025 and was
+stopped after discovering that the transferred scheduler plan had become
+available. W&B rejected those points because the existing run already had
+history through step 175026, so the probe added no accepted training history
+and produced no checkpoint.
+
+The existing scheduler was then resumed with persistent vLLM. Its
+`campaign-train-200000` row loads `ephemeral_step_175000`, stops cleanly at
+step 200000, and retains the downstream 200K evaluation, 250K continuation and
+evaluation, and epoch-one completion graph. The Rich scheduler monitor runs in
+tmux window `hrm-0:eval-monitor`.

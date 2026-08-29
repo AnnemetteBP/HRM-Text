@@ -413,6 +413,109 @@ permanently unreachable by a failed export. It does not pass while an eval is
 running or has a runnable retry. Training/checkpoint failure remains fatal to
 the segment.
 
+## Multi-Node Coordinator And Workers
+
+Do not start one unrestricted legacy `run` process per node. Use one
+coordinator and one capability-limited worker per node. The coordinator is the
+only writer of plan state and the only process that runs merges, syncs,
+averages, reports, and cluster training actions. Workers own their node-local
+GPUs and persistent vLLM pools.
+
+Prepare an ordered host file with one SSH host per line. Every host must expose
+the same repository, environment, plan, data, export, and checkpoint paths.
+Start the coordinator on a private reachable address:
+
+```bash
+cd /work/dfm/HRM-Text
+PLAN=logs/scheduler/<PLAN_DIR>
+PATH="/home/ucloud/miniforge3/envs/hrm/bin:$PATH" \
+setsid /home/ucloud/miniforge3/envs/hrm/bin/python -m eval_scheduler cluster coordinator \
+  --plan-dir "$PLAN" \
+  --bind-host <CONTROL_NODE_PRIVATE_IP> \
+  --port 8765 \
+  --expected-nodes 4 \
+  > "$PLAN/coordinator.log" 2>&1 &
+```
+
+The coordinator creates `cluster.token` with mode `0600`. On shared storage,
+launch all workers from the control node:
+
+```bash
+python -m eval_scheduler cluster launch-workers \
+  --hostfile config/multinode/hosts.txt \
+  --coordinator-url http://<CONTROL_NODE_PRIVATE_IP>:8765 \
+  --token-file "$PLAN/cluster.token" \
+  --plan-dir "$PLAN" \
+  --workdir /work/dfm/HRM-Text \
+  --python-env /home/ucloud/miniforge3/envs/hrm \
+  --gpus 0,1,2,3,4,5,6,7 \
+  --persistent-vllm
+```
+
+The SSH launcher records exact worker process-group IDs under
+`$PLAN/cluster-workers/launch.json`. Worker logs and manifests are grouped by
+node under the same directory. Stop them gracefully, or kill only those exact
+recorded process groups:
+
+```bash
+python -m eval_scheduler cluster stop --plan-dir "$PLAN"
+python -m eval_scheduler cluster stop-workers --plan-dir "$PLAN"
+
+# Emergency path
+python -m eval_scheduler cluster abort --plan-dir "$PLAN"
+```
+
+Cluster status and the aggregate Rich monitor consume the coordinator's atomic
+heartbeat snapshot; they do not run remote `nvidia-smi` on every refresh:
+
+```bash
+python -m eval_scheduler cluster status --plan-dir "$PLAN"
+python -m eval_scheduler cluster monitor \
+  --plan-dir "$PLAN" --rich --interval 30
+python -m eval_scheduler cluster workers --plan-dir "$PLAN"
+```
+
+Temporarily drain or restore one worker without stopping the cluster:
+
+```bash
+python -m eval_scheduler cluster worker-drain \
+  --coordinator-url http://<CONTROL_NODE_PRIVATE_IP>:8765 \
+  --token-file "$PLAN/cluster.token" \
+  --node-id node-02 --drain
+```
+
+Plan rows remain backward compatible. New optional TSV fields are
+`execution_scope`, `required_capability`, `gpu_count`, and `node_selector`;
+missing values are safely inferred from `action`. Capabilities cannot broaden
+an action: evaluation workers cannot claim training or W&B-finalization rows.
+
+For a `train_until_step` row, retain the ordinary TorchRun command and add
+these values to `metadata_json`:
+
+```json
+{
+  "multinode_hostfile": "config/multinode/hosts.txt",
+  "multinode_python_env": "/home/ucloud/miniforge3/envs/hrm",
+  "multinode_nccl_interface": "ib0",
+  "multinode_nproc_per_node": 8,
+  "multinode_master_port": 29500,
+  "multinode_required_paths": ["/work/dfm/HRM-Text/data", "/work/dfm/HRM-Text/checkpoints"]
+}
+```
+
+The coordinator wraps the TorchRun application in
+`scripts/launch_multinode_torchrun.py`, drains eval assignments, obtains
+worker teardown acknowledgements, verifies current workers, then launches the
+fixed-membership training job. Compatible vLLM servers remain node-local and
+are reused using the full checkpoint/EMA/server-configuration key.
+
+Lease tokens include worker boot identity. Late completions from fenced
+attempts cannot finalize retried rows. The atomic cluster snapshot allows a
+restarted coordinator to reconcile live eval leases; training process
+manifests permit adoption of a still-running launcher. This code is locally
+tested, but real two-node SSH/NCCL and failure-injection validation remains a
+required production gate.
+
 ## Notes
 
 - `plan.tsv` is human-editable.  Edits only affect pending jobs.

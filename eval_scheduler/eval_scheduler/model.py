@@ -36,6 +36,42 @@ class Action(StrEnum):
     REPORT = "report"
 
 
+class ExecutionScope(StrEnum):
+    CONTROL = "control"
+    GPU = "gpu"
+    NODE = "node"
+    CLUSTER = "cluster"
+
+
+class Capability(StrEnum):
+    CONTROL = "control"
+    EVAL = "eval"
+    EXPORT = "export"
+    TEARDOWN = "teardown"
+    TRAIN = "train"
+
+
+ACTION_PROFILES: dict[Action, tuple[ExecutionScope, Capability, int]] = {
+    Action.TRAIN_UNTIL_STEP: (ExecutionScope.CLUSTER, Capability.TRAIN, 0),
+    Action.TERMINAL_BARRIER: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
+    Action.TEARDOWN_EVAL: (ExecutionScope.NODE, Capability.TEARDOWN, 0),
+    Action.WAIT_CHECKPOINT: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
+    Action.EXPORT_HF: (ExecutionScope.GPU, Capability.EXPORT, 1),
+    Action.EVAL_STANDARD: (ExecutionScope.GPU, Capability.EVAL, 1),
+    Action.EVAL_DFM: (ExecutionScope.GPU, Capability.EVAL, 1),
+    Action.EVAL_DFM_IFEVAL: (ExecutionScope.GPU, Capability.EVAL, 1),
+    Action.EVAL_EUROEVAL: (ExecutionScope.GPU, Capability.EVAL, 1),
+    Action.EVAL_EUROEVAL_BATCHED_IFEVAL: (ExecutionScope.GPU, Capability.EVAL, 1),
+    Action.MERGE_STANDARD: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
+    Action.MERGE_DFM: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
+    Action.MERGE_IFEVAL: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
+    Action.AVERAGE: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
+    Action.AVERAGE_LONG_CONTEXT: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
+    Action.RELOG_PROJECT_AVERAGES: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
+    Action.REPORT: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
+}
+
+
 FIELDNAMES = [
     "job_id",
     "action",
@@ -48,6 +84,10 @@ FIELDNAMES = [
     "initial_batch",
     "max_retries",
     "gpu_policy",
+    "execution_scope",
+    "required_capability",
+    "gpu_count",
+    "node_selector",
     "status",
     "attempt",
     "log_dir",
@@ -68,6 +108,10 @@ class Job:
     initial_batch: int | None = None
     max_retries: int = 3
     gpu_policy: str = "any"
+    execution_scope: str = ""
+    required_capability: str = ""
+    gpu_count: int | None = None
+    node_selector: str = ""
     status: JobStatus = JobStatus.PENDING
     attempt: int = 0
     log_dir: str = ""
@@ -88,6 +132,33 @@ class Job:
     @property
     def requires_all_gpus(self) -> bool:
         return self.action == Action.TRAIN_UNTIL_STEP or self.gpu_policy == "all"
+
+    @property
+    def resolved_execution_scope(self) -> ExecutionScope:
+        if self.execution_scope:
+            return ExecutionScope(self.execution_scope)
+        return ACTION_PROFILES[self.action][0]
+
+    @property
+    def resolved_capability(self) -> Capability:
+        if self.required_capability:
+            capability = Capability(self.required_capability)
+            expected = ACTION_PROFILES[self.action][1]
+            if capability != expected:
+                raise ValueError(
+                    f"{self.job_id}: capability {capability.value!r} cannot override "
+                    f"the {self.action.value!r} action profile {expected.value!r}"
+                )
+            return capability
+        return ACTION_PROFILES[self.action][1]
+
+    @property
+    def resolved_gpu_count(self) -> int:
+        if self.gpu_count is not None:
+            if self.gpu_count < 0:
+                raise ValueError(f"{self.job_id}: gpu_count must be non-negative")
+            return self.gpu_count
+        return ACTION_PROFILES[self.action][2]
 
     def retry_batch(self) -> int | None:
         if self.initial_batch is None:
@@ -115,6 +186,10 @@ class Job:
             "initial_batch": "" if self.initial_batch is None else str(self.initial_batch),
             "max_retries": str(self.max_retries),
             "gpu_policy": self.gpu_policy,
+            "execution_scope": self.execution_scope,
+            "required_capability": self.required_capability,
+            "gpu_count": "" if self.gpu_count is None else str(self.gpu_count),
+            "node_selector": self.node_selector,
             "status": self.status.value,
             "attempt": str(self.attempt),
             "log_dir": self.log_dir,
@@ -136,11 +211,22 @@ class Job:
             initial_batch=int(row["initial_batch"]) if row.get("initial_batch") else None,
             max_retries=int(row.get("max_retries") or 3),
             gpu_policy=row.get("gpu_policy") or "any",
+            execution_scope=row.get("execution_scope") or "",
+            required_capability=row.get("required_capability") or "",
+            gpu_count=int(row["gpu_count"]) if row.get("gpu_count") else None,
+            node_selector=row.get("node_selector") or "",
             status=JobStatus(row.get("status") or JobStatus.PENDING.value),
             attempt=int(row.get("attempt") or 0),
             log_dir=row.get("log_dir") or "",
             metadata=json.loads(metadata),
         )
+
+    def to_wire(self) -> dict[str, Any]:
+        return self.to_row()
+
+    @classmethod
+    def from_wire(cls, value: dict[str, Any]) -> Job:
+        return cls.from_row({key: str(item) for key, item in value.items()})
 
 
 def read_plan(path: Path) -> list[Job]:

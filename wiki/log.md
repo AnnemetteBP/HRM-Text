@@ -1,7 +1,52 @@
 # Knowledge Bundle Update Log
 
+## 2026-08-28
+
+* **DFM8 XXL one-node return at step 178000**: Restarted the existing
+  coordinator/worker campaign on a fresh eight-B200 node and resumed W&B run
+  `DFM5/40j5y877` from the protected regular checkpoint. The first attempt
+  correctly failed before training because the new node lacked W&B
+  credentials; restored its netrc, reset only the failed training row, and
+  verified forward progress beyond step 178020 under the original GBS
+  262144/GAS 4/full-FSDP configuration.
+* **Two-node FSDP/HSDP validation**: Passed launcher preflight, 16-rank NCCL
+  all-reduce, changed-world DFM8 XXL `step_178000` resume, and ten optimizer
+  steps on two eight-B200 nodes without W&B or checkpoint tensor writes.
+  Full-world FSDP measured 13.424 s/step median; degree-8 HSDP measured 4.227
+  s/step versus the roughly 3.6 s one-node baseline. NCCL fell back to
+  `NET/Socket` because both containers lacked `/dev/infiniband` despite active
+  ConnectX-7 links, so RDMA enablement remains the production blocker.
+* **One-node multi-node scheduler deployment**: Migrated the active DFM8 XXL
+  campaign from the legacy runner to one coordinator plus one local eight-GPU
+  worker, resuming from `ephemeral_step_176000`. Fixed cluster handoff so
+  independent future `wait_checkpoint` jobs coexist with training instead of
+  holding the coordinator in `draining`; added a regression test.
+* **Cluster training monitor attribution**: Fixed plain and Rich aggregate
+  monitors to attribute coordinator-owned cluster training to every worker GPU
+  instead of labeling heavily utilized training devices as idle.
+* **Protected DFM8 XXL step 178000**: Stopped the one-node multi-node campaign
+  after verifying the complete ephemeral checkpoint, promoted its shards by
+  hard link to regular `step_178000`, validated the regular sidecar, and left
+  the pending training row prepared to resume from that protected tag.
+* **Multi-node scheduler implementation**: Implemented the coordinator-worker
+  scheduler, node-qualified fenced leases, authenticated heartbeats, SSH
+  worker lifecycle, node-local persistent vLLM reuse, cluster training drain
+  and handoff, restart reconciliation, and aggregate Rich/plain monitoring.
+  The 47 local scheduler tests pass; real two-node validation remains gated on
+  an allocation.
+* **Multi-node evaluation scheduler plan**: Chose a single authoritative
+  coordinator with capability-limited per-node workers, node-qualified GPU
+  leases, fencing tokens, local persistent-vLLM pools, cluster drain/training
+  handoff, and heartbeat-backed aggregate monitoring. Defined phased delivery
+  and two-node through eight-node acceptance gates while preserving the
+  existing single-node scheduler path.
+
 ## 2026-08-27
 
+* **DFM8 XXL MFU baseline**: Calculated a recurrence-aware 25--29% estimated
+  MFU at 3.56 seconds per step on eight B200s, documented the 23.5--32.4%
+  attention-density bounds, and separated this from the misleading 9.8%
+  conventional `6ND` estimate.
 * **DFM8 XXL to DFM10 multi-node transition**: Recorded the planned clean
   epoch-boundary dataset change, four/eight-node GBS geometry, HSDP topology,
   DFM10 readiness blockers, validation gates, and checkpoint-cadence concerns.

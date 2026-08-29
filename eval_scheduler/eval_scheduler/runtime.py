@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 import re
 import shlex
@@ -90,28 +90,26 @@ class VLLMServerPool:
             return self._gpu_locks.setdefault(gpu, Lock())
 
     def _key(self, job: Job, gpu: int) -> VLLMServerKey:
-        cuda_home = str(job.metadata.get("cuda_home") or "")
-        if not cuda_home and Path("/usr/local/cuda").is_dir():
-            cuda_home = "/usr/local/cuda"
-        model_path = vllm_model_path(job)
-        local_model_path = Path(model_path)
-        if local_model_path.exists():
-            model_path = str(local_model_path.resolve())
-        return VLLMServerKey(
-            gpu=gpu,
-            model_path=model_path,
-            checkpoint_tag=str(job.metadata.get("ckpt_tag", "")),
-            use_ema=not bool(job.metadata.get("no_ema")),
-            python=str(job.metadata.get("vllm_python") or python_bin(job)),
-            host=str(job.metadata["host"]),
-            dtype=str(job.metadata.get("vllm_dtype", "bfloat16")),
-            max_model_len=int(job.metadata.get("vllm_max_model_len", 4096)),
-            gpu_memory_utilization=float(job.metadata.get("vllm_gpu_memory_utilization", 0.9)),
-            attention_backend=str(job.metadata.get("vllm_attention_backend", "")),
-            trust_remote_code=bool(job.metadata.get("vllm_trust_remote_code")),
-            extra_args=vllm_server_extra_args(job),
-            cuda_home=cuda_home,
-        )
+        return vllm_server_key(job, gpu)
+
+    def compatibility_key(self, job: Job, gpu: int) -> str:
+        return self._key(job, gpu).digest
+
+    def snapshot(self) -> dict[int, dict[str, object]]:
+        with self._registry_lock:
+            leases = list(self._leases.items())
+        return {
+            gpu: {
+                "key": lease.key.digest,
+                "gpu_memory_utilization": lease.key.gpu_memory_utilization,
+                "pid": lease.process.pid,
+                "healthy": self._healthy(lease),
+                "reuse_count": lease.reuse_count,
+                "model_name": lease.model_name,
+            }
+            for gpu, lease in leases
+            if lease.process.poll() is None
+        }
 
     @staticmethod
     def _healthy(lease: VLLMServerLease) -> bool:
@@ -377,6 +375,31 @@ def vllm_server_extra_args(job: Job) -> str:
     return shlex.join(parts)
 
 
+def vllm_server_key(job: Job, gpu: int) -> VLLMServerKey:
+    cuda_home = str(job.metadata.get("cuda_home") or "")
+    if not cuda_home and Path("/usr/local/cuda").is_dir():
+        cuda_home = "/usr/local/cuda"
+    model_path = vllm_model_path(job)
+    local_model_path = Path(model_path)
+    if local_model_path.exists():
+        model_path = str(local_model_path.resolve())
+    return VLLMServerKey(
+        gpu=gpu,
+        model_path=model_path,
+        checkpoint_tag=str(job.metadata.get("ckpt_tag", "")),
+        use_ema=not bool(job.metadata.get("no_ema")),
+        python=str(job.metadata.get("vllm_python") or python_bin(job)),
+        host=str(job.metadata["host"]),
+        dtype=str(job.metadata.get("vllm_dtype", "bfloat16")),
+        max_model_len=int(job.metadata.get("vllm_max_model_len", 4096)),
+        gpu_memory_utilization=float(job.metadata.get("vllm_gpu_memory_utilization", 0.9)),
+        attention_backend=str(job.metadata.get("vllm_attention_backend", "")),
+        trust_remote_code=bool(job.metadata.get("vllm_trust_remote_code")),
+        extra_args=vllm_server_extra_args(job),
+        cuda_home=cuda_home,
+    )
+
+
 def vllm_chat_template(job: Job) -> str | None:
     parts = shlex.split(vllm_server_extra_args(job))
     try:
@@ -578,14 +601,52 @@ def run_training_until_step(job: Job, gpus: tuple[int, ...]) -> int:
         log.write(f"\n{now()}\tcommand\t{shlex.join(argv)}\n")
         log.write(f"{now()}\tgpus\t{env['CUDA_VISIBLE_DEVICES']}\n")
         log.flush()
-        status = subprocess.Popen(
+        process = subprocess.Popen(
             argv,
             cwd=cwd,
             env=env,
             stdout=log,
             stderr=subprocess.STDOUT,
             start_new_session=True,
-        ).wait()
+        )
+        process_pid = process.pid if isinstance(process.pid, int) else -1
+        process_state_path = Path(job.log_dir) / f"train_until_step_{target_step}.process.json"
+        process_state_tmp = process_state_path.with_suffix(".json.tmp")
+        process_state_tmp.write_text(
+            json.dumps(
+                {
+                    "pid": process_pid,
+                    "process_group": process_pid,
+                    "started_at": now(),
+                    "target_step": target_step,
+                    "command": argv,
+                    "state": "running",
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        process_state_tmp.replace(process_state_path)
+        status = process.wait()
+        process_state_tmp.write_text(
+            json.dumps(
+                {
+                    "pid": process_pid,
+                    "process_group": process_pid,
+                    "started_at": json.loads(process_state_path.read_text())["started_at"],
+                    "finished_at": now(),
+                    "target_step": target_step,
+                    "command": argv,
+                    "state": "complete",
+                    "returncode": status,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        process_state_tmp.replace(process_state_path)
         if status != 0:
             return status
 
