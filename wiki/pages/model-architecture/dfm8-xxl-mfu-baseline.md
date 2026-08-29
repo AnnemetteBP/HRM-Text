@@ -610,3 +610,44 @@ well-isolated low-risk target. The next experiment should fuse prefix/causal
 output selection and storage-padding zeroing at one custom-autograd boundary;
 its summed-kernel ceiling is about 3%, before overlap. Reprofile before moving
 to recurrence-aware FSDP wrapping.
+
+#### Fused FA4 output selection and padding
+
+On 2026-08-29, the seqused FA4 path gained a custom-autograd Triton boundary
+that selects the defined prefix or causal output and zeros storage padding in
+one forward launch. Its backward launch routes each output gradient to exactly
+one FA4 pass and writes zero for the other pass and padding. Masked loads are
+part of the forward kernel, so undefined rows left by FA4 `seqused` are never
+read. The previous `torch.where` plus `masked_fill` implementation remains
+available through `prefixlm_fa4_output_combine_impl=eager`; the consistent
+default is `triton`.
+
+CUDA tests inject NaNs into every unused branch and verify bit-identical eager
+and Triton outputs and gradients. A same-process test around the two real FA4
+launches also found bit-identical output, `dq`, `dk`, and `dv` for repeated
+eager and eager-versus-Triton calls. A production XXL compile smoke resumed
+the exact row cursor at step 175000, completed five optimizer steps under FSDP
+and `torch.compile`, and used 154--157 GiB per GPU.
+
+The isolated 100-step A/B artifacts are under
+`/tmp/hrm_fa4_output_combine_ab_1787978087`. Both arms resumed the same
+checkpoint and row cursor, held all eight GPU locks for the full experiment,
+and differed only in `prefixlm_fa4_output_combine_impl`.
+
+| Output combine | Median step | Mean step | Final loss |
+|---|---:|---:|---:|
+| eager | 2.7415 s | 2.8644 s | 1.14599 |
+| Triton | 2.6316 s | 2.7672 s | 1.16200 |
+| eager repeat | 2.7545 s | 2.8762 s | 1.12975 |
+
+Triton reduced median step time by **4.01%** and mean step time by **3.39%**
+relative to the first eager arm. The eager repeat changed median and mean by
+only 0.47% and 0.41%, respectively. Final-loss spread is not attributable to
+the fused operator: eager-repeat minus eager was `-0.01624`, while Triton
+minus eager was `+0.01602`, and the real-FA4 operation test is bit-exact.
+This matches the already documented process-level training nondeterminism.
+
+This experiment realizes the output-glue target from the post-promotion
+profile. The next optimization investigation should reprofile this default,
+then examine recurrence-aware FSDP wrapping; do not assume the remaining
+residual masks are the next largest wall-time opportunity.

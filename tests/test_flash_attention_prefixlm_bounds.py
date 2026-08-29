@@ -18,8 +18,10 @@ from models.transformer import TransformerConfig
 def test_fa4_optimized_path_is_the_consistent_default() -> None:
     assert TransformerConfig.model_fields["prefixlm_fa4_impl"].default == "seqused"
     assert TransformerConfig.model_fields["prefixlm_fa4_grad_mask_impl"].default == "triton"
+    assert TransformerConfig.model_fields["prefixlm_fa4_output_combine_impl"].default == "triton"
     assert signature(Attention).parameters["prefixlm_fa4_impl"].default == "seqused"
     assert signature(Attention).parameters["prefixlm_fa4_grad_mask_impl"].default == "triton"
+    assert signature(Attention).parameters["prefixlm_fa4_output_combine_impl"].default == "triton"
 
     wrappers = (
         import_module("models.flash_attention_prefixlm_dispatch").flash_attn_varlen_prefixlm,
@@ -29,12 +31,14 @@ def test_fa4_optimized_path_is_the_consistent_default() -> None:
         parameters = signature(wrapper).parameters
         assert parameters["fa4_impl"].default == "seqused"
         assert parameters["fa4_grad_mask_impl"].default == "triton"
+        assert parameters["fa4_output_combine_impl"].default == "triton"
 
     fa4_parameters = signature(
         import_module("models.flash_attention_prefixlm_fa4").flash_attn_varlen_prefixlm
     ).parameters
     assert fa4_parameters["impl"].default == "seqused"
     assert fa4_parameters["grad_mask_impl"].default == "triton"
+    assert fa4_parameters["output_combine_impl"].default == "triton"
 
 
 def packed_inputs() -> tuple[torch.Tensor, ...]:
@@ -266,3 +270,61 @@ def test_triton_seqused_gradient_mask_matches_eager_on_cuda() -> None:
     )
 
     assert all(torch.equal(left, right) for left, right in zip(actual, expected))
+
+
+@pytest.mark.parametrize("impl", ["eager", "triton"])
+def test_seqused_output_combine_routes_forward_and_backward(impl: str) -> None:
+    module = import_module("models.flash_attention_prefixlm_fa4")
+    prefix = torch.randn(5, 2, 3, requires_grad=True)
+    causal = torch.randn(5, 2, 3, requires_grad=True)
+    prefix_mask = torch.tensor([True, True, False, False, False])
+    causal_mask = torch.tensor([False, False, True, True, False])
+
+    output = module._combine_seqused_outputs(
+        prefix, causal, prefix_mask, causal_mask, impl
+    )
+    output.sum().backward()
+
+    assert torch.equal(output[:2], prefix[:2])
+    assert torch.equal(output[2:4], causal[2:4])
+    assert torch.equal(output[4], torch.zeros_like(output[4]))
+    assert torch.equal(
+        prefix.grad, prefix_mask[:, None, None].expand_as(prefix).to(prefix.dtype)
+    )
+    assert torch.equal(
+        causal.grad, causal_mask[:, None, None].expand_as(causal).to(causal.dtype)
+    )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA and Triton")
+def test_triton_seqused_output_combine_matches_eager_on_cuda() -> None:
+    module = import_module("models.flash_attention_prefixlm_fa4")
+    prefix_mask = torch.tensor(
+        [True, True, False, False, False, True, False], device="cuda"
+    )
+    causal_mask = torch.tensor(
+        [False, False, True, True, False, False, True], device="cuda"
+    )
+    prefix = torch.randn(7, 4, 8, device="cuda", dtype=torch.bfloat16)
+    causal = torch.randn_like(prefix)
+    prefix[~prefix_mask] = torch.nan
+    causal[~causal_mask] = torch.nan
+
+    expected_prefix = prefix.clone().requires_grad_()
+    expected_causal = causal.clone().requires_grad_()
+    actual_prefix = prefix.clone().requires_grad_()
+    actual_causal = causal.clone().requires_grad_()
+    grad = torch.randn_like(prefix)
+
+    expected = module._combine_seqused_outputs(
+        expected_prefix, expected_causal, prefix_mask, causal_mask, "eager"
+    )
+    actual = module._combine_seqused_outputs(
+        actual_prefix, actual_causal, prefix_mask, causal_mask, "triton"
+    )
+    expected.backward(grad)
+    actual.backward(grad)
+
+    assert torch.equal(actual, expected)
+    assert torch.equal(actual_prefix.grad, expected_prefix.grad)
+    assert torch.equal(actual_causal.grad, expected_causal.grad)

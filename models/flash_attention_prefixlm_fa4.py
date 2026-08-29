@@ -198,6 +198,158 @@ def _mask_undefined_seqused_grads(
     raise ValueError(f"Unsupported FA4 seqused gradient-mask implementation: {impl}")
 
 
+@triton.jit
+def _combine_seqused_outputs_kernel(
+    prefix_ptr,
+    causal_ptr,
+    prefix_mask_ptr,
+    causal_mask_ptr,
+    out_ptr,
+    numel: tl.constexpr,
+    row_numel: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    in_bounds = offsets < numel
+    rows = offsets // row_numel
+    is_prefix = tl.load(prefix_mask_ptr + rows, mask=in_bounds, other=False)
+    is_causal = tl.load(causal_mask_ptr + rows, mask=in_bounds, other=False)
+
+    # FA4 leaves rows excluded by seqused undefined. Mask the loads themselves,
+    # rather than selecting after loading, so unused NaNs cannot enter output.
+    prefix = tl.load(prefix_ptr + offsets, mask=in_bounds & is_prefix, other=0.0)
+    causal = tl.load(causal_ptr + offsets, mask=in_bounds & is_causal, other=0.0)
+    tl.store(out_ptr + offsets, prefix + causal, mask=in_bounds)
+
+
+@triton.jit
+def _route_seqused_output_grad_kernel(
+    grad_ptr,
+    prefix_mask_ptr,
+    causal_mask_ptr,
+    prefix_grad_ptr,
+    causal_grad_ptr,
+    numel: tl.constexpr,
+    row_numel: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    in_bounds = offsets < numel
+    rows = offsets // row_numel
+    is_prefix = tl.load(prefix_mask_ptr + rows, mask=in_bounds, other=False)
+    is_causal = tl.load(causal_mask_ptr + rows, mask=in_bounds, other=False)
+    grad = tl.load(grad_ptr + offsets, mask=in_bounds, other=0.0)
+    tl.store(prefix_grad_ptr + offsets, grad, mask=in_bounds & is_prefix)
+    tl.store(prefix_grad_ptr + offsets, 0.0, mask=in_bounds & ~is_prefix)
+    tl.store(causal_grad_ptr + offsets, grad, mask=in_bounds & is_causal)
+    tl.store(causal_grad_ptr + offsets, 0.0, mask=in_bounds & ~is_causal)
+
+
+def _combine_seqused_outputs_triton(
+    prefix: Tensor,
+    causal: Tensor,
+    prefix_mask: Tensor,
+    causal_mask: Tensor,
+) -> Tensor:
+    if not (prefix.is_cuda and causal.is_cuda):
+        valid_mask = prefix_mask | causal_mask
+        return torch.where(prefix_mask[:, None, None], prefix, causal).masked_fill(
+            ~valid_mask[:, None, None], 0
+        )
+    if not (prefix.is_contiguous() and causal.is_contiguous()):
+        valid_mask = prefix_mask | causal_mask
+        return torch.where(prefix_mask[:, None, None], prefix, causal).masked_fill(
+            ~valid_mask[:, None, None], 0
+        )
+
+    out = torch.empty_like(prefix)
+    block_size = 1024
+    _combine_seqused_outputs_kernel[(triton.cdiv(prefix.numel(), block_size),)](
+        prefix,
+        causal,
+        prefix_mask,
+        causal_mask,
+        out,
+        prefix.numel(),
+        prefix.shape[1] * prefix.shape[2],
+        BLOCK_SIZE=block_size,
+        num_warps=8,
+    )
+    return out
+
+
+def _route_seqused_output_grad_triton(
+    grad: Tensor,
+    prefix_mask: Tensor,
+    causal_mask: Tensor,
+) -> tuple[Tensor, Tensor]:
+    if not grad.is_cuda or not grad.is_contiguous():
+        return (
+            grad.masked_fill(~prefix_mask[:, None, None], 0),
+            grad.masked_fill(~causal_mask[:, None, None], 0),
+        )
+
+    prefix_grad = torch.empty_like(grad)
+    causal_grad = torch.empty_like(grad)
+    block_size = 1024
+    _route_seqused_output_grad_kernel[(triton.cdiv(grad.numel(), block_size),)](
+        grad,
+        prefix_mask,
+        causal_mask,
+        prefix_grad,
+        causal_grad,
+        grad.numel(),
+        grad.shape[1] * grad.shape[2],
+        BLOCK_SIZE=block_size,
+        num_warps=8,
+    )
+    return prefix_grad, causal_grad
+
+
+class _CombineSequsedOutputsTriton(torch.autograd.Function):
+    """Select FA4 outputs and zero padding in one forward/backward launch."""
+
+    @staticmethod
+    def forward(
+        ctx,
+        prefix: Tensor,
+        causal: Tensor,
+        prefix_mask: Tensor,
+        causal_mask: Tensor,
+    ) -> Tensor:
+        ctx.save_for_backward(prefix_mask, causal_mask)
+        return _combine_seqused_outputs_triton(
+            prefix, causal, prefix_mask, causal_mask
+        )
+
+    @staticmethod
+    def backward(ctx, grad: Tensor) -> tuple[Tensor, Tensor, None, None]:
+        prefix_mask, causal_mask = ctx.saved_tensors
+        prefix_grad, causal_grad = _route_seqused_output_grad_triton(
+            grad, prefix_mask, causal_mask
+        )
+        return prefix_grad, causal_grad, None, None
+
+
+def _combine_seqused_outputs(
+    prefix: Tensor,
+    causal: Tensor,
+    prefix_mask: Tensor,
+    causal_mask: Tensor,
+    impl: str,
+) -> Tensor:
+    if impl == "eager":
+        valid_mask = prefix_mask | causal_mask
+        return torch.where(prefix_mask[:, None, None], prefix, causal).masked_fill(
+            ~valid_mask[:, None, None], 0
+        )
+    if impl == "triton":
+        return _CombineSequsedOutputsTriton.apply(
+            prefix, causal, prefix_mask, causal_mask
+        )
+    raise ValueError(f"Unsupported FA4 seqused output-combine implementation: {impl}")
+
+
 def _flash_attn_varlen_prefixlm_seqused(
     q: Tensor,
     k: Tensor,
@@ -214,6 +366,7 @@ def _flash_attn_varlen_prefixlm_seqused(
     max_seqlen_causal: Tensor,
     max_seqlen_all: Tensor,
     grad_mask_impl: str,
+    output_combine_impl: str,
 ) -> Tensor:
     prefix_q, prefix_k, prefix_v = _mask_undefined_seqused_grads(
         q, k, v, prefix_mask, prefix_mask, grad_mask_impl
@@ -234,9 +387,8 @@ def _flash_attn_varlen_prefixlm_seqused(
     if int(max_seqlen_causal.item()) == 0:
         return out_prefix.masked_fill(~prefix_mask[:, None, None], 0)
 
-    valid_mask = prefix_mask | causal_mask
     causal_q, causal_k, causal_v = _mask_undefined_seqused_grads(
-        q, k, v, causal_mask, valid_mask, grad_mask_impl
+        q, k, v, causal_mask, prefix_mask | causal_mask, grad_mask_impl
     )
     out_causal = _fa4_varlen(
         causal_q,
@@ -249,8 +401,9 @@ def _flash_attn_varlen_prefixlm_seqused(
         max_seqlen_k=int(max_seqlen_all.item()),
         causal=True,
     )
-    out = torch.where(prefix_mask[:, None, None], out_prefix, out_causal)
-    return out.masked_fill(~valid_mask[:, None, None], 0)
+    return _combine_seqused_outputs(
+        out_prefix, out_causal, prefix_mask, causal_mask, output_combine_impl
+    )
 
 
 def flash_attn_varlen_prefixlm(
@@ -278,6 +431,7 @@ def flash_attn_varlen_prefixlm(
     causal_mask: Optional[Tensor] = None,
     impl: str = "seqused",
     grad_mask_impl: str = "triton",
+    output_combine_impl: str = "triton",
 ) -> Tensor:
     if impl not in ("gather", "seqused"):
         raise ValueError(f"Unsupported FA4 PrefixLM implementation: {impl}")
@@ -325,6 +479,7 @@ def flash_attn_varlen_prefixlm(
             max_seqlen_causal=max_seqlen_causal,
             max_seqlen_all=max_seqlen_all,
             grad_mask_impl=grad_mask_impl,
+            output_combine_impl=output_combine_impl,
         )
 
     routing_values = (

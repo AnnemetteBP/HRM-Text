@@ -302,7 +302,8 @@ def flash_attn_varlen_prefixlm(q: Tensor,
                                prefix_mask: Optional[Tensor] = None,
                                causal_mask: Optional[Tensor] = None,
                                fa4_impl: str = "seqused",
-                               fa4_grad_mask_impl: str = "triton"):
+                               fa4_grad_mask_impl: str = "triton",
+                               fa4_output_combine_impl: str = "triton"):
     if get_accelerator_type() != "sm90":
         from models.flash_attention_prefixlm_dispatch import flash_attn_varlen_prefixlm as backend_prefixlm
 
@@ -321,6 +322,7 @@ def flash_attn_varlen_prefixlm(q: Tensor,
             causal_mask=causal_mask,
             fa4_impl=fa4_impl,
             fa4_grad_mask_impl=fa4_grad_mask_impl,
+            fa4_output_combine_impl=fa4_output_combine_impl,
         )
     # Apply function
     return FlashAttnVarlenPrefixLM.apply(q, k, v, is_causal,

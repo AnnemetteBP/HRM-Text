@@ -1,5 +1,10 @@
 # Knowledge Bundle Update Log
 
+- 2026-08-29: Fused seqused FA4 prefix/causal output selection and padding
+  zeroing in a NaN-safe custom-autograd Triton boundary. Direct FA4 outputs
+  and gradients are bit-identical; a 100-step XXL A/B reduced median step time
+  by 4.01% and mean step time by 3.39%.
+
 - 2026-08-29: Completed a checkpoint-based 1,000-step eight-B200 comparison of
   `main` against FA4 `seqused+triton`. The optimized path reduced median step
   time by 16.75% and mean step time by 18.89%, while aligned mean loss and
