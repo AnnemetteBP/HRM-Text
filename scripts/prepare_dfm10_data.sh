@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-TOKENIZER_PATH="${TOKENIZER_PATH:-/work/dfm/brainsurgery/models/gemma4_31b/tokenizer.json}"
+TOKENIZER_PATH="${TOKENIZER_PATH:-../brainsurgery/models/gemma4_31b/tokenizer.json}"
 CHAT_TEMPLATE="${CHAT_TEMPLATE:-data_io/chat_templates/gemma4_native_chat.jinja}"
 TOKENIZER_WORKERS="${TOKENIZER_WORKERS:-16}"
 FOLKETING_ARCHIVE="${FOLKETING_ARCHIVE:-data/downloads/datasets/folketingets_dokumenter_14004/14004.zip}"

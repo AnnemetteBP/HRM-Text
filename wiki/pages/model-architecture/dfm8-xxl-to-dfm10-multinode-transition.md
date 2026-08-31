@@ -4,7 +4,7 @@ title: DFM8 XXL to DFM10 Multi-Node Transition
 description: Planned epoch-boundary transition from the one-node DFM8 XXL run to a four- or eight-node DFM10 continuation.
 tags: [dfm8, dfm10, xxl, multi-node, hsdp, training]
 status: draft
-last_updated: 2026-08-27
+last_updated: 2026-08-28
 confidence: high
 ---
 # DFM8 XXL to DFM10 Multi-Node Transition
@@ -46,12 +46,18 @@ known high-impact `Filter`/`Repair` findings such as DBC prompt-language and
 GovReport grounding defects remain unresolved. Finalize, rebuild, sample, and
 audit DFM10 before constructing the production command.
 
-The SSH launcher and HSDP implementation are locally tested but not yet
-multi-node validated. Before the transition:
+**Superseded on 2026-08-28:** the launcher and HSDP implementation are now
+validated for a two-node, 16-rank checkpoint resume and short training run.
+HSDP with shard degree 8 achieved 4.227 seconds per step versus 13.424 seconds
+for full-world FSDP, but both used NCCL sockets because `/dev/infiniband` was
+missing. This validates correctness, not production scaling. Before the
+transition:
 
-1. Pass SSH/software/path preflight and NCCL all-reduce on two nodes.
+1. Require an allocation where NCCL selects its RDMA transport, then repeat
+   the SSH/software/path preflight and NCCL all-reduce bandwidth gate.
 2. Load a copy of the DFM8 epoch checkpoint on 16 ranks and save a disposable
-   HSDP checkpoint without W&B logging.
+   HSDP checkpoint without W&B logging. Loading and stepping from an in-epoch
+   checkpoint is verified; the changed-topology save still needs validation.
 3. Verify optimizer, EMA, global step, no-carry policy, and DCP completeness.
 4. Repeat on four nodes, including a forced agent failure and exact coordinated
    teardown.

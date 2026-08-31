@@ -8,13 +8,21 @@ tags:
 - evaluation
 - runtime
 status: stable
-last_updated: '2026-08-26'
+last_updated: '2026-08-29'
 confidence: high
 collection_type: Operational Journal
 ---
 # Current State
 
 The detailed sections of this collection are maintained as separate OKF concepts.
+
+## 2026-08-29 DFM8 XXL 200K Eval Recovery
+
+[Open the dedicated concept](current-state/2026-08-29-dfm8-xxl-200k-eval-recovery.md).
+
+## 2026-08-29 Mimir HF Export Tokenizer Path
+
+[Open the dedicated concept](current-state/2026-08-29-mimir-hf-export-tokenizer-path.md).
 
 ## 2026-08-26 Eval Monitor Live Progress Sources
 

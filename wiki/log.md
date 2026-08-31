@@ -420,6 +420,45 @@
   complete-report GovReport recovery to a future 8K+ DFM10 variant, and started
   additive 31B-generation/E4B-audit recovery for WikiCatSum without weakening
   its existing strict corpus.
+## 2026-08-31
+
+- Replaced machine-specific DFM7/8/10 tokenizer metadata defaults with
+  repository-relative paths, fixed HF conversion to propagate the tokenizer
+  override through checkpoint loading, and recovered the DFM8 XXL 250K export
+  and evaluation campaign before automatic resume from step 252500.
+
+## 2026-08-30
+
+- Added a reusable 30-minute W&B training-stability watcher and launched it
+  for the resumed DFM8 XXL run, with append-only JSONL snapshots and a visible
+  tmux window.
+
+- Added null-default skip-before-moments protection with distributed consensus,
+  exact optimizer/EMA preservation, immediate metrics, and clean checkpointed
+  exit after a configurable consecutive-skip limit. Enabled it only for the
+  pending post-250K DFM8 XXL segment without interrupting active training.
+
+- Ruled out the suspected FSDP2 clipping-scale/DTensor malfunction with a
+  retained two-rank `fully_shard` regression test, and documented why
+  AdamATan2 needs proposed-update clipping or an anomaly skip-step guard for
+  stronger protection.
+
+- Simulated single and sustained AdamATan2 gradient spikes under raw clipping,
+  skip-step, global update-RMS clipping, and LR backoff. The results refine the
+  recommendation toward skip-before-moments and local/history-aware methods;
+  a calibrated model-global post-`atan2` RMS cap did not detect scale spikes.
+
+- Added the optional global-gradient-clipping technical reference, including
+  null-default behavior, FSDP2 mean-gradient scaling, logged metrics, and the
+  eight-GPU XXL parity measurement.
+
+## 2026-08-29
+
+- 2026-08-29: Merged `origin/main` through `7bf17c8` into the active
+  `multinode` branch without interrupting the DFM8 XXL 178K-to-200K process.
+  The next scheduler-launched 200K-to-250K process will inherit optimized FA4
+  seqused/Triton defaults while retaining the production transformer-block
+  FSDP wrap policy; documented the intentional implementation boundary.
 
 - 2026-08-29: Added the post-profile strategic performance roadmap for DFM8
   XXL. It separates measured bottlenecks from estimated opportunities and
@@ -543,6 +582,45 @@
   passing strict completeness and grounding thresholds. The 2.99M-token
   corpus passed its independent 200-row E4B audit at 99.5% usable; DFM10 now
   disables the old prefix and samples the repaired corpus twice.
+* **DFM8 XXL one-node return at step 178000**: Restarted the existing
+  coordinator/worker campaign on a fresh eight-B200 node and resumed W&B run
+  `DFM5/40j5y877` from the protected regular checkpoint. The first attempt
+  correctly failed before training because the new node lacked W&B
+  credentials; restored its netrc, reset only the failed training row, and
+  verified forward progress beyond step 178020 under the original GBS
+  262144/GAS 4/full-FSDP configuration.
+* **Two-node FSDP/HSDP validation**: Passed launcher preflight, 16-rank NCCL
+  all-reduce, changed-world DFM8 XXL `step_178000` resume, and ten optimizer
+  steps on two eight-B200 nodes without W&B or checkpoint tensor writes.
+  Full-world FSDP measured 13.424 s/step median; degree-8 HSDP measured 4.227
+  s/step versus the roughly 3.6 s one-node baseline. NCCL fell back to
+  `NET/Socket` because both containers lacked `/dev/infiniband` despite active
+  ConnectX-7 links, so RDMA enablement remains the production blocker.
+* **One-node multi-node scheduler deployment**: Migrated the active DFM8 XXL
+  campaign from the legacy runner to one coordinator plus one local eight-GPU
+  worker, resuming from `ephemeral_step_176000`. Fixed cluster handoff so
+  independent future `wait_checkpoint` control jobs coexist with training
+  instead of holding the coordinator in `draining`; added a regression test.
+* **Cluster training monitor attribution**: Fixed plain and Rich aggregate
+  monitors to attribute coordinator-owned cluster training to every worker GPU
+  instead of labeling heavily utilized training devices as idle.
+* **Protected DFM8 XXL step 178000**: Stopped the one-node multi-node campaign
+  after verifying the complete ephemeral checkpoint, promoted its shards by
+  hard link to regular `step_178000`, validated the regular sidecar, and left
+  the pending training row prepared to resume from that protected tag.
+* **Multi-node scheduler implementation**: Implemented the coordinator-worker
+  scheduler, node-qualified fenced leases, authenticated heartbeats, SSH
+  worker lifecycle, node-local persistent-vLLM reuse, cluster training drain
+  and handoff, restart reconciliation, and aggregate Rich/plain monitoring.
+  The 47 local scheduler tests pass; real two-node validation remains gated on
+  an allocation.
+* **Multi-node evaluation scheduler plan**: Chose a single authoritative
+  coordinator with capability-limited per-node workers, node-qualified GPU
+  leases, fencing tokens, local persistent-vLLM pools, cluster drain/training
+  handoff, and heartbeat-backed aggregate monitoring. Defined phased delivery
+  and two-node through eight-node acceptance gates while preserving the
+  existing single-node scheduler path.
+
 * **Scientific Summaries grounded rebuild**: Replaced the truncating DFM4
   conversion with an atomic 16-process, Gemma-token-aware rebuild from complete
   structured fields. Added a deterministic eight-GPU E4B audit with exact
@@ -1500,3 +1578,38 @@
   OpenMathInstruct2 tokens because it retains 7.49M verified, PRM-filtered,
   deduplicated, and decontaminated rows instead of DFM9's 25.02M duplicated
   CoT/direct rows. This does not establish that total math supervision is lower.
+
+## 2026-08-30 - DFM8 XXL skip-only production boundary
+
+- Rolled the DFM8 XXL run back to complete `ephemeral_step_229500`, disabled
+  clipping, and enabled pre-moment gradient skipping at norm 1.0.
+- Verified that skipped batches leave parameters, AdamATan2 state, weight
+  decay, and EMA untouched; added exact skipped-gradient norms to console
+  diagnostics.
+- The guard saved protected regular checkpoints at steps 229505, 229508, and
+  229528. The final bounded trial skipped twenty consecutive batches with
+  norms from 8.50684 to 1375.56, so the scheduler remains stopped at this
+  boundary rather than silently consuming more training data.
+- Direct DCP tensor hashes were identical at steps 229508 and 229528 for a
+  production model weight and its Adam step, first moment, second moment, and
+  EMA, confirming that skip-only steps made no hidden optimizer update.
+- The skip-only losses were normal rather than elevated: mean 1.075978 over
+  steps 229506--229528 versus 1.096311 for sparse clipped samples at
+  229400--229505. This localizes the event to backward/recurrent sensitivity,
+  not forward cross-entropy divergence.
+- Superseded the assumption that skip-before-moments at the same threshold is
+  a drop-in replacement for clipping. A separately calibrated catastrophic
+  threshold, a hybrid policy, or source-region filtering must be selected
+  before continuation.
+- Ran same-checkpoint non-W&B comparisons of clipping-only and hybrid skip
+  thresholds 10, 100, and 1000. Clipping completed 50 steps; every hybrid
+  entered a skip cascade and stopped after only 9--14 steps. The retained
+  results are under
+  `logs/training/dfm8_XXL_1epoch/gradient_guard_ab_229500`.
+- Resumed production from untouched `ephemeral_step_229500` at LR `2.5e-4`
+  with norm-1 clipping and skipping disabled. Both remaining training rows use
+  this fallback configuration.
+- Through step 229730 the fallback remained operationally stable at about 2.8
+  seconds/step. Four sampled gradients clipped, including two extreme raw
+  norms, but the latest norm recovered to 0.213 and median loss remained 1.073;
+  this is contained instability rather than divergence.
