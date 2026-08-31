@@ -1,5 +1,37 @@
 # Knowledge Bundle Update Log
 
+## 2026-08-31
+
+- Replaced machine-specific DFM7/8/10 tokenizer metadata defaults with
+  repository-relative paths, fixed HF conversion to propagate the tokenizer
+  override through checkpoint loading, and recovered the DFM8 XXL 250K export
+  and evaluation campaign before automatic resume from step 252500.
+
+## 2026-08-30
+
+- Added a reusable 30-minute W&B training-stability watcher and launched it
+  for the resumed DFM8 XXL run, with append-only JSONL snapshots and a visible
+  tmux window.
+
+- Added null-default skip-before-moments protection with distributed consensus,
+  exact optimizer/EMA preservation, immediate metrics, and clean checkpointed
+  exit after a configurable consecutive-skip limit. Enabled it only for the
+  pending post-250K DFM8 XXL segment without interrupting active training.
+
+- Ruled out the suspected FSDP2 clipping-scale/DTensor malfunction with a
+  retained two-rank `fully_shard` regression test, and documented why
+  AdamATan2 needs proposed-update clipping or an anomaly skip-step guard for
+  stronger protection.
+
+- Simulated single and sustained AdamATan2 gradient spikes under raw clipping,
+  skip-step, global update-RMS clipping, and LR backoff. The results refine the
+  recommendation toward skip-before-moments and local/history-aware methods;
+  a calibrated model-global post-`atan2` RMS cap did not detect scale spikes.
+
+- Added the optional global-gradient-clipping technical reference, including
+  null-default behavior, FSDP2 mean-gradient scaling, logged metrics, and the
+  eight-GPU XXL parity measurement.
+
 ## 2026-08-29
 
 - 2026-08-29: Merged `origin/main` through `7bf17c8` into the active
@@ -791,3 +823,38 @@
   neutral versus default (`2.982--2.986 s` versus `2.987 s` median), so default
   remains recommended. Graph-enabled max-autotune exposed an output-lifetime
   error and remains a separate CUDA-graph integration task.
+
+## 2026-08-30 - DFM8 XXL skip-only production boundary
+
+- Rolled the DFM8 XXL run back to complete `ephemeral_step_229500`, disabled
+  clipping, and enabled pre-moment gradient skipping at norm 1.0.
+- Verified that skipped batches leave parameters, AdamATan2 state, weight
+  decay, and EMA untouched; added exact skipped-gradient norms to console
+  diagnostics.
+- The guard saved protected regular checkpoints at steps 229505, 229508, and
+  229528. The final bounded trial skipped twenty consecutive batches with
+  norms from 8.50684 to 1375.56, so the scheduler remains stopped at this
+  boundary rather than silently consuming more training data.
+- Direct DCP tensor hashes were identical at steps 229508 and 229528 for a
+  production model weight and its Adam step, first moment, second moment, and
+  EMA, confirming that skip-only steps made no hidden optimizer update.
+- The skip-only losses were normal rather than elevated: mean 1.075978 over
+  steps 229506--229528 versus 1.096311 for sparse clipped samples at
+  229400--229505. This localizes the event to backward/recurrent sensitivity,
+  not forward cross-entropy divergence.
+- Superseded the assumption that skip-before-moments at the same threshold is
+  a drop-in replacement for clipping. A separately calibrated catastrophic
+  threshold, a hybrid policy, or source-region filtering must be selected
+  before continuation.
+- Ran same-checkpoint non-W&B comparisons of clipping-only and hybrid skip
+  thresholds 10, 100, and 1000. Clipping completed 50 steps; every hybrid
+  entered a skip cascade and stopped after only 9--14 steps. The retained
+  results are under
+  `logs/training/dfm8_XXL_1epoch/gradient_guard_ab_229500`.
+- Resumed production from untouched `ephemeral_step_229500` at LR `2.5e-4`
+  with norm-1 clipping and skipping disabled. Both remaining training rows use
+  this fallback configuration.
+- Through step 229730 the fallback remained operationally stable at about 2.8
+  seconds/step. Four sampled gradients clipped, including two extreme raw
+  norms, but the latest norm recovered to 0.213 and median loss remained 1.073;
+  this is contained instability rather than divergence.

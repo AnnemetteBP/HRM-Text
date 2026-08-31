@@ -496,10 +496,15 @@ def main() -> None:
     tokenizer = Tokenizer.from_file(str(args.tokenizer_path))
     template = jinja2.Environment().from_string(args.chat_template.read_text())
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    repo_root = Path(__file__).resolve().parents[1]
     tokenizer_info = {
-        "tokenizer_path": str(args.tokenizer_path),
+        # Metadata is consumed from the repository working directory. Keep it
+        # relocatable across /work roots instead of persisting a host-specific
+        # absolute path used by this tokenization process.
+        "tokenizer_path": os.path.relpath(args.tokenizer_path.resolve(), repo_root),
+        "tokenizer_path_base": "repo_root",
         "template_mode": "jinja_chat_template",
-        "chat_template_path": str(args.chat_template),
+        "chat_template_path": os.path.relpath(args.chat_template.resolve(), repo_root),
         "enable_thinking": args.enable_thinking,
         "vocab_size": tokenizer.get_vocab_size(with_added_tokens=True),
     }

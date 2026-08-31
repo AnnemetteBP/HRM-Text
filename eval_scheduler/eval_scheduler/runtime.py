@@ -698,6 +698,8 @@ def run_export_hf(job: Job, gpu: int) -> int:
         "--out_dir",
         str(tmp_dir),
     ]
+    if export_tokenizer_path := job.metadata.get("export_tokenizer_path"):
+        argv.extend(["--tokenizer_path", str(export_tokenizer_path)])
     status = run_command(argv, log_path=log_path, env=env_with_gpu(gpu))
     if status != 0:
         return status

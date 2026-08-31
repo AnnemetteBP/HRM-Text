@@ -47,6 +47,33 @@ def plan_config(tmp_path: Path, model_dir: Path) -> plan.PlanConfig:
     )
 
 
+def test_export_hf_passes_explicit_tokenizer_override(tmp_path: Path, monkeypatch) -> None:
+    captured: list[str] = []
+
+    def fake_run_command(argv, **_kwargs):
+        captured.extend(argv)
+        return 7
+
+    monkeypatch.setattr(runtime, "run_command", fake_run_command)
+    export_job = Job(
+        job_id="export",
+        action=Action.EXPORT_HF,
+        family="export",
+        name="step_100",
+        log_dir=str(tmp_path),
+        metadata={
+            "ckpt_path": str(tmp_path / "checkpoint"),
+            "ckpt_tag": "step_100",
+            "hf_export_dir": str(tmp_path / "export"),
+            "export_tokenizer_path": str(tmp_path / "tokenizer"),
+            "python_bin": "python",
+        },
+    )
+
+    assert runtime.run_export_hf(export_job, gpu=0) == 7
+    assert captured[-2:] == ["--tokenizer_path", str(tmp_path / "tokenizer")]
+
+
 def test_long_context_jobs_are_omitted_for_4k_exports(tmp_path: Path) -> None:
     model_dir = tmp_path / "model"
     model_dir.mkdir()

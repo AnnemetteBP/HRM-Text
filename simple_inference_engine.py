@@ -202,6 +202,7 @@ def inference_load_checkpoint(
     ckpt_epoch: Optional[int],
     ckpt_use_ema: bool,
     ckpt_tag: Optional[str] = None,
+    tokenizer_path_override: Optional[str | os.PathLike[str]] = None,
 ):
     # Load Checkpoint
     # Load config
@@ -259,7 +260,11 @@ def inference_load_checkpoint(
     model = model.to(getattr(torch, model_cfg.fwd_bwd_dtype)).eval()
 
     # Load tokenizer
-    tokenizer_path = train_metadata.tokenizer_info["tokenizer_path"]
+    tokenizer_path = os.fspath(
+        tokenizer_path_override
+        if tokenizer_path_override is not None
+        else train_metadata.tokenizer_info["tokenizer_path"]
+    )
     if os.path.isfile(tokenizer_path):
         tokenizer = PreTrainedTokenizerFast(tokenizer_file=tokenizer_path)
     else:

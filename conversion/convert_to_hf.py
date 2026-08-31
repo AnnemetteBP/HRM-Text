@@ -336,7 +336,13 @@ def main():
         print(f"[convert] wrote config/tokenizer only to {args.out_dir}")
         return
 
-    ckpt = inference_load_checkpoint(str(args.ckpt_path), args.ckpt_epoch, args.ckpt_use_ema, ckpt_tag=args.ckpt_tag)
+    ckpt = inference_load_checkpoint(
+        str(args.ckpt_path),
+        args.ckpt_epoch,
+        args.ckpt_use_ema,
+        ckpt_tag=args.ckpt_tag,
+        tokenizer_path_override=tok_path,
+    )
     hf_state, dropped = convert_state_dict(ckpt.model.state_dict(), cfg, weight_layout=args.weight_layout)
     print(f"[convert] mapped {len(hf_state)} tensors; dropped {len(dropped)}")
     if dropped:

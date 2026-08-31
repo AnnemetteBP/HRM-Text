@@ -1,5 +1,7 @@
 # Current State Concepts
 
+* [DFM8 XXL 200K Eval Recovery](2026-08-29-dfm8-xxl-200k-eval-recovery.md) - Verified 201K pause, 200K export/eval, worker-race fix, and training continuation.
+* [Mimir HF Export Tokenizer Path](2026-08-29-mimir-hf-export-tokenizer-path.md) - Explicit tokenizer override for exports after the `/work/dfm` to `/work/mimir` migration.
 * [DFM9 XXL-32 20K EuroEval](2026-08-26-dfm9-xxl32-20k-euroeval.md) - Completed and synced task metrics, failed VaLEU boundary, and early-checkpoint interpretation.
 * [DFM8 XXL Step 150.7K Loss Excursion](2026-08-26-dfm8-xxl-loss-excursion.md) - Source attribution and interpretation of the isolated self-recovering training instability.
 * [2026-08-26 Eval Monitor Live Progress Sources](2026-08-26-eval-monitor-inspect-progress.md) - Exact Inspect-journal progress for DFM tasks and native rolling ETAs for tqdm-based evaluators.
