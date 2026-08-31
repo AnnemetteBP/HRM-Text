@@ -22,3 +22,4 @@
 * [Fixed-Membership SSH TorchRun Launcher](multinode-ssh-launcher.md) - Host contract, preflight, NCCL smoke, launch, logging, and coordinated failure handling without Slurm.
 * [Multi-Node Evaluation Scheduler Plan](multinode-eval-scheduler-plan.md) - Coordinator-worker resource leasing, distributed eval execution, persistent vLLM reuse, cluster training handoff, and aggregate monitoring.
 * [DFM8 XXL to DFM10 Multi-Node Transition](dfm8-xxl-to-dfm10-multinode-transition.md) - Epoch-boundary data/topology change, batch geometry, readiness gates, and checkpoint cadence.
+* [Optional Global Gradient Clipping](gradient-clipping.md) - Null-by-default clipping, verified FSDP2/DTensor semantics, and AdamATan2-native stability options.

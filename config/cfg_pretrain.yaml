@@ -9,6 +9,9 @@ hydra:
 
 global_batch_size: 196608  # Effective optimizer batch size (tokens)
 gradient_accumulation_steps: 1  # Physical per-rank microbatch is global_batch_size / world_size / gradient_accumulation_steps
+gradient_clip_norm: null  # Optional global L2 threshold in mean-gradient units; null preserves the unclipped path
+gradient_skip_norm: null  # Optional pre-moment anomaly threshold; skips the optimizer/EMA update but consumes the batch
+gradient_skip_max_consecutive: 3  # Save a regular checkpoint and exit cleanly after this many consecutive skips
 epochs: 4
 training_total_steps: null  # Optional global optimizer-step endpoint for resumed runs that switch datasets.
 checkpoint_interval: 1
