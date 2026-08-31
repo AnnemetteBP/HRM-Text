@@ -8,7 +8,7 @@ tags:
 - evaluation
 - runtime
 status: stable
-last_updated: 2026-08-10
+last_updated: 2026-08-27
 confidence: high
 part_of: /pages/current-state.md
 ---
@@ -173,3 +173,43 @@ Allowed files:      1,525
 Denied files:       4,073
 Allowed bytes:      248,502,793,134
 ```
+
+## 2026-08-27 Storage duplication audit
+
+`data/` occupies approximately `32,741 GiB`. No large duplicate payloads found
+by the audit are hard-linked, so each copy consumes storage. Conservative
+sampled-region signatures (five 8 MiB regions spanning each file) identified
+the following same-size, same-content candidates; run a complete `cmp` or hash
+before replacing either copy:
+
+- `sampled_original_plus_mixed/tokens.npy` and
+  `sampled_original_plus_mixed_danish_instruction_rich/tokens.npy`: one
+  duplicated `1,136.3 GiB` token pool. Their metadata and epoch selections are
+  different, so only `tokens.npy` is shareable.
+- `sampled_mixed_english_danish_filtered/tokens.npy` and its
+  `2x_original` counterpart: one duplicated `618.1 GiB` token pool; indices and
+  metadata differ.
+- The Nemotron SWE tokenized directory under both
+  `tokenized_dfm6_swe_shards` and `tokenized_dfm6_direct_jinja`: seven files
+  with identical relative names/sizes and matching sampled token signatures,
+  approximately `315 GiB` per copy.
+- `1,132` flattened Sapient task directories occur in both `tokenized_mixed`
+  and `tokenized_original_sapient`, with identical relative file shapes/sizes;
+  the mixed-side copies total about `151 GiB`.
+- `1,394` files under `downloads/datasets` and `converted_sources` have the
+  same relative path and size, totaling about `66 GiB`; sampled checks of the
+  largest Parquet file matched.
+- `converted_sources/nemotron_swe/data/swe.parquet.unsplit` duplicates the
+  retained `swe.parquet` payload, approximately `2.3 GiB`.
+
+These candidates provide about `2.3 TiB` of literal-copy savings after full
+verification. Separately,
+`sampled_dfm6_before_superset_fix_20260620_133752` is a superseded `784 GiB`
+snapshot; removing or archiving it would raise the clear avoidable total to
+about `3.1 TiB`. Older sampled DFM generations and separate 8K/16K/32K
+materializations account for many additional TiB but are historical or
+context-specific artifacts, not byte-identical duplicates. The current sampler
+materializes a monolithic `tokens.npy` in every output, so overlapping corpus
+versions cannot generally share storage without symlinking/reflinking verified
+immutable token pools or redesigning the format around content-addressed token
+stores.

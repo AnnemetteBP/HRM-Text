@@ -35,7 +35,8 @@ from omegaconf import DictConfig, OmegaConf
 
 from models.layers import Carry
 from models.activation_checkpointing import apply_activation_checkpointing
-from models.common import IGNORE_LABEL_ID, wrap_tensor
+from models.common import IGNORE_LABEL_ID, prepare_prefixlm_batch, wrap_tensor
+from models.gradient_clipping import clip_grad_norm_mean_units
 from models.accelerator import (
     AcceleratorType,
     empty_accelerator_cache,
@@ -44,7 +45,7 @@ from models.accelerator import (
     synchronize_device,
     torch_device_for_accelerator,
 )
-from models.transformer import TransformerBlock
+from models.transformer import Transformer, TransformerBlock
 from models.adam_atan2 import AdamATan2
 from utils.functions import load_model_class, get_model_source_path
 from dataset_new import V1Dataset, V1DatasetConfig, V1DatasetMeta
@@ -74,6 +75,9 @@ class PretrainConfig(pydantic.BaseModel):
     global_batch_size: int
     epochs: int
     gradient_accumulation_steps: int = pydantic.Field(default=1, ge=1)
+    gradient_clip_norm: Optional[float] = pydantic.Field(default=None, gt=0)
+    gradient_skip_norm: Optional[float] = pydantic.Field(default=None, gt=0)
+    gradient_skip_max_consecutive: int = pydantic.Field(default=3, ge=1)
     training_total_steps: Optional[int] = pydantic.Field(default=None, ge=1)
 
     lr: float
@@ -89,12 +93,16 @@ class PretrainConfig(pydantic.BaseModel):
     accelerator_type: AcceleratorType = "sm100"
     distributed_strategy: Literal["fsdp", "ddp", "none"] = "fsdp"
     fsdp_params_precision: Literal["fp32", "bf16"] = "fp32"
+    fsdp_wrap_policy: Literal["transformer_block", "recurrent_level"] = "transformer_block"
     fsdp_shard_degree: Optional[int] = pydantic.Field(default=None, ge=2)
     fsdp_reshard_after_forward: Optional[bool] = None
     fsdp_accumulation_sync_mode: Literal["no_sync", "reduce_scatter"] = "no_sync"
     ddp_params_precision: Literal["fp32", "bf16"] = "fp32"
     ddp_find_unused_parameters: bool = True
     compile_train_batch: bool = True
+    compile_train_batch_mode: Literal[
+        "default", "max-autotune-no-cudagraphs"
+    ] = "default"
     memory_log_interval: int = 0
     empty_cache_interval: int = 0
     resume_trace: bool = False
@@ -270,6 +278,22 @@ def fsdp_reshard_after_forward(config: PretrainConfig, *, checkpointed: bool) ->
     return checkpointed
 
 
+def fsdp_wrap_modules(model: nn.Module, policy: str) -> list[nn.Module]:
+    """Select bottom-up FSDP units while leaving the root wrapper unchanged."""
+    if policy == "transformer_block":
+        return [module for module in model.modules() if isinstance(module, TransformerBlock)]
+    if policy == "recurrent_level":
+        return [module for module in model.modules() if isinstance(module, Transformer)]
+    raise ValueError(f"Unsupported fsdp_wrap_policy: {policy}")
+
+
+def contains_checkpointed_block(
+    module: nn.Module,
+    checkpointed_blocks: set[nn.Module],
+) -> bool:
+    return any(child in checkpointed_blocks for child in module.modules())
+
+
 def unwrap_model(model: nn.Module) -> nn.Module:
     if isinstance(model, DistributedDataParallel):
         return model.module
@@ -354,18 +378,18 @@ def create_model_and_carry(config: PretrainConfig, train_metadata: V1DatasetMeta
             for buffer in model.buffers():
                 dist.broadcast(buffer, src=0)
 
-            # Detect TransformerBlock recursively and apply FSDP
-            for module in model.modules():
-                if isinstance(module, TransformerBlock):
-                    apply_fsdp(
-                        module,
-                        fwd_bwd_dtype,
-                        mesh=fsdp_mesh,
-                        reshard_after_forward=fsdp_reshard_after_forward(
-                            config,
-                            checkpointed=module in checkpointed_blocks,
+            for module in fsdp_wrap_modules(model, config.fsdp_wrap_policy):
+                apply_fsdp(
+                    module,
+                    fwd_bwd_dtype,
+                    mesh=fsdp_mesh,
+                    reshard_after_forward=fsdp_reshard_after_forward(
+                        config,
+                        checkpointed=contains_checkpointed_block(
+                            module, checkpointed_blocks
                         ),
-                    )
+                    ),
+                )
 
             apply_fsdp(
                 model,
@@ -761,19 +785,6 @@ def save_unsharded_train_state(config: PretrainConfig, train_state: TrainState, 
         )
 
 
-@torch.compile(dynamic=False)
-def forward_backward_batch(train_state: TrainState, batch: dict[str, Tensor], loss_scale: Tensor, **kwargs):
-    device_type = batch["inputs"].device.type
-    use_autocast = (
-        (device_type in ("mps", "cpu") and train_state.fwd_bwd_dtype != torch.float32)
-        or (device_type == "cuda" and train_state.use_cuda_autocast)
-    )
-    with torch.autocast(device_type=device_type, dtype=train_state.fwd_bwd_dtype, enabled=use_autocast, cache_enabled=False):
-        train_state.carry, loss, metrics = train_state.model(batch=batch, carry=train_state.carry, **kwargs)
-    (loss * loss_scale).backward()
-    return metrics
-
-
 def forward_backward_batch_uncompiled(train_state: TrainState, batch: dict[str, Tensor], loss_scale: Tensor, **kwargs):
     device_type = batch["inputs"].device.type
     use_autocast = (
@@ -784,6 +795,24 @@ def forward_backward_batch_uncompiled(train_state: TrainState, batch: dict[str, 
         train_state.carry, loss, metrics = train_state.model(batch=batch, carry=train_state.carry, **kwargs)
     (loss * loss_scale).backward()
     return metrics
+
+
+forward_backward_batch = torch.compile(forward_backward_batch_uncompiled, dynamic=False)
+_COMPILED_FORWARD_BACKWARD = {
+    "default": forward_backward_batch,
+    "max-autotune-no-cudagraphs": torch.compile(
+        forward_backward_batch_uncompiled,
+        dynamic=False,
+        mode="max-autotune-no-cudagraphs",
+    ),
+}
+
+
+def compiled_forward_backward_batch(mode: str):
+    try:
+        return _COMPILED_FORWARD_BACKWARD[mode]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported compile_train_batch_mode: {mode}") from exc
 
 
 def train_batch(train_state: TrainState, batch: dict[str, Tensor], **kwargs):
@@ -813,9 +842,11 @@ def _add_metrics(total_metrics: Optional[dict[str, tuple[Tensor, Tensor]]], metr
 def _supervised_token_count(config: PretrainConfig, rank: int, batch: dict[str, Tensor]) -> Tensor:
     count = (batch["labels"] != IGNORE_LABEL_ID).sum().to(torch.float32)
     if dist.is_available() and dist.is_initialized():
-        trace_print(config, rank, f"supervised_count_all_reduce_begin local={count.item()}")
+        if config.resume_trace:
+            trace_print(config, rank, f"supervised_count_all_reduce_begin local={count.item()}")
         dist.all_reduce(count, op=dist.ReduceOp.AVG)
-        trace_print(config, rank, f"supervised_count_all_reduce_end avg={count.item()}")
+        if config.resume_trace:
+            trace_print(config, rank, f"supervised_count_all_reduce_end avg={count.item()}")
     return count
 
 
@@ -827,11 +858,20 @@ def train_accumulated_batches(
     use_compiled: bool,
     zero_grad_after_step: bool = True,
     **kwargs,
-) -> dict[str, tuple[Tensor, Tensor]]:
+) -> tuple[dict[str, tuple[Tensor, Tensor]], bool]:
     trace_print(config, rank, f"train_accumulated_begin step={train_state.step} microbatches={len(batches)} compiled={use_compiled}")
+    if config.gradient_skip_norm is not None and train_state.carry is not None:
+        raise RuntimeError(
+            "gradient_skip_norm currently supports only models with no persistent carry; "
+            "a skipped stateful batch needs explicit carry rollback semantics"
+        )
     supervised_counts = [_supervised_token_count(config, rank, batch) for batch in batches]
     total_supervised = torch.stack(supervised_counts).sum().clamp_min(1.0)
-    backward_step = forward_backward_batch if use_compiled else forward_backward_batch_uncompiled
+    backward_step = (
+        compiled_forward_backward_batch(config.compile_train_batch_mode)
+        if use_compiled
+        else forward_backward_batch_uncompiled
+    )
 
     trace_print(config, rank, f"zero_grad_begin step={train_state.step}")
     train_state.optim.zero_grad()
@@ -859,7 +899,12 @@ def train_accumulated_batches(
                     train_state.model.set_requires_gradient_sync(is_final_microbatch, recurse=True)
 
             loss_scale = supervised_count / total_supervised
-            trace_print(config, rank, f"forward_backward_begin step={train_state.step} microbatch={microbatch_idx} loss_scale={loss_scale.item()}")
+            if config.resume_trace:
+                trace_print(
+                    config,
+                    rank,
+                    f"forward_backward_begin step={train_state.step} microbatch={microbatch_idx} loss_scale={loss_scale.item()}",
+                )
             with sync_context:
                 metrics = _add_metrics(metrics, backward_step(train_state, batch, loss_scale, **kwargs))
             trace_print(config, rank, f"forward_backward_end step={train_state.step} microbatch={microbatch_idx}")
@@ -868,16 +913,63 @@ def train_accumulated_batches(
             train_state.model.set_requires_gradient_sync(True, recurse=True)
             train_state.model.set_requires_all_reduce(True, recurse=True)
 
-    trace_print(config, rank, f"optim_step_begin step={train_state.step}")
-    train_state.optim.step()
-    trace_print(config, rank, f"optim_step_end step={train_state.step}")
+    optimizer_step_skipped = False
+    if config.gradient_clip_norm is not None or config.gradient_skip_norm is not None:
+        summed_gradient_scale = 1.0
+        if isinstance(train_state.model, FSDPModule) and dist.is_available() and dist.is_initialized():
+            # This FSDP2 path intentionally disables gradient division because
+            # Adam is scale-invariant. Keep the public clipping threshold in
+            # mean-gradient units so it remains comparable to DDP/non-sharded
+            # training and independent of world size.
+            summed_gradient_scale = float(dist.get_world_size())
+        clip_metrics = clip_grad_norm_mean_units(
+            train_state.model.parameters(),
+            max_norm=(
+                config.gradient_clip_norm
+                if config.gradient_clip_norm is not None
+                else config.gradient_skip_norm
+            ),
+            summed_gradient_scale=summed_gradient_scale,
+        )
+        assert metrics is not None
+        one = clip_metrics.total_norm.new_ones(())
+        metrics["grad_norm"] = (clip_metrics.total_norm.detach(), one)
+        if config.gradient_clip_norm is not None:
+            metrics.update({
+                "grad_clip_coefficient": (clip_metrics.clip_coefficient.detach(), one),
+                "grad_clipped": (clip_metrics.clipped.detach(), one),
+            })
+        if config.gradient_skip_norm is not None:
+            skip_tensor = (
+                clip_metrics.total_norm > clip_metrics.total_norm.new_tensor(config.gradient_skip_norm)
+            ).to(torch.int32)
+            if dist.is_available() and dist.is_initialized():
+                # The norm should already agree, but MAX guarantees identical
+                # control flow at a threshold despite rank-local roundoff.
+                dist.all_reduce(skip_tensor, op=dist.ReduceOp.MAX)
+            optimizer_step_skipped = bool(skip_tensor.item())
+            metrics["optimizer_step_skipped"] = (
+                skip_tensor.to(dtype=clip_metrics.total_norm.dtype),
+                one,
+            )
+
+    if optimizer_step_skipped:
+        trace_print(config, rank, f"optim_step_skipped step={train_state.step}")
+    else:
+        trace_print(config, rank, f"optim_step_begin step={train_state.step}")
+        train_state.optim.step()
+        trace_print(config, rank, f"optim_step_end step={train_state.step}")
     if zero_grad_after_step:
         trace_print(config, rank, f"zero_grad_after_step_begin step={train_state.step}")
         train_state.optim.zero_grad()
         trace_print(config, rank, f"zero_grad_after_step_end step={train_state.step}")
     assert metrics is not None
-    trace_print(config, rank, f"train_accumulated_end step={train_state.step}")
-    return metrics
+    trace_print(
+        config,
+        rank,
+        f"train_accumulated_end step={train_state.step} optimizer_step_skipped={optimizer_step_skipped}",
+    )
+    return metrics, optimizer_step_skipped
 
 
 @torch.inference_mode()
@@ -908,7 +1000,9 @@ def validate_batches(
             break
         batch = move_batch_to_device(batch, device)
         batch_info.pop("resume_info", None)
-        batch = batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()}
+        batch = prepare_prefixlm_batch(
+            batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()}
+        )
         device_type = batch["inputs"].device.type
         use_autocast = (
             (device_type in ("mps", "cpu") and train_state.fwd_bwd_dtype != torch.float32)
@@ -1291,6 +1385,7 @@ def launch(hydra_config: DictConfig):
     bench_step_times: list[float] = []
     bench_last_time: Optional[float] = None
     bench_last_metrics: dict[str, float] = {}
+    bench_metric_history: list[dict[str, float | int]] = []
 
     # Progress bar and logger
     progress_bar = None
@@ -1323,8 +1418,10 @@ def launch(hydra_config: DictConfig):
             f"step={train_state.step}; exiting without another optimizer step",
             flush=True,
         )
+    consecutive_gradient_skips = 0
+    gradient_skip_stop_reached = False
     for epoch in range(start_epoch, config.epochs + 1):
-        if stop_after_step_reached:
+        if stop_after_step_reached or gradient_skip_stop_reached:
             break
         print (f"[Rank {RANK}, World Size {WORLD_SIZE}]: Epoch {epoch}")
         trace_print(config, RANK, f"epoch_begin epoch={epoch}")
@@ -1342,7 +1439,9 @@ def launch(hydra_config: DictConfig):
             if config.resume_trace and batch_in_epoch == batch_start:
                 trace_print(config, RANK, f"first_batch_moved batch_in_epoch={batch_in_epoch}")
             resume_info = batch_info.pop("resume_info", None)
-            accumulation_batches.append(batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()})
+            accumulation_batches.append(
+                prepare_prefixlm_batch(batch | {k: wrap_tensor(torch.tensor(v, device="cpu")) for k, v in batch_info.items()})
+            )
             if resume_info is not None:
                 accumulation_resume_info = resume_info
             if len(accumulation_batches) < config.gradient_accumulation_steps:
@@ -1360,8 +1459,46 @@ def launch(hydra_config: DictConfig):
                 device,
                 config.memory_log_interval > 0 and train_state.step % config.memory_log_interval == 0,
             )
-            metrics = train_accumulated_batches(config, RANK, train_state, accumulation_batches, config.compile_train_batch, **train_extra_args)
+            metrics, optimizer_step_skipped = train_accumulated_batches(
+                config,
+                RANK,
+                train_state,
+                accumulation_batches,
+                config.compile_train_batch,
+                **train_extra_args,
+            )
             accumulation_batches = []
+            if config.gradient_skip_norm is not None:
+                if optimizer_step_skipped:
+                    consecutive_gradient_skips += 1
+                else:
+                    consecutive_gradient_skips = 0
+                metric_reference = next(iter(metrics.values()))[0]
+                metric_one = metric_reference.new_ones(())
+                metrics["consecutive_gradient_skips"] = (
+                    metric_reference.new_tensor(float(consecutive_gradient_skips)),
+                    metric_one,
+                )
+                gradient_skip_stop_reached = (
+                    optimizer_step_skipped
+                    and consecutive_gradient_skips >= config.gradient_skip_max_consecutive
+                )
+                if optimizer_step_skipped and RANK == 0:
+                    skipped_grad_norm = float(metrics["grad_norm"][0].item())
+                    print(
+                        f"Skipped optimizer step {train_state.step}: gradient norm "
+                        f"{skipped_grad_norm:.6g} exceeded "
+                        f"gradient_skip_norm={config.gradient_skip_norm}; "
+                        f"consecutive={consecutive_gradient_skips}/"
+                        f"{config.gradient_skip_max_consecutive}",
+                        flush=True,
+                    )
+                if gradient_skip_stop_reached and RANK == 0:
+                    print(
+                        "Maximum consecutive gradient skips reached; saving a regular "
+                        "checkpoint and exiting cleanly",
+                        flush=True,
+                    )
 
             if config.max_steps is not None and RANK == 0:
                 synchronize_device(device)
@@ -1377,12 +1514,14 @@ def launch(hydra_config: DictConfig):
             )
             maybe_empty_cache(train_state.step, device, config.empty_cache_interval)
 
-            if train_state.step % config.log_interval == 0:
+            if train_state.step % config.log_interval == 0 or optimizer_step_skipped:
                 trace_print(config, RANK, f"reduce_metrics_begin step={train_state.step}")
                 metrics = reduce_metrics(metrics, prefix="train/")
                 trace_print(config, RANK, f"reduce_metrics_end step={train_state.step}")
                 if RANK == 0:
                     bench_last_metrics = dict(metrics)
+                    if config.max_steps is not None:
+                        bench_metric_history.append({"step": train_state.step, **metrics})
                     progress_bar.update(train_state.step - progress_bar.n)  # type: ignore
                     trace_print(config, RANK, f"wandb_log_begin step={train_state.step}")
                     wandb.log(metrics | train_extra_args | {"train/lr": lr}, step=train_state.step)
@@ -1431,7 +1570,7 @@ def launch(hydra_config: DictConfig):
                 config.checkpoint_step_interval is not None
                 and train_state.step % config.checkpoint_step_interval == 0
             )
-            if regular_interval_reached or stop_after_step_reached:
+            if regular_interval_reached or stop_after_step_reached or gradient_skip_stop_reached:
                 save_train_checkpoint(config, train_state, f"step_{train_state.step}", epoch, batch_in_epoch, RANK, local_batch_size=local_batch_size, resume_info=accumulation_resume_info, batch_in_epoch_exact=batch_in_epoch_exact)
                 saved_regular_step_checkpoint = True
 
@@ -1443,14 +1582,14 @@ def launch(hydra_config: DictConfig):
                     save_train_checkpoint(config, train_state, ephemeral_tag, epoch, batch_in_epoch, RANK, checkpoint_kind="ephemeral", local_batch_size=local_batch_size, resume_info=accumulation_resume_info, batch_in_epoch_exact=batch_in_epoch_exact)
                     remove_stale_ephemeral_checkpoints(config, ephemeral_tag, RANK)
 
-            if stop_after_step_reached or (
+            if stop_after_step_reached or gradient_skip_stop_reached or (
                 config.max_steps is not None and train_state.step >= config.max_steps
             ):
                 break
 
         skip_batches = 0
 
-        if stop_after_step_reached or (
+        if stop_after_step_reached or gradient_skip_stop_reached or (
             config.max_steps is not None and train_state.step >= config.max_steps
         ):
             break
@@ -1485,6 +1624,7 @@ def launch(hydra_config: DictConfig):
             "max_step_seconds": max(steady),
             "all_step_seconds": bench_step_times,
             "last_metrics": bench_last_metrics,
+            "metric_history": bench_metric_history,
         }
         if benchmark_fingerprint is not None:
             summary["state_fingerprint"] = benchmark_fingerprint

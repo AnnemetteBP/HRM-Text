@@ -51,6 +51,7 @@ setsid /home/ucloud/miniforge3/envs/hrm/bin/python -m eval_scheduler run \
 - Clear stop: `python -m eval_scheduler clear-stop --plan-dir <PLAN_DIR>`.
 - Status: `python -m eval_scheduler status --plan-dir <PLAN_DIR>`.
 - Monitor: `python -m eval_scheduler monitor --plan-dir <PLAN_DIR>`.
+- For multi-node scheduling, use [`wiki/pages/model-architecture/multinode-eval-scheduler-plan.md`](wiki/pages/model-architecture/multinode-eval-scheduler-plan.md); never start unrestricted legacy runners on multiple nodes.
 
 ## W&B Metric Logging Safety
 
