@@ -64,6 +64,44 @@ four-node topology as the closest numerical/per-rank control. Prefer eight
 nodes for production only if its measured throughput is materially higher and
 the shared filesystem and cross-node replica all-reduce remain healthy.
 
+## Optional In-Epoch DFM8 Acceleration
+
+As of 2026-08-27, the active one-node DFM8 XXL run was at step 162495 of an
+estimated 268857, at about 3.56 seconds per optimizer step. Approximately 105
+hours of one-node compute therefore remained before accounting for evaluation
+pauses. A topology change can repay its validation cost, but must not jump
+directly from the established 8-rank path to an untested 64-rank production
+job.
+
+The new checkpoint sidecars record an exact `global_row_cursor_in_epoch`, and
+this model records `carry_policy=none`. These make a mid-epoch world-size
+change tractable. They do not prove that an 8-rank DCP checkpoint expands
+correctly onto 16, 32, or 64 real ranks, or that multi-node HSDP, NCCL, SSH
+orchestration, and shared-filesystem checkpointing are production-ready.
+
+Use the following staged gate without changing global batch size or LR:
+
+1. Keep the one-node production process running while provisioning nodes and
+   passing SSH/NCCL preflight.
+2. From a fully written ephemeral checkpoint copy, run a W&B-disabled two-node
+   smoke with `fsdp_shard_degree=8`, GAS 2, and 5--20 optimizer steps. Save a
+   disposable checkpoint and verify model, optimizer, EMA, step, exact row
+   cursor, and DCP completeness.
+3. If that passes, switch production only at a subsequent fully written
+   ephemeral checkpoint. Benchmark the two-node steady-state rate first.
+4. Validate four nodes with GAS 1 before choosing it for production. This is
+   the preferred speed/risk compromise because it preserves 8192 local tokens
+   per GPU while removing accumulation.
+5. Treat eight nodes as a later benchmark, not the first production switch. It
+   reduces local tokens to 4096 per GPU but introduces a larger replica group,
+   lower per-GPU work, and 64-rank checkpoint/filesystem pressure.
+
+The unmeasured planning ranges are roughly 1.6--1.9x for two nodes, 2.5--3.3x
+for four nodes, and 3--5x for eight nodes. Replace these estimates with measured
+end-to-end rates including checkpoint stalls. Adjust ephemeral checkpoint
+intervals after measurement to retain a roughly 30--60 minute wall-clock
+cadence rather than retaining the one-node 500-step cadence automatically.
+
 ## Checkpoint Cadence
 
 Step time should fall substantially, so retaining a 500-step ephemeral cadence
