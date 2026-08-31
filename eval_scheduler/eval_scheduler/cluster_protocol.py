@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
@@ -21,9 +22,18 @@ class ClusterService(Protocol):
 
 def atomic_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
-    os.replace(temporary, path)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.{os.getpid()}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w") as stream:
+            stream.write(json.dumps(value, indent=2, sort_keys=True) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def ensure_cluster_token(plan_dir: Path) -> str:

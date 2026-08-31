@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import json
 import time
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from eval_scheduler.cluster_monitor import cluster_rich_renderable, cluster_status_text
 from eval_scheduler.cluster_protocol import (
     ClusterClient,
     ClusterProtocolError,
+    atomic_json,
     start_cluster_server,
 )
 from eval_scheduler.cluster_runtime import ClusterCoordinator, ClusterWorker
@@ -373,3 +375,10 @@ def test_cluster_training_is_shown_on_worker_gpus(tmp_path: Path) -> None:
     assert "training:step_100" in rich_text
     assert "idle" not in rich_text
     assert "CLUSTER" not in rich_text
+def test_atomic_json_supports_concurrent_writers(tmp_path: Path) -> None:
+    path = tmp_path / "worker.json"
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda value: atomic_json(path, {"value": value}), range(100)))
+
+    assert 0 <= json.loads(path.read_text())["value"] < 100
+    assert not list(tmp_path.glob(".worker.json.*.tmp"))
