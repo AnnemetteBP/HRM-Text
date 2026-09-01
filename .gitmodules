@@ -7,3 +7,6 @@
 [submodule "koolbardi"]
 	path = koolbardi
 	url = https://github.com/schneiderkamplab/koolbardi.git
+[submodule "fineinstructions"]
+	path = fineinstructions
+	url = https://github.com/schneiderkamplab/fineinstructions.git
