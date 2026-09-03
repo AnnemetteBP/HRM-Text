@@ -219,6 +219,53 @@ SSH or VS Code connects. Shell commands inside the allocation do not select or
 allocate nodes. Use one B200 GPU node for the first MoE correctness smoke; a
 multi-node launch is a later scaling task.
 
+The local SSH alias is `ucloud` in `~/.ssh/config`. Each new UCloud job can
+receive a different SSH port, so copy the current job's port from its UCloud
+interface and replace only the `Port` value in that host block. The recovered
+local reconnect sequence is below. Each command is intentionally separate.
+`pkill` terminates stale **local SSH client connections**; it does not cancel
+or kill the remote UCloud job.
+
+```bash
+nano ~/.ssh/config
+```
+
+The host block should retain its existing hostname, user, key, and identity
+settings while using the new job port:
+
+```sshconfig
+Host ucloud
+    HostName ssh.cloud.sdu.dk
+    User ucloud
+    Port <CURRENT_JOB_PORT>
+    IdentityFile /Users/ampirchert/.ssh/id_ed25519_ucloud
+    IdentitiesOnly yes
+```
+
+```bash
+pkill -f 'ssh.*ucloud'
+```
+
+```bash
+ssh-keyscan -p <CURRENT_JOB_PORT> ssh.cloud.sdu.dk >> ~/.ssh/known_hosts
+```
+
+```bash
+ssh -vvv ucloud
+```
+
+The last command is the direct connection check. Once it succeeds, VS Code's
+Remote-SSH target is the same `ucloud` alias. The key scan must use the same
+port placed in `~/.ssh/config`.
+
+If SSH reports that the remote host identification changed, remove only that
+job endpoint's old key, repeat the key-scan command, and reconnect; substitute
+the current job port:
+
+```bash
+ssh-keygen -R "[ssh.cloud.sdu.dk]:<CURRENT_JOB_PORT>"
+```
+
 Correction, 2026-09-03: `/work/dfm` is a historical mount name, not a portable
 project location. Only folders attached to the job under `/work` persist after
 the allocation ends.[^ucloud-submit-job] At job submission, attach either the
@@ -290,6 +337,13 @@ Create a separate persistent Python 3.13 environment. The repository has
 to run modules from the repository root. Install Torch and extension build
 prerequisites first, then consume `pyproject.toml` with the `sm100` extra. This
 ordering makes Torch available to the FlashAttention 4 source build:
+
+UCloud image correction, 2026-09-03: job `j-12379951-job-0` opened with the
+`(base)` Conda environment already active, while
+`/home/ucloud/miniforge3/etc/profile.d/conda.sh` did not exist. On an image
+whose prompt already shows `(base)`, skip the hard-coded `source` command and
+invoke `conda` directly. The source path below applies only to images where
+that Miniforge installation exists.
 
 ```bash
 source /home/ucloud/miniforge3/etc/profile.d/conda.sh
