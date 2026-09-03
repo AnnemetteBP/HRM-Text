@@ -1,5 +1,12 @@
 # Knowledge Bundle Update Log
 
+- 2026-09-03: The pinned-OpenEuroLLM real-data HRM-MoE launcher completed its
+  first 20-step eight-B200 smoke. All six L router calls were differentiable
+  and all four experts were live, but final top-1 loads were imbalanced at
+  approximately 59/11/7/23 percent. Recorded this as a correctness pass only;
+  data-parallel-global balance statistics and held-out domain probes remain
+  gates before longer scientific training.
+
 - 2026-09-03: Settled the from-scratch HRM-MoE representation contract on
   immutable `openeurollm/tokenizer-128k-v2` revision
   `5c1fc6c70779ec84580c2a68d75c6b569b3381f5`, repository-owned minimal ChatML,

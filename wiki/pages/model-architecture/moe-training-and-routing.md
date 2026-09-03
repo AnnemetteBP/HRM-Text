@@ -261,6 +261,26 @@ existing run directory.
 NPROC_PER_NODE=8 bash scripts/run_moe_real_smoke.sh
 ```
 
+### OpenEuroLLM eight-B200 smoke result (2026-09-03)
+
+Run `hrm-moe-open-euro-e4-b200-smoke-20260903-184410` completed the supported
+20-step launcher on job `j-12380470-job-0` with eight B200 processes. The final
+objective was finite at `10.505886`, all six recurrent L router calls reported
+`differentiable=1`, and aggregate top-1 expert loads summed to one at
+`[0.5891, 0.1074, 0.0715, 0.2320]`. Aggregate mean router probabilities were
+`[0.4041, 0.1687, 0.1667, 0.2606]`; balance loss was about `1.30` in the shown
+late calls and aggregate z-loss was `1.0360`.
+
+This is a correctness pass: no expert was dead and training, local metrics,
+summary finalization, and isolated checkpoint/output handling completed. It is
+not a balance or specialization pass. Expert 0 received roughly 59% of final
+assignments while expert 2 received roughly 7%, and the current auxiliary
+balance calculation still uses rank-local rather than data-parallel-global
+statistics. Implement and verify globally synchronized balance statistics
+before a longer multi-GPU screening run, then measure routing on held-out
+source-labelled probes rather than assigning semantic expert names from these
+20 steps.
+
 ## UCloud B200 smoke-run workflow
 
 UCloud hardware is selected when the job is created in the UCloud UI, before
