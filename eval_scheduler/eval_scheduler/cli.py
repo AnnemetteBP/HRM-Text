@@ -14,15 +14,33 @@ from pathlib import Path
 import typer
 
 from .catalog import BatchDefaults
+from .cluster_launcher import launch_workers, stop_workers
+from .cluster_monitor import (
+    cluster_rich_renderable,
+    cluster_status_text,
+    cluster_watch,
+    read_cluster_snapshot,
+)
+from .cluster_protocol import ClusterClient, read_cluster_token
+from .cluster_runtime import ClusterCoordinator, ClusterWorker, install_signal_handlers
 from .locking import PlanLock
 from .model import Action, Job, JobStatus, read_plan, write_plan
 from .monitor import rich_status_renderable, rich_watch, status_text, watch
-from .plan import PlanConfig, long_context_capability, plan_path, save_new_plan, set_batch, summarize_plan
+from .plan import (
+    PlanConfig,
+    long_context_capability,
+    plan_path,
+    save_new_plan,
+    set_batch,
+    summarize_plan,
+)
 from .runtime import Runner
 
 app = typer.Typer(help="Plan-first HRM evaluation scheduler.")
 plan_app = typer.Typer(help="Create and edit scheduler plans.")
+cluster_app = typer.Typer(help="Run and operate a fixed-membership multi-node scheduler.")
 app.add_typer(plan_app, name="plan")
+app.add_typer(cluster_app, name="cluster")
 
 
 def parse_gpus(value: str) -> list[int]:
@@ -605,6 +623,175 @@ def reset_running(
             updated.append(job)
         write_plan(path, updated)
     typer.echo(f"reset_running_jobs\t{changed}")
+
+
+@cluster_app.command("coordinator")
+def cluster_coordinator(
+    plan_dir: Path = typer.Option(..., help="Directory containing plan.tsv."),
+    bind_host: str = typer.Option("0.0.0.0", help="Private interface/address to bind."),
+    port: int = typer.Option(8765, min=1, max=65535),
+    expected_nodes: int = typer.Option(0, min=0, help="Required fresh workers before training; 0 disables the count gate."),
+    worker_ttl: float = typer.Option(30.0, min=5.0),
+    persistent_vllm: bool = typer.Option(True, help="Workers should retain compatible vLLM servers."),
+) -> None:
+    coordinator = ClusterCoordinator(
+        plan_dir,
+        bind_host=bind_host,
+        port=port,
+        expected_nodes=expected_nodes,
+        worker_ttl=worker_ttl,
+        persistent_vllm=persistent_vllm,
+    )
+    install_signal_handlers(coordinator.stop_event)
+    typer.echo(
+        f"coordinator\tbind={bind_host}:{port}\ttoken_file={plan_dir / 'cluster.token'}"
+    )
+    coordinator.run()
+
+
+@cluster_app.command("worker")
+def cluster_worker(
+    coordinator_url: str = typer.Option(...),
+    token_file: Path = typer.Option(..., exists=True, readable=True),
+    plan_dir: Path = typer.Option(...),
+    node_id: str = typer.Option(...),
+    gpus: str = typer.Option("0,1,2,3,4,5,6,7"),
+    workdir: Path = typer.Option(Path.cwd()),
+    environment: str = typer.Option(""),
+    persistent_vllm: bool = typer.Option(True),
+    poll_interval: float = typer.Option(1.0, min=0.2),
+    heartbeat_interval: float = typer.Option(5.0, min=1.0),
+) -> None:
+    worker = ClusterWorker(
+        coordinator_url=coordinator_url,
+        token=read_cluster_token(token_file),
+        plan_dir=plan_dir,
+        node_id=node_id,
+        gpus=parse_gpus(gpus),
+        workdir=workdir,
+        environment=environment,
+        persistent_vllm=persistent_vllm,
+        poll_interval=poll_interval,
+        heartbeat_interval=heartbeat_interval,
+    )
+    install_signal_handlers(worker.stop_event)
+    worker.run()
+
+
+@cluster_app.command("launch-workers")
+def cluster_launch_workers(
+    hostfile: Path = typer.Option(..., exists=True, readable=True),
+    coordinator_url: str = typer.Option(...),
+    token_file: Path = typer.Option(..., exists=True, readable=True),
+    plan_dir: Path = typer.Option(...),
+    workdir: Path = typer.Option(Path.cwd()),
+    python_env: Path = typer.Option(Path("/home/ucloud/miniforge3/envs/hrm")),
+    gpus: str = typer.Option("0,1,2,3,4,5,6,7"),
+    persistent_vllm: bool = typer.Option(True),
+) -> None:
+    launches = launch_workers(
+        hostfile=hostfile,
+        coordinator_url=coordinator_url,
+        token_path=token_file,
+        plan_dir=plan_dir,
+        workdir=workdir,
+        python_env=python_env,
+        gpus=gpus,
+        persistent_vllm=persistent_vllm,
+    )
+    for launch in launches:
+        typer.echo(
+            f"worker_started\tnode={launch.node_id}\thost={launch.host}\tpid={launch.pid}\tlog={launch.log_path}"
+        )
+
+
+@cluster_app.command("stop-workers")
+def cluster_stop_workers(
+    plan_dir: Path = typer.Option(...),
+    force: bool = typer.Option(False, help="Send KILL instead of TERM to exact recorded worker process groups."),
+) -> None:
+    for worker in stop_workers(plan_dir, force=force):
+        typer.echo(f"worker_stopped\t{worker}")
+
+
+@cluster_app.command("status")
+def cluster_status(plan_dir: Path = typer.Option(...)) -> None:
+    typer.echo(cluster_status_text(plan_dir))
+
+
+@cluster_app.command("monitor")
+def cluster_monitor(
+    plan_dir: Path = typer.Option(...),
+    interval: float = typer.Option(30.0, min=1.0),
+    once: bool = typer.Option(False),
+    rich: bool = typer.Option(True, "--rich/--no-rich"),
+) -> None:
+    if once:
+        if rich:
+            from rich.console import Console
+
+            Console().print(cluster_rich_renderable(plan_dir))
+        else:
+            typer.echo(cluster_status_text(plan_dir))
+        return
+    cluster_watch(plan_dir, interval=interval, rich=rich)
+
+
+@cluster_app.command("worker-drain")
+def cluster_worker_drain(
+    coordinator_url: str = typer.Option(...),
+    token_file: Path = typer.Option(..., exists=True, readable=True),
+    node_id: str = typer.Option(...),
+    drained: bool = typer.Option(True, "--drain/--undrain"),
+) -> None:
+    response = ClusterClient(coordinator_url, read_cluster_token(token_file)).request(
+        "/v1/admin/drain", {"node_id": node_id, "drained": drained}
+    )
+    typer.echo(json.dumps(response, sort_keys=True))
+
+
+@cluster_app.command("workers")
+def cluster_workers(plan_dir: Path = typer.Option(...)) -> None:
+    snapshot = read_cluster_snapshot(plan_dir)
+    now_ts = time.time()
+    for node_id, worker in sorted(snapshot.get("workers", {}).items()):
+        age = now_ts - float(worker.get("last_heartbeat", 0))
+        typer.echo(
+            f"{node_id}\thost={worker.get('hostname')}\tage={age:.1f}s\t"
+            f"gpus={len(worker.get('gpus', {}))}\tdrained={worker.get('drained')}\t"
+            f"active={len(worker.get('active_leases', []))}"
+        )
+
+
+@cluster_app.command("stop")
+def cluster_stop(plan_dir: Path = typer.Option(...)) -> None:
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    stop_request_path(plan_dir).write_text(
+        json.dumps(
+            {
+                "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "pid": os.getpid(),
+                "scope": "cluster",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    typer.echo(f"cluster_stop_requested\t{stop_request_path(plan_dir)}")
+
+
+@cluster_app.command("clear-stop")
+def cluster_clear_stop(plan_dir: Path = typer.Option(...)) -> None:
+    stop_request_path(plan_dir).unlink(missing_ok=True)
+    typer.echo("cluster_stop_request_cleared")
+
+
+@cluster_app.command("abort")
+def cluster_abort(plan_dir: Path = typer.Option(...)) -> None:
+    cluster_stop(plan_dir)
+    for worker in stop_workers(plan_dir, force=True):
+        typer.echo(f"worker_killed\t{worker}")
 
 
 @app.command("run")

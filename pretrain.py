@@ -36,6 +36,7 @@ from omegaconf import DictConfig, OmegaConf
 from models.layers import Carry
 from models.activation_checkpointing import apply_activation_checkpointing
 from models.common import IGNORE_LABEL_ID, prepare_prefixlm_batch, wrap_tensor
+from models.gradient_clipping import clip_grad_norm_mean_units
 from models.accelerator import (
     AcceleratorType,
     empty_accelerator_cache,
@@ -74,6 +75,9 @@ class PretrainConfig(pydantic.BaseModel):
     global_batch_size: int
     epochs: int
     gradient_accumulation_steps: int = pydantic.Field(default=1, ge=1)
+    gradient_clip_norm: Optional[float] = pydantic.Field(default=None, gt=0)
+    gradient_skip_norm: Optional[float] = pydantic.Field(default=None, gt=0)
+    gradient_skip_max_consecutive: int = pydantic.Field(default=3, ge=1)
     training_total_steps: Optional[int] = pydantic.Field(default=None, ge=1)
 
     lr: float
@@ -854,8 +858,13 @@ def train_accumulated_batches(
     use_compiled: bool,
     zero_grad_after_step: bool = True,
     **kwargs,
-) -> dict[str, tuple[Tensor, Tensor]]:
+) -> tuple[dict[str, tuple[Tensor, Tensor]], bool]:
     trace_print(config, rank, f"train_accumulated_begin step={train_state.step} microbatches={len(batches)} compiled={use_compiled}")
+    if config.gradient_skip_norm is not None and train_state.carry is not None:
+        raise RuntimeError(
+            "gradient_skip_norm currently supports only models with no persistent carry; "
+            "a skipped stateful batch needs explicit carry rollback semantics"
+        )
     supervised_counts = [_supervised_token_count(config, rank, batch) for batch in batches]
     total_supervised = torch.stack(supervised_counts).sum().clamp_min(1.0)
     backward_step = (
@@ -904,16 +913,63 @@ def train_accumulated_batches(
             train_state.model.set_requires_gradient_sync(True, recurse=True)
             train_state.model.set_requires_all_reduce(True, recurse=True)
 
-    trace_print(config, rank, f"optim_step_begin step={train_state.step}")
-    train_state.optim.step()
-    trace_print(config, rank, f"optim_step_end step={train_state.step}")
+    optimizer_step_skipped = False
+    if config.gradient_clip_norm is not None or config.gradient_skip_norm is not None:
+        summed_gradient_scale = 1.0
+        if isinstance(train_state.model, FSDPModule) and dist.is_available() and dist.is_initialized():
+            # This FSDP2 path intentionally disables gradient division because
+            # Adam is scale-invariant. Keep the public clipping threshold in
+            # mean-gradient units so it remains comparable to DDP/non-sharded
+            # training and independent of world size.
+            summed_gradient_scale = float(dist.get_world_size())
+        clip_metrics = clip_grad_norm_mean_units(
+            train_state.model.parameters(),
+            max_norm=(
+                config.gradient_clip_norm
+                if config.gradient_clip_norm is not None
+                else config.gradient_skip_norm
+            ),
+            summed_gradient_scale=summed_gradient_scale,
+        )
+        assert metrics is not None
+        one = clip_metrics.total_norm.new_ones(())
+        metrics["grad_norm"] = (clip_metrics.total_norm.detach(), one)
+        if config.gradient_clip_norm is not None:
+            metrics.update({
+                "grad_clip_coefficient": (clip_metrics.clip_coefficient.detach(), one),
+                "grad_clipped": (clip_metrics.clipped.detach(), one),
+            })
+        if config.gradient_skip_norm is not None:
+            skip_tensor = (
+                clip_metrics.total_norm > clip_metrics.total_norm.new_tensor(config.gradient_skip_norm)
+            ).to(torch.int32)
+            if dist.is_available() and dist.is_initialized():
+                # The norm should already agree, but MAX guarantees identical
+                # control flow at a threshold despite rank-local roundoff.
+                dist.all_reduce(skip_tensor, op=dist.ReduceOp.MAX)
+            optimizer_step_skipped = bool(skip_tensor.item())
+            metrics["optimizer_step_skipped"] = (
+                skip_tensor.to(dtype=clip_metrics.total_norm.dtype),
+                one,
+            )
+
+    if optimizer_step_skipped:
+        trace_print(config, rank, f"optim_step_skipped step={train_state.step}")
+    else:
+        trace_print(config, rank, f"optim_step_begin step={train_state.step}")
+        train_state.optim.step()
+        trace_print(config, rank, f"optim_step_end step={train_state.step}")
     if zero_grad_after_step:
         trace_print(config, rank, f"zero_grad_after_step_begin step={train_state.step}")
         train_state.optim.zero_grad()
         trace_print(config, rank, f"zero_grad_after_step_end step={train_state.step}")
     assert metrics is not None
-    trace_print(config, rank, f"train_accumulated_end step={train_state.step}")
-    return metrics
+    trace_print(
+        config,
+        rank,
+        f"train_accumulated_end step={train_state.step} optimizer_step_skipped={optimizer_step_skipped}",
+    )
+    return metrics, optimizer_step_skipped
 
 
 @torch.inference_mode()
@@ -1362,8 +1418,10 @@ def launch(hydra_config: DictConfig):
             f"step={train_state.step}; exiting without another optimizer step",
             flush=True,
         )
+    consecutive_gradient_skips = 0
+    gradient_skip_stop_reached = False
     for epoch in range(start_epoch, config.epochs + 1):
-        if stop_after_step_reached:
+        if stop_after_step_reached or gradient_skip_stop_reached:
             break
         print (f"[Rank {RANK}, World Size {WORLD_SIZE}]: Epoch {epoch}")
         trace_print(config, RANK, f"epoch_begin epoch={epoch}")
@@ -1401,8 +1459,46 @@ def launch(hydra_config: DictConfig):
                 device,
                 config.memory_log_interval > 0 and train_state.step % config.memory_log_interval == 0,
             )
-            metrics = train_accumulated_batches(config, RANK, train_state, accumulation_batches, config.compile_train_batch, **train_extra_args)
+            metrics, optimizer_step_skipped = train_accumulated_batches(
+                config,
+                RANK,
+                train_state,
+                accumulation_batches,
+                config.compile_train_batch,
+                **train_extra_args,
+            )
             accumulation_batches = []
+            if config.gradient_skip_norm is not None:
+                if optimizer_step_skipped:
+                    consecutive_gradient_skips += 1
+                else:
+                    consecutive_gradient_skips = 0
+                metric_reference = next(iter(metrics.values()))[0]
+                metric_one = metric_reference.new_ones(())
+                metrics["consecutive_gradient_skips"] = (
+                    metric_reference.new_tensor(float(consecutive_gradient_skips)),
+                    metric_one,
+                )
+                gradient_skip_stop_reached = (
+                    optimizer_step_skipped
+                    and consecutive_gradient_skips >= config.gradient_skip_max_consecutive
+                )
+                if optimizer_step_skipped and RANK == 0:
+                    skipped_grad_norm = float(metrics["grad_norm"][0].item())
+                    print(
+                        f"Skipped optimizer step {train_state.step}: gradient norm "
+                        f"{skipped_grad_norm:.6g} exceeded "
+                        f"gradient_skip_norm={config.gradient_skip_norm}; "
+                        f"consecutive={consecutive_gradient_skips}/"
+                        f"{config.gradient_skip_max_consecutive}",
+                        flush=True,
+                    )
+                if gradient_skip_stop_reached and RANK == 0:
+                    print(
+                        "Maximum consecutive gradient skips reached; saving a regular "
+                        "checkpoint and exiting cleanly",
+                        flush=True,
+                    )
 
             if config.max_steps is not None and RANK == 0:
                 synchronize_device(device)
@@ -1418,7 +1514,7 @@ def launch(hydra_config: DictConfig):
             )
             maybe_empty_cache(train_state.step, device, config.empty_cache_interval)
 
-            if train_state.step % config.log_interval == 0:
+            if train_state.step % config.log_interval == 0 or optimizer_step_skipped:
                 trace_print(config, RANK, f"reduce_metrics_begin step={train_state.step}")
                 metrics = reduce_metrics(metrics, prefix="train/")
                 trace_print(config, RANK, f"reduce_metrics_end step={train_state.step}")
@@ -1474,7 +1570,7 @@ def launch(hydra_config: DictConfig):
                 config.checkpoint_step_interval is not None
                 and train_state.step % config.checkpoint_step_interval == 0
             )
-            if regular_interval_reached or stop_after_step_reached:
+            if regular_interval_reached or stop_after_step_reached or gradient_skip_stop_reached:
                 save_train_checkpoint(config, train_state, f"step_{train_state.step}", epoch, batch_in_epoch, RANK, local_batch_size=local_batch_size, resume_info=accumulation_resume_info, batch_in_epoch_exact=batch_in_epoch_exact)
                 saved_regular_step_checkpoint = True
 
@@ -1486,14 +1582,14 @@ def launch(hydra_config: DictConfig):
                     save_train_checkpoint(config, train_state, ephemeral_tag, epoch, batch_in_epoch, RANK, checkpoint_kind="ephemeral", local_batch_size=local_batch_size, resume_info=accumulation_resume_info, batch_in_epoch_exact=batch_in_epoch_exact)
                     remove_stale_ephemeral_checkpoints(config, ephemeral_tag, RANK)
 
-            if stop_after_step_reached or (
+            if stop_after_step_reached or gradient_skip_stop_reached or (
                 config.max_steps is not None and train_state.step >= config.max_steps
             ):
                 break
 
         skip_batches = 0
 
-        if stop_after_step_reached or (
+        if stop_after_step_reached or gradient_skip_stop_reached or (
             config.max_steps is not None and train_state.step >= config.max_steps
         ):
             break
