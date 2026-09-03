@@ -182,11 +182,16 @@ class DroplessMoE(nn.Module):
             )
             expert_inputs = valid_states.index_select(0, token_indices)
             expert_outputs = expert(expert_inputs)
-            route_weights = top_weights[token_indices, route_slots].to(expert_outputs.dtype)
+            # Autocast can produce BF16 expert outputs while the recurrent
+            # residual stream (and therefore the dispatch accumulator) stays
+            # FP32. index_add requires identical source/self dtypes, so cast
+            # both factors to the accumulator dtype before combining routes.
+            route_weights = top_weights[token_indices, route_slots].to(output_valid.dtype)
+            weighted_outputs = expert_outputs.to(output_valid.dtype) * route_weights.unsqueeze(-1)
             output_valid = output_valid.index_add(
                 0,
                 token_indices,
-                expert_outputs * route_weights.unsqueeze(-1),
+                weighted_outputs,
             )
 
         flat_output = torch.zeros_like(flat_states).index_copy(0, valid_indices, output_valid)

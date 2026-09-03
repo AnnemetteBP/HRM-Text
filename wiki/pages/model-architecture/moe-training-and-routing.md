@@ -212,6 +212,14 @@ capacity/overflow policy, and checkpoint/resume parity. Dropless kernels such
 as MegaBlocks-style block-sparse execution are preferable to token dropping in
 the recurrent reference because dropped updates can compound across calls.
 
+On 2026-09-03, the first B200 BF16 training attempt exposed a mixed-precision
+dispatch bug: the residual-derived route accumulator was FP32 while autocast
+produced BF16 expert outputs, and `index_add` requires identical dtypes. The
+implementation now casts route weights and expert outputs to the accumulator
+dtype before accumulation. A CPU BF16-autocast regression test covers this
+case. Local syntax validation passed; the full test suite and B200 smoke rerun
+remain pending on the corrected commit.
+
 ## UCloud B200 smoke-run workflow
 
 UCloud hardware is selected when the job is created in the UCloud UI, before

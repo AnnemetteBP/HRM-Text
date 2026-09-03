@@ -106,6 +106,22 @@ def test_selected_probability_top1_provides_task_gradient_to_router() -> None:
     assert torch.count_nonzero(moe.router.weight.grad).item() > 0
 
 
+def test_dispatch_accumulator_handles_bfloat16_autocast() -> None:
+    torch.manual_seed(30)
+    moe = DroplessMoE(_moe_config(moe_num_experts=3, moe_top_k=2))
+    states = torch.randn(11, moe.hidden_size, dtype=torch.float32, requires_grad=True)
+
+    with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
+        output, aux = moe(states)
+        loss = output.square().mean() + 0.01 * aux.balance_loss_sum
+    loss.backward()
+
+    assert output.dtype == states.dtype
+    assert torch.isfinite(output).all()
+    assert states.grad is not None
+    assert torch.isfinite(states.grad).all()
+
+
 def test_reference_dispatch_runs_inside_compiled_caller() -> None:
     torch.manual_seed(31)
     moe = DroplessMoE(_moe_config())
