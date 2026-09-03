@@ -1,5 +1,16 @@
 # Knowledge Bundle Update Log
 
+- 2026-09-03: Added a non-overwriting public ten-family HRM-MoE fallback
+  for operators who can see but cannot mount/copy the private DFM9-mini drive.
+  The equal-token OpenEuroLLM corpus covers Danish, math, code/SWE, science,
+  Tulu general instruction, explicit AllenAI reasoning, capped long-form
+  instruction, grounded knowledge, historical news, and creative literature;
+  it pins source revisions, preflights every source, retains family IDs, logs
+  locally without W&B, and launches guarded E8/top-2 XL training. The
+  long-form family is not represented as true extended-context training; 8K
+  is a separate post-router-stability stage. Documented why E6/top-2 cannot
+  simultaneously match E8's active compute and total routed-expert capacity.
+
 - 2026-09-03: Added a W&B-free DFM9-mini MoE training launcher and reconciled
   the stale three-epoch/44.31GB ablation note with the verified repaired
   ten-epoch/407GB artifact. The stabilized matched-compute candidate is now

@@ -138,8 +138,14 @@ def validate(root: Path) -> dict[str, Any]:
         raise ValueError("metadata.max_seq_len disagrees with sampled indices")
 
     domains = metadata.get("domains", {})
-    if set(domains) != {"danish", "math", "code"}:
-        raise ValueError(f"Unexpected pilot domains: {sorted(domains)}")
+    if not isinstance(domains, dict) or not domains:
+        raise ValueError("Dataset metadata must contain non-empty domain counts")
+    expected_domains = metadata.get("expected_domains")
+    if expected_domains is not None and set(domains) != set(expected_domains):
+        raise ValueError(
+            f"Unexpected pilot domains: {sorted(domains)}; "
+            f"expected {sorted(expected_domains)}"
+        )
     domain_tokens = sum(int(value["train_tokens"]) for value in domains.values())
     if domain_tokens != reference["train_tokens"]:
         raise ValueError("Per-domain train-token counts do not match the sampled total")

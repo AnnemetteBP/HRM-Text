@@ -353,6 +353,71 @@ parameters (`8 × 0.5 = 4`) and activated expert width per token
 eight-expert rows remain separate ablations rather than interpreting the expert
 count change as a free quality improvement.
 
+An E6/top-2 design is a valid ablation but not a single fully matched
+replacement: scale `0.5` preserves activated width while reducing routed-expert
+capacity from four to three dense-equivalent experts; scale `2/3` preserves
+total routed-expert capacity while increasing activated width from one to
+`4/3`. Report both variants if E6 is tested. Expert count is not a claim that
+one expert will correspond to one human-named domain.
+
+### Public ten-family fallback corpus
+
+When the private DFM9-mini drive cannot be mounted or copied, use
+`scripts/run_moe_public_diverse_train.sh`. It builds an equal-token corpus under
+the unique run directory from ten independently labelled capability/source
+families. These labels support later routing analysis; they are not fixed
+expert assignments:
+
+1. Danish continuation from
+   [Danish DynaWord](https://huggingface.co/datasets/danish-foundation-models/danish-dynaword);
+2. mathematical reasoning from
+   [NuminaMath 1.5](https://huggingface.co/datasets/AI-MO/NuminaMath-1.5);
+3. code and software engineering from
+   [Nemotron SFT SWE v2](https://huggingface.co/datasets/nvidia/Nemotron-SFT-SWE-v2);
+4. science from
+   [Nemotron SFT Science v2](https://huggingface.co/datasets/nvidia/Nemotron-SFT-Science-v2);
+5. broad instruction/chat from
+   [Tulu 3 SFT mixture](https://huggingface.co/datasets/allenai/tulu-3-sft-mixture);
+6. explicit reasoning traces from the `DeepSeek` configuration of
+   [AllenAI Big Reasoning Traces](https://huggingface.co/datasets/allenai/big-reasoning-traces);
+7. long-form instruction/chat from
+   [Tulu v2 SFT long mixture](https://huggingface.co/datasets/allenai/tulu-v2-sft-long-mixture);
+8. grounded/encyclopedic continuation from
+   [Common Pile Wikimedia](https://huggingface.co/datasets/common-pile/wikimedia_filtered);
+9. historical news continuation from
+   [US Public-Domain Newspapers](https://huggingface.co/datasets/PleIAs/US-PD-Newspapers);
+10. creative/literary continuation from
+   [Common Pile Project Gutenberg](https://huggingface.co/datasets/common-pile/project_gutenberg_filtered).
+
+This is deliberately broader than the three-source smoke, but historical news
+must not be represented as current factual knowledge. The builder resolves and
+records immutable Hugging Face revisions, performs an access/schema preflight
+for all ten sources before long sampling, deduplicates exact prompt/response
+pairs across families, stores per-row family IDs, refuses paths outside the
+repository, and refuses to overwrite an existing output. The default is 100M
+tokens per family (approximately 1B total), OpenEuroLLM-v2 tokenization, an XL
+HRM backbone, E8/top-2 half-width experts, one local eight-GPU node, local JSONL
+metrics, no W&B, and the persistent collapse guard. The data mix is a routing
+and specialization pilot, not a claim of Chinchilla-complete pretraining.
+
+The `long_form_instruction` family is deliberately capped to the same
+1,025-token rendered-example limit as the routing pilot. It broadens discourse
+and conversation structure but does not constitute extended-context training.
+A true 8K stage requires at least 65,536 global tokens with eight data-parallel
+ranks so each rank can pack an 8,192-token example; it is deferred until the
+router passes the fixed-length collapse gate, avoiding a simultaneous routing
+and sequence-length change.
+
+Run from the repository root inside the active environment:
+
+```bash
+bash scripts/run_moe_public_diverse_train.sh
+```
+
+For the active-compute-matched E6 ablation, set six experts with half-width
+experts. For the parameter-capacity-matched E6 ablation, use scale `0.6666667`;
+the latter intentionally activates one-third more expert width per token.
+
 Local MoE runs log one JSONL record per optimizer step when `log_interval=1`.
 `scripts/plot_moe_training.py <run-root>` renders those records into a
 four-panel PNG containing loss/objective, auxiliary router
@@ -422,6 +487,15 @@ existing persistent folder containing DFM9 plus a separate work folder, or one
 combined persistent folder. Keep the repository, Conda prefix, logs, and
 checkpoints under the attached work folder. Do not place durable artifacts
 under `/home/ucloud`.
+
+Access clarification, 2026-09-03 (confidence: medium from the current UCloud
+operator's mounted-folder report and an empty exact-file search): a mounted
+folder named `/work/DFM` does not itself imply access to the historical
+`/work/dfm/HRM-Text` workspace. The current operator can see `/work/DFM` but
+cannot see `HRM-Text`, `sampled_dfm9_mini`, or its required metadata/token
+files there. The 407 GB sampled artifact is not tracked in Git. Until its
+storage owner shares the folder containing the artifact, or it is copied into
+a folder attached to the operator's job, the DFM9-mini launcher cannot use it.
 
 Superseded, 2026-09-03: the workstation branch preparation below was the
 pre-commit recovery plan. The implemented experiment now lives on the single
