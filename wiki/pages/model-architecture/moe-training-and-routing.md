@@ -238,11 +238,13 @@ When the full sampled DFM9 storage is unavailable, use
 `scripts/prepare_moe_real_pilot.py` for a bounded real-data training gate rather
 than extending the synthetic correctness sample. It streams equal token budgets
 from `oliverkinch/da-instruct-dynaword-hq`, `AI-MO/NuminaMath-1.5`, and
-`allenai/tulu-3-sft-personas-code`, applies the DFM-Mimir chat template, and
-writes native `V1Dataset` arrays. The script refuses output and cache paths
-outside the repository and refuses to overwrite an existing output tree. This
-pilot tests optimization and routing on Danish, math, and code, but it is not a
-substitute for the complete 161-source DFM9 mixture or a dense-Mimir comparison.
+`allenai/tulu-3-sft-personas-code` and writes native `V1Dataset` arrays. Its
+original DFM-Mimir tokenizer/template default was superseded on 2026-09-03 by
+the [pinned OpenEuroLLM and repository-owned ChatML contract](moe-tokenizer-and-template.md).
+The script refuses output and cache paths outside the repository and refuses to
+overwrite an existing output tree. This pilot tests optimization and routing
+on Danish, math, and code, but it is not a substitute for a diversified
+production mixture or a matched dense comparison.
 
 ## UCloud B200 smoke-run workflow
 

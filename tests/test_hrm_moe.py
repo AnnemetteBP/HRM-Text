@@ -261,6 +261,24 @@ def test_moe_head_adds_auxiliary_objective_and_metrics() -> None:
     assert objective.detach().item() > ce_mean.item()
 
 
+def test_moe_head_can_share_input_and_output_embeddings() -> None:
+    backbone = _FakeMoEBackbone(hidden_size=8, num_experts=2)
+    head = MoELMHead(
+        backbone,
+        {
+            "vocab_size": 16,
+            "tie_word_embeddings": True,
+            "goldfish_strategy": None,
+        },
+    )
+
+    assert head.lm_head.weight is head.embed_tokens.embedding_weight
+    assert (
+        head.state_dict()["lm_head.weight"].data_ptr()
+        == head.state_dict()["embed_tokens.embedding_weight"].data_ptr()
+    )
+
+
 def test_layer_selection_supports_negative_indices_and_rejects_invalid() -> None:
     assert resolve_moe_layers([-1, 0], 4) == {0, 3}
     with pytest.raises(ValueError, match="outside a stack"):

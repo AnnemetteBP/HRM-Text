@@ -218,7 +218,7 @@ def build_hf_config(cfg: dict, tokenizer) -> dict:
         "attention_dropout": 0.0,
         "mlp_bias": False,
         "use_cache": True,
-        "tie_word_embeddings": False,
+        "tie_word_embeddings": bool(cfg.get("tie_word_embeddings", False)),
         "initializer_range": in_std,
         "embedding_scale": 1.0 / in_std,
         "prefix_lm": True,
@@ -232,7 +232,10 @@ def build_hf_config(cfg: dict, tokenizer) -> dict:
         if token_name in cfg:
             if (token_id := _token_id(tokenizer, cfg[token_name])) is not None:
                 hf_cfg[key] = token_id
-    if cfg.get("template_mode") == "jinja_chat_template":
+    if (
+        cfg.get("template_mode") == "jinja_chat_template"
+        and cfg.get("tokenizer_family") != "openeurollm_v2"
+    ):
         for key, token_name in (
             ("bos_token_id", "<bos>"),
             ("eos_token_id", "<turn|>"),
@@ -251,17 +254,24 @@ def tokenizer_path(metadata: V1DatasetMeta, override: Path | None) -> Path:
 
 def set_tokenizer_special_tokens(tokenizer, cfg: dict):
     if cfg.get("template_mode") == "jinja_chat_template":
-        # Gemma 4 uses a tokenizer JSON that Transformers warns about unless
-        # this compatibility flag is persisted for downstream AutoTokenizer
-        # loads. Without it, HF/vLLM can tokenize punctuation/spacing
-        # differently from the intended Gemma tokenizer.
-        tokenizer.init_kwargs["fix_mistral_regex"] = True
-        if tokenizer.convert_tokens_to_ids("<pad>") != getattr(tokenizer, "unk_token_id", None):
-            tokenizer.pad_token = "<pad>"
-        if tokenizer.convert_tokens_to_ids("<bos>") != getattr(tokenizer, "unk_token_id", None):
-            tokenizer.bos_token = "<bos>"
-        if tokenizer.convert_tokens_to_ids("<turn|>") != getattr(tokenizer, "unk_token_id", None):
-            tokenizer.eos_token = "<turn|>"
+        if cfg.get("tokenizer_family") == "openeurollm_v2":
+            for attr, key in (
+                ("pad_token", "pad"),
+                ("bos_token", "bos"),
+                ("eos_token", "eos"),
+            ):
+                token = cfg.get(key)
+                if token is not None and _token_id(tokenizer, token) is not None:
+                    setattr(tokenizer, attr, token)
+        else:
+            # Preserve the existing Gemma tokenizer compatibility contract.
+            tokenizer.init_kwargs["fix_mistral_regex"] = True
+            if tokenizer.convert_tokens_to_ids("<pad>") != getattr(tokenizer, "unk_token_id", None):
+                tokenizer.pad_token = "<pad>"
+            if tokenizer.convert_tokens_to_ids("<bos>") != getattr(tokenizer, "unk_token_id", None):
+                tokenizer.bos_token = "<bos>"
+            if tokenizer.convert_tokens_to_ids("<turn|>") != getattr(tokenizer, "unk_token_id", None):
+                tokenizer.eos_token = "<turn|>"
         chat_template_path = cfg.get("chat_template_path")
         if chat_template_path and Path(chat_template_path).is_file():
             tokenizer.chat_template = Path(chat_template_path).read_text()

@@ -1,6 +1,10 @@
 name: baselines.hrm_moe_nocarry_bp_warmup@HierarchicalMoEModel
 head: moe_lm_head@MoELMHead
 
+# OpenEuroLLM-128k leaves a large vocabulary matrix; share it with the output
+# projection for the from-scratch MoE path.
+tie_word_embeddings: true
+
 # Preserve the production HRM2 state graph and H2/L3 recurrence.
 half_layers: true
 H_cycles: 2

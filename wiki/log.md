@@ -1,5 +1,11 @@
 # Knowledge Bundle Update Log
 
+- 2026-09-03: Settled the from-scratch HRM-MoE representation contract on
+  immutable `openeurollm/tokenizer-128k-v2` revision
+  `5c1fc6c70779ec84580c2a68d75c6b569b3381f5`, repository-owned minimal ChatML,
+  and tied input/output embeddings. The real-data pilot now validates and
+  records this contract and snapshots its tokenizer inside each new dataset.
+
 - 2026-09-02: Added a recurrence-aware MoE HRM experiment plan. It starts
   with selected sparse feedforwards and explicit router-loss plumbing, records
   the early BPTT embedding-gradient confound, separates weight tying and norm

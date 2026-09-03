@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
@@ -13,6 +14,20 @@ from typing import Any, Iterator
 import numpy as np
 from datasets import load_dataset
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from moe_tokenizer_contract import (
+    CHAT_TEMPLATE_PATH,
+    CORE_SPECIAL_TOKEN_IDS,
+    TOKENIZER_FAMILY,
+    TOKENIZER_NAME,
+    TOKENIZER_REVISION,
+    configure_tokenizer,
+)
 
 
 SOURCES = {
@@ -37,7 +52,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path("data/moe_pilot/real_balanced"))
     parser.add_argument("--work-dir", type=Path, default=Path("data/moe_pilot/work"))
-    parser.add_argument("--tokenizer", default="danish-foundation-models/DFM-Mimir")
+    parser.add_argument("--tokenizer", default=TOKENIZER_NAME)
+    parser.add_argument("--tokenizer-revision", default=TOKENIZER_REVISION)
     parser.add_argument("--tokens-per-domain", type=int, default=500_000)
     parser.add_argument("--max-sequence-tokens", type=int, default=1025)
     parser.add_argument("--shuffle-buffer", type=int, default=10_000)
@@ -47,7 +63,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return REPO_ROOT
 
 
 def repo_local(path: Path) -> Path:
@@ -90,8 +106,22 @@ def encode_pair(
 ) -> EncodedRow | None:
     user = [{"role": "user", "content": prompt}]
     conversation = user + [{"role": "assistant", "content": response}]
-    instruction = list(tokenizer.apply_chat_template(user, tokenize=True, add_generation_prompt=True))
-    full = list(tokenizer.apply_chat_template(conversation, tokenize=True, add_generation_prompt=False))
+    instruction = list(
+        tokenizer.apply_chat_template(
+            user,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=False,
+        )
+    )
+    full = list(
+        tokenizer.apply_chat_template(
+            conversation,
+            tokenize=True,
+            add_generation_prompt=False,
+            return_dict=False,
+        )
+    )
     if not instruction or full[: len(instruction)] != instruction:
         return None
     response_tokens = full[len(instruction) :]
@@ -148,6 +178,9 @@ def write_sampled(
     rows: list[EncodedRow],
     output: Path,
     tokenizer: PreTrainedTokenizerBase,
+    tokenizer_name: str,
+    tokenizer_revision: str,
+    chat_template_sha256: str,
     epochs: int,
     seed: int,
 ) -> None:
@@ -179,6 +212,9 @@ def write_sampled(
         counts["train_tokens"] += row.train_tokens
     tokens.flush()
 
+    tokenizer_dir = output / "tokenizer"
+    tokenizer.save_pretrained(tokenizer_dir)
+
     rng = np.random.Generator(np.random.Philox(seed=seed))
     for epoch in range(epochs):
         epoch_dir = output / f"epoch_{epoch}"
@@ -190,7 +226,22 @@ def write_sampled(
         np.save(epoch_dir / "resp_len.npy", resp_len[order])
 
     metadata = {
-        "tokenizer_info": {"vocab_size": len(tokenizer), "name_or_path": tokenizer.name_or_path},
+        "tokenizer_info": {
+            "vocab_size": len(tokenizer),
+            "name_or_path": tokenizer_name,
+            "tokenizer_path": str(tokenizer_dir.relative_to(repo_root())),
+            "tokenizer_path_base": "repo_root",
+            "tokenizer_revision": tokenizer_revision,
+            "tokenizer_family": TOKENIZER_FAMILY,
+            "template_mode": "jinja_chat_template",
+            "chat_template_path": str(CHAT_TEMPLATE_PATH.relative_to(repo_root())),
+            "chat_template_sha256": chat_template_sha256,
+            "unk": "<unk>",
+            "bos": "<bos>",
+            "eos": "<eos>",
+            "pad": "<pad>",
+            "special_token_ids": CORE_SPECIAL_TOKEN_IDS,
+        },
         "vocab_size": None,
         "max_seq_len": max(len(row.instruction) + len(row.response) for row in rows),
         "total_length": sum(row.train_tokens for row in rows),
@@ -212,12 +263,15 @@ def main() -> None:
     work_dir.mkdir(parents=True, exist_ok=True)
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer,
+        revision=args.tokenizer_revision,
         cache_dir=str(work_dir / "hf-cache" / "tokenizer"),
         token=os.environ.get("HF_TOKEN"),
         use_fast=True,
     )
-    if tokenizer.chat_template is None:
-        raise SystemExit(f"Tokenizer {args.tokenizer} has no chat template")
+    try:
+        chat_template_sha256 = configure_tokenizer(tokenizer)
+    except ValueError as exc:
+        raise SystemExit(f"Tokenizer contract failed: {exc}") from exc
 
     rows: list[EncodedRow] = []
     for offset, domain in enumerate(("danish", "math", "code")):
@@ -234,7 +288,16 @@ def main() -> None:
         )
     rng = np.random.Generator(np.random.Philox(seed=args.seed))
     rng.shuffle(rows)
-    write_sampled(rows, output, tokenizer, args.epochs, args.seed)
+    write_sampled(
+        rows,
+        output,
+        tokenizer,
+        args.tokenizer,
+        args.tokenizer_revision,
+        chat_template_sha256,
+        args.epochs,
+        args.seed,
+    )
 
 
 if __name__ == "__main__":

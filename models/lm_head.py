@@ -14,6 +14,7 @@ from models.goldfish_loss import GoldfishLossConfig, GoldfishStrategy, apply_gol
 
 class LMHeadConfig(BaseModel):
     vocab_size: int
+    tie_word_embeddings: bool = False
     goldfish_strategy: Optional[GoldfishStrategy] = None
     goldfish_k: int = 50
     goldfish_context_width: int = 50
@@ -42,6 +43,13 @@ class LMHead(nn.Module):
         # LMHead input and output
         self.embed_tokens = ScaledEmbeddingInit(config.vocab_size, head_hint["in"]["dim"], init_std=head_hint["in"]["init_std"])  # pyright: ignore[reportArgumentType]
         self.lm_head = LinearInit(head_hint["out"]["dim"], config.vocab_size, bias=False, init_std=head_hint["out"]["init_std"])  # pyright: ignore[reportArgumentType]
+        if config.tie_word_embeddings:
+            if head_hint["in"]["dim"] != head_hint["out"]["dim"]:
+                raise ValueError(
+                    "Tied word embeddings require equal input and output dimensions: "
+                    f"{head_hint['in']['dim']} != {head_hint['out']['dim']}"
+                )
+            self.lm_head.weight = self.embed_tokens.embedding_weight
 
     def forward(self, carry: Carry, batch: dict[str, Tensor], **kwargs) -> Tuple[Carry, Tensor] | Tuple[Carry, Tensor, dict[str, Tuple[Tensor, Tensor]]]:
         # Token embedding
