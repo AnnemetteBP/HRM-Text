@@ -16,6 +16,7 @@ DATA_ROOT="$RUN_ROOT/data"
 mkdir -p hrm-moe-runs
 mkdir "$RUN_ROOT"
 mkdir "$RUN_ROOT/logs" "$RUN_ROOT/results" "$RUN_ROOT/checkpoints" "$RUN_ROOT/work"
+printf 'HRM-MoE smoke run: %s\n' "$RUN_ROOT"
 
 python scripts/prepare_moe_real_pilot.py \
   --output "$DATA_ROOT" \
