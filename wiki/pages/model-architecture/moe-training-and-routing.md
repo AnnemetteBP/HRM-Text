@@ -227,10 +227,11 @@ combined persistent folder. Keep the repository, Conda prefix, logs, and
 checkpoints under the attached work folder. Do not place durable artifacts
 under `/home/ucloud`.
 
-The workstation currently has mixed uncommitted work on `main`. Preserve it in
-a local-only snapshot branch first, then construct the MoE experiment branch
-from the clean fork `main`. This avoids both data loss and an unrelated-files
-commit:
+Superseded, 2026-09-03: the workstation branch preparation below was the
+pre-commit recovery plan. The implemented experiment now lives on the single
+branch `hrm-moe`; commit `310c2ad` incorporates `origin/main` through
+`4d67287`. Use `hrm-moe` directly on UCloud. The historical commands are
+retained for provenance:
 
 ```bash
 cd /Users/ampirchert/development/HRM-Text
@@ -277,9 +278,9 @@ ls -la /work
 WORK_ROOT=/work/<attached-work-folder>
 DFM9_ROOT=/work/<attached-data-folder>/sampled_dfm9
 PROJECT_ROOT="$WORK_ROOT/HRM-Text"
-ENV_PREFIX="$WORK_ROOT/conda-envs/hrm-moe"
+ENV_PREFIX="$WORK_ROOT/conda-envs/hrm-moe-env"
 
-git clone --branch experiment/hrm-moe --single-branch \
+git clone --branch hrm-moe --single-branch \
   https://github.com/AnnemetteBP/HRM-Text.git "$PROJECT_ROOT"
 cd "$PROJECT_ROOT"
 ```
@@ -329,7 +330,7 @@ Inside that session:
 WORK_ROOT=/work/<attached-work-folder>
 DFM9_ROOT=/work/<attached-data-folder>/sampled_dfm9
 PROJECT_ROOT="$WORK_ROOT/HRM-Text"
-ENV_PREFIX="$WORK_ROOT/conda-envs/hrm-moe"
+ENV_PREFIX="$WORK_ROOT/conda-envs/hrm-moe-env"
 
 cd "$PROJECT_ROOT"
 source /home/ucloud/miniforge3/etc/profile.d/conda.sh
@@ -337,10 +338,12 @@ conda activate "$ENV_PREFIX"
 set -o pipefail
 
 RUN_ID="hrm-moe-e4-b200-smoke-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "logs/$RUN_ID" "checkpoints/moe_smokes/$RUN_ID"
+RUN_ROOT="hrm-moe-runs/$RUN_ID"
+mkdir -p "$RUN_ROOT/logs" "$RUN_ROOT/results" "$RUN_ROOT/checkpoints" "$RUN_ROOT/wandb"
 
 WANDB_MODE=offline \
-BENCH_OUTPUT="logs/$RUN_ID/summary.json" \
+WANDB_DIR="$RUN_ROOT/wandb" \
+BENCH_OUTPUT="$RUN_ROOT/results/summary.json" \
 OMP_NUM_THREADS=1 \
 MKL_NUM_THREADS=1 \
 torchrun --nproc_per_node=1 pretrain.py \
@@ -365,12 +368,12 @@ torchrun --nproc_per_node=1 pretrain.py \
   log_interval=1 \
   checkpoint_step_interval=20 \
   checkpoint_format=unsharded \
-  checkpoint_path="checkpoints/moe_smokes/$RUN_ID" \
+  checkpoint_path="$RUN_ROOT/checkpoints" \
   project_name=HRM-MoE-Smokes \
   run_name="$RUN_ID" \
-  2>&1 | tee "logs/$RUN_ID/train.log"
+  2>&1 | tee "$RUN_ROOT/logs/train.log"
 
-python -m json.tool "logs/$RUN_ID/summary.json"
+python -m json.tool "$RUN_ROOT/results/summary.json"
 ```
 
 Reattach after reconnecting with `tmux attach -t hrm-moe-b200`. Offline W&B
