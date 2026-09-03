@@ -231,6 +231,16 @@ writes its JSON summary. Training can also run without a W&B session by setting
 `wandb_enabled=false`; set `local_metrics_path` to retain run metadata and every
 logged train/validation record as JSON Lines inside the run directory.
 
+When the full sampled DFM9 storage is unavailable, use
+`scripts/prepare_moe_real_pilot.py` for a bounded real-data training gate rather
+than extending the synthetic correctness sample. It streams equal token budgets
+from `oliverkinch/da-instruct-dynaword-hq`, `AI-MO/NuminaMath-1.5`, and
+`allenai/tulu-3-sft-personas-code`, applies the DFM-Mimir chat template, and
+writes native `V1Dataset` arrays. The script refuses output and cache paths
+outside the repository and refuses to overwrite an existing output tree. This
+pilot tests optimization and routing on Danish, math, and code, but it is not a
+substitute for the complete 161-source DFM9 mixture or a dense-Mimir comparison.
+
 ## UCloud B200 smoke-run workflow
 
 UCloud hardware is selected when the job is created in the UCloud UI, before
