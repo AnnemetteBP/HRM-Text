@@ -10,7 +10,7 @@ tags:
 - checkpoints
 - inference
 status: stable
-last_updated: '2026-08-15'
+last_updated: '2026-09-03'
 confidence: high
 collection_type: Technical Reference
 ---
@@ -69,6 +69,18 @@ The detailed sections of this collection are maintained as separate OKF concepts
 ## Sparse Attention Path
 
 [Open the dedicated concept](model-architecture/sparse-attention-path.md).
+
+## Multilingual Long-Context Transfer Research Plan
+
+[Open the dedicated concept](model-architecture/multilingual-long-context-research-plan.md).
+
+## Mixture-of-Experts HRM Experiment Plan
+
+[Open the dedicated concept](model-architecture/moe-hrm-experiment-plan.md).
+
+## MoE Training and Routing
+
+[Open the dedicated concept](model-architecture/moe-training-and-routing.md).
 
 ## XL Parameter and Export Size
 

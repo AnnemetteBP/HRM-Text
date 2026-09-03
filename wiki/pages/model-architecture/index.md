@@ -13,6 +13,9 @@
 * [In-Epoch Resume Cursors](in-epoch-resume-cursors.md) - Part of Model Architecture: In-Epoch Resume Cursors.
 * [Local-Global Attention Path](local-global-attention-path.md) - Part of Model Architecture: Local-Global Attention Path.
 * [Sparse Attention Path](sparse-attention-path.md) - Part of Model Architecture: Sparse Attention Path.
+* [Multilingual Long-Context Transfer Research Plan](multilingual-long-context-research-plan.md) - Controlled position and language-transfer experiments for Danish-centred MiMir models.
+* [Mixture-of-Experts HRM Experiment Plan](moe-hrm-experiment-plan.md) - Recurrence-aware sparse-FFN, embedding, normalization, attention, and parallelism experiments.
+* [MoE Training and Routing](moe-training-and-routing.md) - Joint-training mechanics, FlexOlmo boundary, balance scope, domain specialization, and matched sparse geometry.
 * [HRM-Text XL Training FLOPs](hrm-xl-training-flops.md) - Recurrence-aware upper-bound calculation for XL training compute.
 * [DFM8 XXL MFU Baseline](dfm8-xxl-mfu-baseline.md) - Recurrence-aware single-node B200 utilization estimate and realistic throughput target.
 * [XL Parameter and Export Size](xl-parameter-and-export-size.md) - Parameter-count and export-size reference for the XL model.

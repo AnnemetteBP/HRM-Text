@@ -1,5 +1,24 @@
 # Knowledge Bundle Update Log
 
+- 2026-09-02: Added a recurrence-aware MoE HRM experiment plan. It starts
+  with selected sparse feedforwards and explicit router-loss plumbing, records
+  the early BPTT embedding-gradient confound, separates weight tying and norm
+  controls, and gates GQA/local/sparse attention on training, cache, export,
+  and serving parity. The audit also recorded current CRM upper-state gradient
+  dead tails and superseded optimistic local-window/MoBA implementation claims.
+
+- 2026-09-01: Added a coupled multilingual long-context research plan. It
+  separates the current dense full-sequence H/L architecture from proposed
+  local-global and sparse variants, defines position-by-language evaluations,
+  and specifies compute- and token-matched transfer experiments before any
+  language-specific architecture is adopted.
+
+- 2026-08-31: Added a separate commercial-release long-context data pilot,
+  candidate source register, and rights-gated full-document profiler. The first
+  Folketing source remains review-only pending human confirmation; profiling
+  is allowed, but the tool will not emit training candidates until its register
+  status is explicitly green.
+
 - 2026-08-29: Added the post-profile strategic performance roadmap for DFM8
   XXL. It separates measured bottlenecks from estimated opportunities and
   prioritizes FP8 compute with FP32 state, larger fusion boundaries, reduced

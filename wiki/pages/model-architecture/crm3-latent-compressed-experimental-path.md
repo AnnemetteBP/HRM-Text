@@ -9,7 +9,7 @@ tags:
 - checkpoints
 - inference
 status: stable
-last_updated: 2026-07-23
+last_updated: 2026-09-02
 confidence: high
 part_of: /pages/model-architecture.md
 ---
@@ -18,6 +18,24 @@ part_of: /pages/model-architecture.md
 Part of [Model Architecture](/pages/model-architecture.md).
 
 Implemented on 2026-05-27. Confidence: high for implementation and tiny CUDA diagnostic; medium for production training behavior.
+
+## Gradient-reachability blocker (2026-09-02)
+
+Static forward-graph review found task-dead upper-state updates at the end of
+the recurrence. The final M update occurs after the last S update. The final H
+then consumes that M state, but the model immediately returns the earlier
+`z_S`; neither final upper update can affect cross-entropy.
+
+At the default minimum `bp_steps=3`, the BPTT allocator prioritizes precisely
+those final M and H calls. They can receive auxiliary losses, but they receive
+no language-model task gradient. Earlier M calls become task-reachable at
+larger horizons; the final H remains dead unless there is a later downward
+path.
+
+This finding supersedes any interpretation of the one-step finite diagnostic
+below as evidence that every level receives task gradients. Reorder the
+recurrence or add a final H-to-M-to-S update, then test per-level gradient
+reachability before placing experts in M or H.
 
 CRM3 is a separate model, not a config variant of HRM3 or CRM2:
 
@@ -131,4 +149,7 @@ OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
 
 Result: one compiled optimizer step completed. The run reported `metric_tensors_finite=True` with range `[0.0, 3894.79248046875]` and `post_optim_params_finite=True` with range `[-0.26907771825790405, 0.2690773606300354]`. Confidence: high.
 
-Residual risk: full production-shape CRM3 training remains untested. Inference/export handling for two compressed latent levels is scaffolded but not validated end to end.
+Residual risk: full production-shape CRM3 training remains untested.
+Inference/export handling for two compressed latent levels is scaffolded but
+not validated end to end, and the upper-level gradient-reachability blocker
+above must be corrected before M/H MoE experiments.

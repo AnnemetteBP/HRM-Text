@@ -9,7 +9,7 @@ tags:
 - long-context
 - attention
 status: draft
-last_updated: 2026-08-12
+last_updated: 2026-09-02
 confidence: medium
 part_of: /pages/model-architecture.md
 ---
@@ -18,6 +18,44 @@ part_of: /pages/model-architecture.md
 Part of [Model Architecture](/pages/model-architecture.md).
 
 Added on 2026-08-12. Status: **proposal** — not implemented, not validated.
+
+## Implementation audit (2026-09-02)
+
+This audit supersedes the implementation sketch and Phase 1.5 cache estimate
+retained below as historical design context. The high-level local-L/global-H
+hypothesis remains unvalidated.
+
+- The current `TransformerConfig` has no attention-window field and hardcodes
+  the KV-head count to the query-head count. The packed PrefixLM dispatcher and
+  this repository's FA4 wrapper do not currently pass a window or sparse-mask
+  argument.
+- Current FA4 main exposes local-window and block-mask primitives, but the
+  repository installs an unpinned Git revision. Support on the deployed B200
+  environment must be feature-probed, backward-tested, and pinned before it is
+  treated as available.
+- The simple inference cache writes absolute positions into a fixed tensor and
+  attends from index zero. Merely allocating a 4K L cache would overflow after
+  position 4095; local serving needs ring or paged eviction while preserving
+  absolute RoPE positions.
+- The native HF/vLLM HRM path does not currently consume per-level window
+  settings. Training, conversion, and serving support are all implementation
+  work, not configuration-only changes.
+- The first three L calls see the initial `z_H=x`; the next three see the first
+  learned H update; the final H update is returned without a following L call.
+  L therefore receives one learned H update, not two. H/L role labels still
+  require a reverse-pattern control.
+
+The corrected XL BF16 batch-one virtual-cache comparison at 32K, excluding
+allocator overhead, is:
+
+| Attention pattern | L cache | H cache | Total |
+|---|---:|---:|---:|
+| All 128 virtual layers retain 32K | 19.33 GB | 6.44 GB | 25.77 GB |
+| L retains 4K; H retains 32K | 2.42 GB | 6.44 GB | 8.86 GB |
+
+The local/global layout therefore saves about 16.91 GB, or 65.6%, relative to
+an all-full 32K cache. It does not reduce L from 2.41 GB to 0.30 GB; that older
+Phase 1.5 figure was low by a factor of eight.
 
 ## Motivation
 
@@ -145,7 +183,7 @@ use the same global position encoding but are attention-masked to the sliding
 window. This keeps position encoding consistent between H and L, avoiding
 mismatched position semantics in cross-injection.
 
-## Implementation
+## Historical implementation sketch (superseded 2026-09-02)
 
 1. **L block attention**: add `sliding_window=4096` to FA4 attention call.
    FA4 natively supports `sliding_window` parameter. The mask limits each
@@ -171,9 +209,9 @@ mismatched position semantics in cross-injection.
 
 1. **Information loss in L**: L can only attend to local context (4096
    tokens). Critical information outside the window must reach L through
-   H injection (`z_H -> z_L`). The current cross-injection runs after each
-   H cycle, so L receives global context updates twice per forward pass.
-   This should be sufficient for most tasks but may fail on tasks requiring
+   H injection (`z_H -> z_L`). The earlier statement that L receives two
+   learned H updates per forward is superseded: it receives only the first H
+   update before its final three calls. This may fail on tasks requiring
    fine-grained long-range attention in L (e.g., exact token-level retrieval
    across 32K tokens).
 
@@ -192,7 +230,11 @@ mismatched position semantics in cross-injection.
    not just the causal suffix. FA4 handles this via `sliding_window` + the
    existing PrefixLM cu_seqlens metadata, but this combination needs testing.
 
-## Phase 1.5: Inference KV Cache Optimization
+## Historical Phase 1.5 cache estimate (superseded 2026-09-02)
+
+The table in this section is retained to show the original proposal. Its
+`0.30 GB` optimized-L value and `6.74 GB` total are incorrect; use the
+2026-09-02 audit table above.
 
 Phase 1 keeps full `max_seq_len` KV cache for all layers (simpler, no vllm
 changes). Phase 1.5 caps L layer KV cache at `sliding_window` entries:

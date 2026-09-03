@@ -14,6 +14,7 @@
 * [DFM9 Memorisation Source-Text Plan](dfm9-memorisation-source-text-plan.md) - Deduplicated original-source cohorts grouped by legal basis for extraction testing.
 * [DFM9 Source-Rights LaTeX Appendix](dfm9-source-rights-latex-appendix.md) - Deterministic linked appendix tables generated from the copyright register and provenance DAG.
 * [Apertus Copyright Boundary Decomposition](apertus-copyright-boundary-decomposition.md) - Component and row-group findings for SmolTalk, OpenHermes, MoT, LongAlign, and EuroBlocks.
+* [Commercial-Release Long-Context Data Pilot](long-context-data-pilot.md) - Provenance-first profiling and admission workflow for native Danish and Nordic source documents.
 * [Download, Convert, Tokenize, Sample](download-convert-tokenize.md) - Data-pipeline runbook.
 
 ## Dataset and Training Plans

@@ -199,3 +199,8 @@ cython_debug/
 # LaTeX build scratch files; rendered source and PDF remain tracked.
 legal/reports/*.aux
 legal/reports/*.out
+
+# AM
+datasets/
+private/
+notebooks/

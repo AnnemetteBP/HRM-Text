@@ -9,7 +9,7 @@ tags:
 - long-context
 - sparse-attention
 status: draft
-last_updated: 2026-08-12
+last_updated: 2026-09-02
 confidence: medium
 part_of: /pages/model-architecture.md
 ---
@@ -19,6 +19,32 @@ Part of [Model Architecture](/pages/model-architecture.md).
 
 Added on 2026-08-12. Updated 2026-08-12 with MoBA and The Sparse Frontier.
 Status: **proposal / research phase** -- not implemented, not validated.
+
+## Implementation audit (2026-09-02)
+
+This audit supersedes the earlier "medium-low" MoBA complexity assessment,
+the simplified PrefixLM mapping, and the recommendation to integrate public
+MoBA immediately after local windows. Those statements remain below as
+historical proposal context.
+
+- Moonshot's public MoBA package pins FlashAttention 2.6.3. It is not a
+  drop-in dependency for this repository's FA4/CUDA 13/B200 path.
+- Packed PrefixLM needs separately defined bidirectional-prefix and
+  causal-suffix block routing. Treating all prefix blocks as always selected
+  can eliminate sparsity for prompt-heavy batches and does not specify what a
+  prefix query may select.
+- Learned block choices depend on each physical layer's current Q/K states and
+  cannot reuse the existing batch-only PrefixLM route preparation. Recurrence
+  further requires per-application route correctness and telemetry.
+- The current training wrapper passes no local or sparse metadata into FA4,
+  and the current native serving path has no corresponding hybrid cache/mask
+  implementation. Exporting fields would not activate the architecture.
+- Implement a dense mask oracle, FA4 local windows, and deterministic static
+  block patterns before learned MoBA. This separates PrefixLM semantics and
+  kernel correctness from router quality.
+
+MoBA remains a worthwhile learned-sparsity candidate, but its complexity is
+high in this codebase until those prerequisites exist.
 
 ## Motivation
 
@@ -255,7 +281,7 @@ options differ in how H layers are made sub-quadratic.
 - Smallest KV cache of all options
 - Changes the architecture: H no longer operates on token sequences
 
-### Option E: MoBA-style H (recommended)
+### Option E: MoBA-style H (historical recommendation; order superseded)
 
 - H layers: MoBA block attention with top-k gating
 - No new parameters: gate uses mean-pooled K projection (existing weights)
@@ -277,9 +303,10 @@ options differ in how H layers are made sub-quadratic.
   loss-masked SFT gradients.
 - **Seamless fallback**: if MoBA quality is insufficient, any H layer can
   revert to full attention by setting top-k = n_blocks. Same parameters.
-- **PrefixLM compatibility**: MoBA's causal constraint (no future blocks)
-  maps to PrefixLM by treating prefix tokens as always-selected blocks.
-  Current block causal masking aligns with suffix causal masking.
+- **Superseded PrefixLM assumption (2026-09-02)**: the earlier proposal mapped
+  MoBA to PrefixLM by treating prefix blocks as always selected. The required
+  behavior is instead a separately tested bidirectional-prefix router and a
+  causal-suffix router; always selecting a long prefix can destroy sparsity.
 - Cross-injection: unchanged (z_H, z_L remain full-sequence tensors)
 - H stores full token KV cache (MoBA reduces FLOPs, not memory)
 - Open-source implementation available (github.com/MoonshotAI/MoBA)
@@ -392,9 +419,11 @@ the BPTT schedule, but:
 | B (SSA H) | Unknown | No published mechanism; would need to design from scratch |
 | C (HSA H) | High | Multi-level sparse attention; custom kernels; limited public implementation details |
 | D (CRM2) | Medium | CRM2 already implemented; main work is CRM2 evaluation at long context |
-| E (MoBA H) | **Medium-low** | Open-source implementation exists; no new parameters; FlashAttention with varlen for block attention; causal + PrefixLM masking needs adaptation; gate is a simple inner product |
+| E (MoBA H) | ~~Medium-low~~ **High in this repository (2026-09-02)** | Public code pins FA2.6.3; packed PrefixLM, FA4/SM100 backward, compilation, recurrence, export, and serving all need adaptation |
 
-Option E (MoBA) is the lowest-complexity path to sub-quadratic H attention:
+The following was the 2026-08-12 rationale for calling Option E the
+lowest-complexity path; that implementation ranking is superseded by the
+2026-09-02 audit above:
 - No new parameters to implement or debug
 - Open-source reference implementation (Moonshot AI)
 - Seamlessly falls back to full attention (top-k = n_blocks)
@@ -454,7 +483,11 @@ From The Sparse Frontier findings:
    harmful (inconsistent attention pattern across cycles). Needs
    empirical evaluation.
 
-## Recommended Path
+## Historical recommended path (superseded 2026-09-02)
+
+The staged path below predates the implementation audit. The replacement order
+is dense PrefixLM oracle, GQA, native local windows, static block sparsity, and
+only then learned MoBA/NSA routing.
 
 1. **Phase 1**: Implement Idea 1 (L=window, H=full) for 32K context.
    Low implementation cost, fits in 20.5 GB MIG for inference, validated

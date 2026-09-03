@@ -9,7 +9,7 @@ tags:
 - checkpoints
 - inference
 status: stable
-last_updated: 2026-07-23
+last_updated: 2026-09-02
 confidence: high
 part_of: /pages/model-architecture.md
 ---
@@ -24,6 +24,23 @@ Added on 2026-05-27:
 - Hydra override: `arch/net@arch=crm2`
 
 CRM2 is a separate compressed two-level model. It does not mutate the existing token-aligned HRM2 path.
+
+## Gradient-reachability blocker (2026-09-02)
+
+Static forward-graph review found that the final H update is task-dead. Each
+cycle computes the token-level L states, compresses them, and updates H, but
+the model returns `z_L` immediately after the final H update. That last H value
+is never expanded back into a token state that contributes to cross-entropy.
+
+At the default minimum `bp_steps=2`, the final H call is also the only H call
+inside the gradient horizon. H can therefore receive an auxiliary loss but no
+language-model task gradient at that phase. At larger BP values an earlier H
+call can affect the following L cycle, but the final H call remains task-dead.
+
+This finding supersedes any interpretation of the one-step finite diagnostic
+below as evidence that all CRM2 levels receive task gradients. Before placing
+MoE in H, reorder the recurrence or add a final downward expansion/token
+update, then add explicit per-level gradient-reachability tests.
 
 State shapes:
 
@@ -101,4 +118,7 @@ OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
 
 Result: one compiled optimizer step completed. The run reported `metric_tensors_finite=True` with range `[0.0, 3866.23974609375]` and `post_optim_params_finite=True` with range `[-0.2690795361995697, 0.26907792687416077]`. Confidence: high.
 
-Residual risk: full production-shape CRM2 training remains untested. Inference/export handling for the latent H cache is also only scaffolded, not validated end to end.
+Residual risk: full production-shape CRM2 training remains untested.
+Inference/export handling for the latent H cache is also only scaffolded, not
+validated end to end, and the upper-level gradient-reachability blocker above
+must be corrected before an H-level MoE experiment.

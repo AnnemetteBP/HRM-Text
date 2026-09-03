@@ -1,0 +1,23 @@
+name: baselines.hrm_moe_nocarry_bp_warmup@HierarchicalMoEModel
+head: moe_lm_head@MoELMHead
+
+# Preserve the production HRM2 state graph and H2/L3 recurrence.
+half_layers: true
+H_cycles: 2
+L_cycles: 3
+H_override: {}
+
+bp_warmup_ratio: 0.2
+bp_min_steps: 2
+bp_max_steps: 5
+
+# Correctness-first reference placement: the final physical L feedforward.
+# Negative indices are resolved relative to each post-split H/L stack.
+H_moe_layers: []
+L_moe_layers: [-1]
+
+moe_num_experts: 4
+moe_top_k: 1
+moe_router_weighting: selected_probability
+moe_balance_loss_weight: 0.01
+moe_z_loss_weight: 0.001
