@@ -217,8 +217,12 @@ dispatch bug: the residual-derived route accumulator was FP32 while autocast
 produced BF16 expert outputs, and `index_add` requires identical dtypes. The
 implementation now casts route weights and expert outputs to the accumulator
 dtype before accumulation. A CPU BF16-autocast regression test covers this
-case. Local syntax validation passed; the full test suite and B200 smoke rerun
-remain pending on the corrected commit.
+case. The corrected commit `2a52387` completed a one-step B200 DDP smoke on
+2026-09-03 with BF16 compute: loss `6.73447`, accuracy `0.00216`, and MoE
+balance loss `1.06573`. The run emitted a nonfatal FlashAttention/CuTe
+`AuxData` JIT-adapter diagnostic during initial compilation but completed the
+optimizer step and finalized metrics. Treat timing as provisional until that
+diagnostic is characterized in a longer smoke.
 
 ## UCloud B200 smoke-run workflow
 
