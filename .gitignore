@@ -20,6 +20,7 @@
 /logs/
 /tmp/
 /outputs/
+/hrm-moe-runs/
 tmp_*
 
 # Local evaluation campaigns and downloaded eval data

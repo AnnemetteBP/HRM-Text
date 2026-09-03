@@ -5,6 +5,10 @@
   `5c1fc6c70779ec84580c2a68d75c6b569b3381f5`, repository-owned minimal ChatML,
   and tied input/output embeddings. The real-data pilot now validates and
   records this contract and snapshots its tokenizer inside each new dataset.
+  Added a fail-closed dataset validator and a one-command eight-GPU real-data
+  smoke launcher whose data, caches, metrics, logs, and checkpoints all remain
+  in a unique repository-local run tree. A live three-stream preparation probe
+  passed with 4,058 train tokens.
 
 - 2026-09-02: Added a recurrence-aware MoE HRM experiment plan. It starts
   with selected sparse feedforwards and explicit router-loss plumbing, records

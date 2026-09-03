@@ -246,6 +246,21 @@ overwrite an existing output tree. This pilot tests optimization and routing
 on Danish, math, and code, but it is not a substitute for a diversified
 production mixture or a matched dense comparison.
 
+The supported one-command real-data smoke launcher is
+`scripts/run_moe_real_smoke.sh`. Run it from the repository root inside the
+already activated training environment. It defaults to eight local processes,
+500,000 tokens per domain, and 20 optimizer steps. Every dataset artifact,
+download cache, log, local metric, summary, and checkpoint is placed under a
+new timestamped `hrm-moe-runs/<run-id>/` directory; W&B is disabled. Override
+`NPROC_PER_NODE`, `TOKENS_PER_DOMAIN`, `MAX_STEPS`, or `RUN_ID` only when the
+allocation or smoke size differs. The launcher validates the completed sampled
+dataset before starting `torchrun` and never resumes into or overwrites an
+existing run directory.
+
+```bash
+NPROC_PER_NODE=8 bash scripts/run_moe_real_smoke.sh
+```
+
 ## UCloud B200 smoke-run workflow
 
 UCloud hardware is selected when the job is created in the UCloud UI, before

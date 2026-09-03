@@ -73,5 +73,11 @@ one-step backward test, and a real-data B200 smoke. Tokenizer and template are
 then frozen for the run; changing either creates a new dataset and model
 identity rather than modifying an existing output.
 
+The live data path was exercised on 2026-09-03 with a small sample from each
+of the Danish, math, and code streams. Nine rows produced 4,058 train tokens,
+all index and token bounds validated, and the saved tokenizer/template snapshot
+matched the pinned contract. This verifies the preparation interface and source
+schemas; it is not a model-quality result.
+
 [^openeurollm-tokenizer-128k-v2]: OpenEuroLLM tokenizer model card and file metadata, inspected 2026-09-03.
 [^tying]: Press and Wolf, 2016.

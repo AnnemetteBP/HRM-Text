@@ -1,0 +1,5 @@
+path: hrm-moe-runs/replace-me/data
+target_only: true
+
+# The supported launcher always overrides this placeholder with the unique
+# run-local OpenEuroLLM-tokenized pilot path.
