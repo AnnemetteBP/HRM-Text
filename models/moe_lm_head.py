@@ -58,8 +58,20 @@ class MoELMHead(LMHead):
             dist.all_reduce(loss_divisor, op=dist.ReduceOp.AVG)
 
         router_calls = model_output.aux.router_calls.clamp_min(1.0)
-        balance_loss = model_output.aux.balance_loss_sum / router_calls
-        z_loss = model_output.aux.z_loss_sum / router_calls
+        differentiable_mask = model_output.aux.call_is_differentiable
+        differentiable_router_calls = differentiable_mask.sum().clamp_min(1.0)
+        # HRM executes the same physical router at recurrent calls that may be
+        # outside the truncated backward window. Averaging the objective over
+        # all calls diluted its gradient during BP warmup. Only calls that can
+        # actually contribute a gradient belong in the training objective.
+        balance_loss = (
+            model_output.aux.call_balance_losses * differentiable_mask
+        ).sum() / differentiable_router_calls
+        z_loss = (
+            model_output.aux.call_z_losses * differentiable_mask
+        ).sum() / differentiable_router_calls
+        all_call_balance_loss = model_output.aux.balance_loss_sum / router_calls
+        all_call_z_loss = model_output.aux.z_loss_sum / router_calls
         aux_loss = (
             self.model.moe_balance_loss_weight * balance_loss
             + self.model.moe_z_loss_weight * z_loss
@@ -85,12 +97,29 @@ class MoELMHead(LMHead):
                 "objective": (objective.detach(), one),
                 "moe/balance_loss": (balance_loss.detach(), one),
                 "moe/z_loss": (z_loss.detach(), one),
+                "moe/all_call_balance_loss": (all_call_balance_loss.detach(), one),
+                "moe/all_call_z_loss": (all_call_z_loss.detach(), one),
                 "moe/aux_loss": (aux_loss.detach(), one),
                 "moe/router_calls": (model_output.aux.router_calls.detach(), one),
+                "moe/differentiable_router_calls": (
+                    differentiable_mask.sum().detach(),
+                    one,
+                ),
             }
 
             total_assignments = model_output.aux.expert_token_counts.sum().clamp_min(1.0)
             total_valid_tokens = model_output.aux.valid_tokens.clamp_min(1.0)
+            aggregate_loads = model_output.aux.expert_token_counts / total_assignments
+            metrics["moe/max_load"] = (aggregate_loads.max().detach(), one)
+            metrics["moe/min_load"] = (aggregate_loads.min().detach(), one)
+            metrics["moe/max_violation"] = (
+                (
+                    aggregate_loads.max()
+                    * model_output.aux.expert_token_counts.shape[0]
+                    - 1.0
+                ).detach(),
+                one,
+            )
             for expert_index in range(model_output.aux.expert_token_counts.shape[0]):
                 metrics[f"moe/expert_{expert_index}/load"] = (
                     model_output.aux.expert_token_counts[expert_index].detach(),
@@ -148,3 +177,10 @@ class MoELMHead(LMHead):
                 metrics["goldfish_drop_rate"] = (dropped, raw_valid_counts)
 
         return new_carry, objective, metrics
+
+    @torch.no_grad()
+    def update_moe_router_bias(
+        self,
+        metrics: dict[str, tuple[Tensor, Tensor]],
+    ) -> None:
+        self.model.update_moe_router_bias(metrics)

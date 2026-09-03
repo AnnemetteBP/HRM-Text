@@ -136,6 +136,13 @@ class PretrainConfig(pydantic.BaseModel):
     log_interval: int = 5
     validation_interval: int = 0
     validation_batches: int = 0
+    moe_collapse_max_load: Optional[float] = pydantic.Field(
+        default=None,
+        gt=0.0,
+        le=1.0,
+    )
+    moe_collapse_patience: int = pydantic.Field(default=20, ge=1)
+    moe_collapse_warmup_steps: int = pydantic.Field(default=20, ge=0)
 
     @pydantic.model_validator(mode='after')
     def check_intervals(self):
@@ -1042,6 +1049,23 @@ def append_local_metrics(path: Optional[str], payload: dict) -> None:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
+@torch.no_grad()
+def global_moe_max_load(
+    metrics: dict[str, tuple[Tensor, Tensor]],
+) -> Optional[Tensor]:
+    expert_loads: list[tuple[int, Tensor]] = []
+    for name, (value_sum, _) in metrics.items():
+        match = re.fullmatch(r"moe/expert_(\d+)/load", name)
+        if match is not None:
+            expert_loads.append((int(match.group(1)), value_sum.detach()))
+    if not expert_loads:
+        return None
+    counts = torch.stack([value for _, value in sorted(expert_loads)])
+    if dist.is_available() and dist.is_initialized():
+        dist.all_reduce(counts, op=dist.ReduceOp.SUM)
+    return counts.max() / counts.sum().clamp_min(1.0)
+
+
 def save_code_and_config(config: PretrainConfig, train_metadata: V1DatasetMeta):
     if config.checkpoint_path is None:
         return
@@ -1447,8 +1471,10 @@ def launch(hydra_config: DictConfig):
         )
     consecutive_gradient_skips = 0
     gradient_skip_stop_reached = False
+    consecutive_moe_collapses = 0
+    moe_collapse_stop_reached = False
     for epoch in range(start_epoch, config.epochs + 1):
-        if stop_after_step_reached or gradient_skip_stop_reached:
+        if stop_after_step_reached or gradient_skip_stop_reached or moe_collapse_stop_reached:
             break
         print (f"[Rank {RANK}, World Size {WORLD_SIZE}]: Epoch {epoch}")
         trace_print(config, RANK, f"epoch_begin epoch={epoch}")
@@ -1494,6 +1520,48 @@ def launch(hydra_config: DictConfig):
                 config.compile_train_batch,
                 **train_extra_args,
             )
+            if not optimizer_step_skipped:
+                post_step_model = unwrap_model(train_state.model)
+                update_router_bias = getattr(
+                    post_step_model,
+                    "update_moe_router_bias",
+                    None,
+                )
+                if update_router_bias is not None:
+                    update_router_bias(metrics)
+            step_max_expert_load = global_moe_max_load(metrics)
+            if step_max_expert_load is not None:
+                metric_one = step_max_expert_load.new_ones(())
+                metrics["moe/global_max_load"] = (
+                    step_max_expert_load.detach(),
+                    metric_one,
+                )
+                if (
+                    config.moe_collapse_max_load is not None
+                    and train_state.step > config.moe_collapse_warmup_steps
+                    and step_max_expert_load.item() >= config.moe_collapse_max_load
+                ):
+                    consecutive_moe_collapses += 1
+                else:
+                    consecutive_moe_collapses = 0
+                metrics["moe/consecutive_collapse_steps"] = (
+                    step_max_expert_load.new_tensor(
+                        float(consecutive_moe_collapses)
+                    ),
+                    metric_one,
+                )
+                moe_collapse_stop_reached = (
+                    config.moe_collapse_max_load is not None
+                    and consecutive_moe_collapses >= config.moe_collapse_patience
+                )
+                if moe_collapse_stop_reached and RANK == 0:
+                    print(
+                        "MoE collapse guard reached: maximum expert load "
+                        f"{step_max_expert_load.item():.6f} stayed at or above "
+                        f"{config.moe_collapse_max_load} for "
+                        f"{consecutive_moe_collapses} steps; saving and stopping",
+                        flush=True,
+                    )
             accumulation_batches = []
             if config.gradient_skip_norm is not None:
                 if optimizer_step_skipped:
@@ -1608,7 +1676,12 @@ def launch(hydra_config: DictConfig):
                 config.checkpoint_step_interval is not None
                 and train_state.step % config.checkpoint_step_interval == 0
             )
-            if regular_interval_reached or stop_after_step_reached or gradient_skip_stop_reached:
+            if (
+                regular_interval_reached
+                or stop_after_step_reached
+                or gradient_skip_stop_reached
+                or moe_collapse_stop_reached
+            ):
                 save_train_checkpoint(config, train_state, f"step_{train_state.step}", epoch, batch_in_epoch, RANK, local_batch_size=local_batch_size, resume_info=accumulation_resume_info, batch_in_epoch_exact=batch_in_epoch_exact)
                 saved_regular_step_checkpoint = True
 
@@ -1620,14 +1693,14 @@ def launch(hydra_config: DictConfig):
                     save_train_checkpoint(config, train_state, ephemeral_tag, epoch, batch_in_epoch, RANK, checkpoint_kind="ephemeral", local_batch_size=local_batch_size, resume_info=accumulation_resume_info, batch_in_epoch_exact=batch_in_epoch_exact)
                     remove_stale_ephemeral_checkpoints(config, ephemeral_tag, RANK)
 
-            if stop_after_step_reached or gradient_skip_stop_reached or (
+            if stop_after_step_reached or gradient_skip_stop_reached or moe_collapse_stop_reached or (
                 config.max_steps is not None and train_state.step >= config.max_steps
             ):
                 break
 
         skip_batches = 0
 
-        if stop_after_step_reached or gradient_skip_stop_reached or (
+        if stop_after_step_reached or gradient_skip_stop_reached or moe_collapse_stop_reached or (
             config.max_steps is not None and train_state.step >= config.max_steps
         ):
             break

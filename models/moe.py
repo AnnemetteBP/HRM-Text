@@ -11,6 +11,7 @@ from models.transformer import TransformerBlock, TransformerConfig
 
 
 RouterWeighting = Literal["selected_probability", "renormalized"]
+RouterScoreFunction = Literal["softmax", "sigmoid"]
 
 
 class MoETransformerConfig(TransformerConfig):
@@ -18,7 +19,10 @@ class MoETransformerConfig(TransformerConfig):
     moe_num_experts: int = Field(default=4, ge=1)
     moe_top_k: int = Field(default=1, ge=1)
     moe_router_weighting: RouterWeighting = "selected_probability"
+    moe_router_score_function: RouterScoreFunction = "softmax"
     moe_router_init_std: Optional[float] = Field(default=None, gt=0.0)
+    moe_router_jitter_noise: float = Field(default=0.0, ge=0.0, lt=1.0)
+    moe_router_bias_update_rate: float = Field(default=0.0, ge=0.0)
 
     @model_validator(mode="after")
     def validate_moe(self) -> "MoETransformerConfig":
@@ -118,6 +122,9 @@ class DroplessMoE(nn.Module):
         self.num_experts = config.moe_num_experts
         self.top_k = config.moe_top_k
         self.router_weighting = config.moe_router_weighting
+        self.router_score_function = config.moe_router_score_function
+        self.router_jitter_noise = config.moe_router_jitter_noise
+        self.router_bias_update_rate = config.moe_router_bias_update_rate
 
         router_init_std = config.moe_router_init_std
         if router_init_std is None:
@@ -127,6 +134,13 @@ class DroplessMoE(nn.Module):
             config.moe_num_experts,
             bias=False,
             init_std=router_init_std,
+        )
+        # This non-gradient bias affects only expert selection. It is updated
+        # after each optimizer step from the previous batch's global expert
+        # loads, preserving causal language-model training.
+        self.router_selection_bias = nn.Buffer(
+            torch.zeros(config.moe_num_experts, dtype=torch.float32),
+            persistent=True,
         )
         self.experts = nn.ModuleList(
             [
@@ -161,13 +175,24 @@ class DroplessMoE(nn.Module):
         valid_states = flat_states.index_select(0, valid_indices)
 
         # Routing is explicitly evaluated in FP32 even under model autocast.
+        routing_states = valid_states.to(torch.float32)
+        if self.training and self.router_jitter_noise > 0.0:
+            routing_states = routing_states * torch.empty_like(routing_states).uniform_(
+                1.0 - self.router_jitter_noise,
+                1.0 + self.router_jitter_noise,
+            )
         router_logits = F.linear(
-            valid_states.to(torch.float32),
+            routing_states,
             self.router.weight.to(torch.float32),
             self.router.bias.to(torch.float32) if self.router.bias is not None else None,
         )
-        router_probabilities = torch.softmax(router_logits, dim=-1)
-        top_probabilities, top_indices = torch.topk(router_probabilities, self.top_k, dim=-1)
+        if self.router_score_function == "sigmoid":
+            router_probabilities = torch.sigmoid(router_logits)
+        else:
+            router_probabilities = torch.softmax(router_logits, dim=-1)
+        selection_scores = router_probabilities + self.router_selection_bias
+        _, top_indices = torch.topk(selection_scores, self.top_k, dim=-1)
+        top_probabilities = router_probabilities.gather(1, top_indices)
 
         if self.router_weighting == "renormalized":
             top_weights = top_probabilities / top_probabilities.sum(dim=-1, keepdim=True).clamp_min(1e-9)
@@ -199,7 +224,11 @@ class DroplessMoE(nn.Module):
         assignments = F.one_hot(top_indices, num_classes=self.num_experts).to(torch.float32)
         expert_token_counts = assignments.sum(dim=(0, 1))
         assignment_fraction = expert_token_counts / (valid_states.shape[0] * self.top_k)
-        mean_router_probability = router_probabilities.mean(dim=0)
+        balance_probabilities = router_probabilities / router_probabilities.sum(
+            dim=-1,
+            keepdim=True,
+        ).clamp_min(1e-9)
+        mean_router_probability = balance_probabilities.mean(dim=0)
         balance_loss = self.num_experts * torch.sum(assignment_fraction * mean_router_probability)
         z_loss = torch.mean(torch.logsumexp(router_logits, dim=-1).square())
 
@@ -222,6 +251,28 @@ class DroplessMoE(nn.Module):
             call_expert_probability_sums=router_probabilities.sum(dim=0).unsqueeze(0),
         )
         return flat_output.reshape(original_shape), aux
+
+    @torch.no_grad()
+    def update_router_selection_bias(self, expert_token_counts: Tensor) -> None:
+        """Apply the previous batch's loss-free load-balancing update."""
+        if self.router_bias_update_rate == 0.0:
+            return
+        counts = expert_token_counts.to(
+            device=self.router_selection_bias.device,
+            dtype=self.router_selection_bias.dtype,
+        )
+        if counts.shape != self.router_selection_bias.shape:
+            raise ValueError(
+                "Expert-count shape does not match router bias: "
+                f"{tuple(counts.shape)} != {tuple(self.router_selection_bias.shape)}"
+            )
+        load_error = counts.mean() - counts
+        self.router_selection_bias.add_(
+            self.router_bias_update_rate * torch.sign(load_error)
+        )
+        # A common offset does not affect top-k selection. Removing it prevents
+        # numerically irrelevant drift over long runs.
+        self.router_selection_bias.sub_(self.router_selection_bias.mean())
 
 
 class MoETransformerBlock(TransformerBlock):

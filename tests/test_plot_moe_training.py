@@ -4,7 +4,7 @@ from pathlib import Path
 from scripts.plot_moe_training import load_metrics, render
 
 
-def test_moe_metrics_render_to_svg(tmp_path: Path) -> None:
+def test_moe_metrics_render_to_png(tmp_path: Path) -> None:
     path = tmp_path / "metrics.jsonl"
     records = [
         {
@@ -28,9 +28,7 @@ def test_moe_metrics_render_to_svg(tmp_path: Path) -> None:
     ]
     path.write_text("".join(json.dumps(record) + "\n" for record in records))
 
-    svg = render(load_metrics(path), "test-run")
+    output = tmp_path / "training-progress.png"
+    render(load_metrics(path), "test-run", output)
 
-    assert svg.startswith("<svg")
-    assert "Language-model training" in svg
-    assert "expert_3/load" in svg
-    assert "test-run" in svg
+    assert output.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")

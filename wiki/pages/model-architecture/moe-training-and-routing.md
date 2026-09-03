@@ -17,6 +17,9 @@ sources:
   - id: switch
     resource: https://arxiv.org/abs/2101.03961
     title: "Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity"
+  - id: loss-free-balancing
+    resource: https://arxiv.org/abs/2408.15664
+    title: "Auxiliary-Loss-Free Load Balancing Strategy for Mixture-of-Experts"
   - id: deepseek-moe
     resource: https://arxiv.org/abs/2401.06066
     title: "DeepSeekMoE: Towards Ultimate Expert Specialization in Mixture-of-Experts Language Models"
@@ -281,12 +284,63 @@ before a longer multi-GPU screening run, then measure routing on held-out
 source-labelled probes rather than assigning semantic expert names from these
 20 steps.
 
+### XL E4 collapse result (2026-09-03)
+
+Run `hrm-moe-e4-xl-train-20260903-192312` completed 1,000 steps on eight B200s
+with the 15M-token three-domain pilot. Its final loss was `7.127768`, objective
+`7.168931`, balance loss `3.999795`, z-loss `1.165273`, and aggregate expert
+loads `[0.0, 0.0, 1.0, 0.0]`. For top-1 E4, balance loss approaching four and
+one-hot aggregate load are the maximum-collapse signature. The checkpoint is
+therefore a router-failure diagnostic, not a successful MoE model or a
+continuation baseline.
+
+The measured median step time was `0.260985` seconds after warmup. This
+supersedes the estimate inferred from the first five JIT-dominated progress
+updates; 1,000 steady-state steps represent about 4.35 minutes of optimizer
+compute before data preparation, JIT, and checkpoint-I/O overhead. Do not
+estimate B200 duration from the initial CuTe compilation interval.
+
+The collapse is consistent with the already-open balance-scope defect plus an
+insufficient `0.01` balance coefficient under selected-probability top-1
+routing. Before another GPU run, synchronize differentiable router-probability
+statistics across the data-parallel group, define the hard-load statistic's
+global treatment, add collapse-trigger telemetry/termination, and test router
+initialization and balance-weight controls locally. More steps or more data
+without those changes would preserve the failed optimization mechanism.
+
+The post-run code audit found an additional HRM-specific defect. The physical L
+router is reused at six recurrent calls, while truncated backpropagation makes
+only one to three of those calls differentiable during the configured warmup.
+The objective nevertheless divided auxiliary-loss gradients by all six calls,
+weakening the balance gradient by up to sixfold. The corrected objective
+averages only differentiable recurrent calls while retaining separate all-call
+diagnostics.
+
+The next routing candidate remains an HRM architecture rather than adopting a
+DeepSeek backbone. It borrows only the independently applicable loss-free
+control rule: sigmoid scores, an additive non-gradient selection bias updated
+from the previous global batch at rate `0.001`, top-2 routing across four
+experts, normalized selected weights, FP32 router computation, `0.01` input
+jitter, and a small `0.001` differentiable balance term. The previous batch is
+used so routing does not leak future-token information. A persistent
+collapse guard stops training after 20 consecutive post-warmup steps above a
+configured maximum-load threshold. Four experts are retained until this gate
+passes; adding experts before stabilizing routing would add starvation modes.
+
+DFM9 is a broad training corpus, but `data/sampled_dfm9` is encoded with the
+Gemma 4 tokenizer and cannot be consumed by the OpenEuroLLM-v2 MoE checkpoint.
+The compatible path is to reuse DFM9's underlying converted/source data
+read-only and write a separately sampled OpenEuroLLM-tokenized corpus. A
+10--12-hour eight-B200 run at the measured `0.260985` seconds per 8,192-token
+step represents roughly 1.13--1.36B tokens and is a routing/specialization
+pilot, not Chinchilla-complete training of a roughly 1.8B-parameter model.
+
 Local MoE runs log one JSONL record per optimizer step when `log_interval=1`.
 `scripts/plot_moe_training.py <run-root>` renders those records into a
-dependency-free four-panel SVG containing loss/objective, auxiliary router
+four-panel PNG containing loss/objective, auxiliary router
 losses, all four expert loads, and all four mean router probabilities. It
 refuses to overwrite an existing figure. The active XL pilot uses this JSONL
-contract even though its launcher predates the plot command; generate the SVG
+contract even though its launcher predates the plot command; generate the PNG
 after training completes and after updating the checkout.
 
 ## UCloud B200 smoke-run workflow

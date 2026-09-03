@@ -1,11 +1,13 @@
 from typing import Any, Dict, NamedTuple, Optional, Tuple
 
 import torch
+import torch.distributed as dist
 from pydantic import Field
 from torch import Tensor, nn
 
 from models.common import trunc_normal_init_
 from models.moe import (
+    DroplessMoE,
     MoEAux,
     MoETransformer,
     MoETransformerConfig,
@@ -189,6 +191,52 @@ class HierarchicalMoEModel(nn.Module):
             "bp_steps": self.bp_min_steps
             + int(progress * (self.bp_max_steps - self.bp_min_steps))
         }
+
+    @torch.no_grad()
+    def update_moe_router_bias(
+        self,
+        metrics: dict[str, tuple[Tensor, Tensor]],
+    ) -> None:
+        """Update each physical router from its previous batch's global load."""
+        counts_by_router: dict[DroplessMoE, Tensor] = {}
+        for call_label in self.router_call_labels:
+            level_name, _, layer_name = call_label.split("/")
+            layer_index = int(layer_name.removeprefix("layer_"))
+            level = self.L_level if level_name == "L" else self.H_level
+            router = level.core.layers[layer_index].mlp
+            if not isinstance(router, DroplessMoE):
+                raise TypeError(f"Router call {call_label} does not resolve to DroplessMoE")
+
+            call_counts = torch.stack(
+                [
+                    metrics[
+                        f"moe/calls/{call_label}/expert_{expert_index}/load"
+                    ][0]
+                    for expert_index in range(self.num_experts)
+                ]
+            )
+            if router in counts_by_router:
+                counts_by_router[router].add_(call_counts)
+            else:
+                counts_by_router[router] = call_counts.clone()
+
+        for router, counts in counts_by_router.items():
+            if dist.is_available() and dist.is_initialized():
+                dist.all_reduce(counts, op=dist.ReduceOp.SUM)
+            router.update_router_selection_bias(counts)
+
+        # Add the post-update value to the same local metric record that will
+        # be reduced and written for this optimizer step.
+        if counts_by_router:
+            unique_biases = torch.stack(
+                [router.router_selection_bias for router in counts_by_router]
+            ).mean(dim=0)
+            one = unique_biases.new_ones(())
+            for expert_index, bias in enumerate(unique_biases):
+                metrics[f"moe/expert_{expert_index}/selection_bias"] = (
+                    bias.detach().clone(),
+                    one,
+                )
 
     def initial_carry(self, batch_size: int, dtype: torch.dtype) -> None:
         return None

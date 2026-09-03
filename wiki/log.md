@@ -1,8 +1,23 @@
 # Knowledge Bundle Update Log
 
-- 2026-09-03: Added a dependency-free local MoE training plotter. It converts
+- 2026-09-03: Corrected the HRM-MoE collapse path: auxiliary losses now
+  normalize over differentiable recurrent calls rather than all six L calls;
+  the candidate router uses previous-batch loss-free selection bias, sigmoid
+  top-2 routing, normalized selected weights, small input jitter, and a
+  persistent collapse guard. Also clarified that Gemma-tokenized sampled DFM9
+  cannot directly train the OpenEuroLLM MoE and that a 1B-token run is a pilot.
+
+- 2026-09-03: The first 1,000-step XL E4 run completed but failed the routing
+  gate: final expert loads were exactly 0/0/100/0 percent and balance loss was
+  `3.999795`, the E4 top-1 maximum-collapse signature. Loss reached `7.127768`,
+  but the checkpoint is diagnostic only. Its warmed median step time was
+  `0.260985` seconds, superseding estimates based on JIT-dominated first steps.
+  Global balance statistics, collapse termination, and router/balance controls
+  are now mandatory before another GPU run.
+
+- 2026-09-03: Added a local MoE training plotter. It converts
   the per-step `metrics.jsonl` already emitted by W&B-disabled runs into an
-  isolated SVG with loss/objective, router losses, expert loads, and router
+  isolated PNG with loss/objective, router losses, expert loads, and router
   probabilities, refusing to overwrite an existing figure.
 
 - 2026-09-03: The pinned-OpenEuroLLM real-data HRM-MoE launcher completed its

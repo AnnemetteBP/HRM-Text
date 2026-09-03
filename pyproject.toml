@@ -13,6 +13,7 @@ dependencies = [
     "langdetect",
     "lxml",
     "lingua-language-detector",
+    "matplotlib",
     "numba",
     "numpy",
     "omegaconf",

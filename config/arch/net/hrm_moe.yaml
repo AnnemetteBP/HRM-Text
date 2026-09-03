@@ -21,7 +21,14 @@ H_moe_layers: []
 L_moe_layers: [-1]
 
 moe_num_experts: 4
-moe_top_k: 1
-moe_router_weighting: selected_probability
-moe_balance_loss_weight: 0.01
-moe_z_loss_weight: 0.001
+moe_top_k: 2
+moe_router_weighting: renormalized
+moe_router_score_function: sigmoid
+moe_router_init_std: 0.01
+moe_router_jitter_noise: 0.01
+moe_router_bias_update_rate: 0.001
+# Loss-free bias control carries the batch-level balancing burden. Retain only
+# a small differentiable sequence-level term; sigmoid routing does not use the
+# softmax router z-loss in the objective.
+moe_balance_loss_weight: 0.001
+moe_z_loss_weight: 0.0

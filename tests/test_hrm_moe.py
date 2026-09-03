@@ -106,6 +106,31 @@ def test_selected_probability_top1_provides_task_gradient_to_router() -> None:
     assert torch.count_nonzero(moe.router.weight.grad).item() > 0
 
 
+def test_loss_free_bias_redirects_routes_from_overloaded_experts() -> None:
+    config = _moe_config(
+        moe_num_experts=4,
+        moe_top_k=2,
+        moe_router_weighting="renormalized",
+        moe_router_score_function="sigmoid",
+        moe_router_init_std=0.01,
+        moe_router_bias_update_rate=0.001,
+    )
+    moe = DroplessMoE(config)
+    with torch.no_grad():
+        moe.router.weight.zero_()
+
+    states = torch.randn(8, config.hidden_size)
+    _, before = moe(states)
+    overloaded = before.expert_token_counts > 0
+    moe.update_router_selection_bias(before.expert_token_counts)
+    _, after = moe(states)
+
+    assert torch.all(moe.router_selection_bias[overloaded] < 0)
+    assert torch.all(moe.router_selection_bias[~overloaded] > 0)
+    assert torch.count_nonzero(after.expert_token_counts[~overloaded]).item() > 0
+    assert moe.router_selection_bias.mean().item() == pytest.approx(0.0)
+
+
 def test_dispatch_accumulator_handles_bfloat16_autocast() -> None:
     torch.manual_seed(30)
     moe = DroplessMoE(_moe_config(moe_num_experts=3, moe_top_k=2))
@@ -220,9 +245,9 @@ class _FakeMoEBackbone(nn.Module):
             valid_tokens=scalar.new_tensor(float(x.shape[0])),
             expert_token_counts=scalar.new_tensor([2.0, 2.0]),
             expert_probability_sums=scalar.new_tensor([2.5, 1.5]),
-            call_balance_losses=scalar.new_tensor([3.0, 5.0]),
-            call_z_losses=scalar.new_tensor([7.0, 9.0]),
-            call_is_differentiable=scalar.new_tensor([1.0, 1.0]),
+            call_balance_losses=torch.stack((0.75 * scalar, 1.25 * scalar)),
+            call_z_losses=torch.stack((1.75 * scalar, 2.25 * scalar)),
+            call_is_differentiable=scalar.new_tensor([0.0, 1.0]),
             call_valid_tokens=scalar.new_tensor([2.0, 2.0]),
             call_expert_token_counts=scalar.new_tensor([[1.0, 1.0], [1.0, 1.0]]),
             call_expert_probability_sums=scalar.new_tensor(
@@ -257,6 +282,9 @@ def test_moe_head_adds_auxiliary_objective_and_metrics() -> None:
     assert "moe/expert_0/load" in metrics
     assert "moe/expert_1/mean_probability" in metrics
     assert "moe/calls/L/call_0/layer_0/expert_0/load" in metrics
+    assert metrics["moe/differentiable_router_calls"][0].item() == 1
+    assert metrics["moe/balance_loss"][0].item() == pytest.approx(5.0)
+    assert metrics["moe/all_call_balance_loss"][0].item() == pytest.approx(4.0)
     ce_mean = metrics["loss"][0] / metrics["loss"][1]
     assert objective.detach().item() > ce_mean.item()
 
