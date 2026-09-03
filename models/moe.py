@@ -6,7 +6,7 @@ from pydantic import Field, model_validator
 from torch import Tensor, nn
 
 from models.common import unwrap_tensor
-from models.layers import Cache, LinearInit, RotaryEmbedding, SwiGLU
+from models.layers import Cache, LinearInit, RotaryEmbedding, SwiGLU, find_multiple
 from models.transformer import TransformerBlock, TransformerConfig
 
 
@@ -23,6 +23,7 @@ class MoETransformerConfig(TransformerConfig):
     moe_router_init_std: Optional[float] = Field(default=None, gt=0.0)
     moe_router_jitter_noise: float = Field(default=0.0, ge=0.0, lt=1.0)
     moe_router_bias_update_rate: float = Field(default=0.0, ge=0.0)
+    moe_expert_expansion_scale: float = Field(default=1.0, gt=0.0)
 
     @model_validator(mode="after")
     def validate_moe(self) -> "MoETransformerConfig":
@@ -142,11 +143,15 @@ class DroplessMoE(nn.Module):
             torch.zeros(config.moe_num_experts, dtype=torch.float32),
             persistent=True,
         )
+        expert_intermediate_size = find_multiple(
+            round(config.intermediate_size * config.moe_expert_expansion_scale),
+            256,
+        )
         self.experts = nn.ModuleList(
             [
                 SwiGLU(
                     hidden_size=config.hidden_size,
-                    intermediate_size=config.intermediate_size,
+                    intermediate_size=expert_intermediate_size,
                     init_std_in=config.init_config.in_std,
                     init_std_out=config.init_config.ff_out_std,
                 )

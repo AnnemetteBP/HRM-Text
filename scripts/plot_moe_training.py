@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 from pathlib import Path
 
 import matplotlib
@@ -50,8 +51,19 @@ def series(records: list[dict[str, float]], keys: list[str]) -> dict[str, list[t
 
 
 def render(records: list[dict[str, float]], title: str, output: Path) -> None:
-    load_keys = [f"train/moe/expert_{index}/load" for index in range(4)]
-    probability_keys = [f"train/moe/expert_{index}/mean_probability" for index in range(4)]
+    available_keys = {key for record in records for key in record}
+
+    def expert_keys(metric: str) -> list[str]:
+        matched: list[tuple[int, str]] = []
+        pattern = re.compile(rf"train/moe/expert_(\d+)/{re.escape(metric)}")
+        for key in available_keys:
+            match = pattern.fullmatch(key)
+            if match is not None:
+                matched.append((int(match.group(1)), key))
+        return [key for _, key in sorted(matched)]
+
+    load_keys = expert_keys("load")
+    probability_keys = expert_keys("mean_probability")
     panels = (
         ("Language-model training", ["train/loss", "train/objective"], None),
         ("Router auxiliary losses", ["train/moe/balance_loss", "train/moe/z_loss", "train/moe/aux_loss"], None),

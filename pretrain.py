@@ -141,6 +141,11 @@ class PretrainConfig(pydantic.BaseModel):
         gt=0.0,
         le=1.0,
     )
+    moe_collapse_min_load: Optional[float] = pydantic.Field(
+        default=None,
+        ge=0.0,
+        lt=1.0,
+    )
     moe_collapse_patience: int = pydantic.Field(default=20, ge=1)
     moe_collapse_warmup_steps: int = pydantic.Field(default=20, ge=0)
 
@@ -1050,9 +1055,9 @@ def append_local_metrics(path: Optional[str], payload: dict) -> None:
 
 
 @torch.no_grad()
-def global_moe_max_load(
+def global_moe_load_range(
     metrics: dict[str, tuple[Tensor, Tensor]],
-) -> Optional[Tensor]:
+) -> Optional[tuple[Tensor, Tensor]]:
     expert_loads: list[tuple[int, Tensor]] = []
     for name, (value_sum, _) in metrics.items():
         match = re.fullmatch(r"moe/expert_(\d+)/load", name)
@@ -1063,7 +1068,8 @@ def global_moe_max_load(
     counts = torch.stack([value for _, value in sorted(expert_loads)])
     if dist.is_available() and dist.is_initialized():
         dist.all_reduce(counts, op=dist.ReduceOp.SUM)
-    return counts.max() / counts.sum().clamp_min(1.0)
+    loads = counts / counts.sum().clamp_min(1.0)
+    return loads.min(), loads.max()
 
 
 def save_code_and_config(config: PretrainConfig, train_metadata: V1DatasetMeta):
@@ -1529,17 +1535,32 @@ def launch(hydra_config: DictConfig):
                 )
                 if update_router_bias is not None:
                     update_router_bias(metrics)
-            step_max_expert_load = global_moe_max_load(metrics)
-            if step_max_expert_load is not None:
+            step_load_range = global_moe_load_range(metrics)
+            if step_load_range is not None:
+                step_min_expert_load, step_max_expert_load = step_load_range
                 metric_one = step_max_expert_load.new_ones(())
+                metrics["moe/global_min_load"] = (
+                    step_min_expert_load.detach(),
+                    metric_one,
+                )
                 metrics["moe/global_max_load"] = (
                     step_max_expert_load.detach(),
                     metric_one,
                 )
                 if (
-                    config.moe_collapse_max_load is not None
-                    and train_state.step > config.moe_collapse_warmup_steps
-                    and step_max_expert_load.item() >= config.moe_collapse_max_load
+                    train_state.step > config.moe_collapse_warmup_steps
+                    and (
+                        (
+                            config.moe_collapse_max_load is not None
+                            and step_max_expert_load.item()
+                            >= config.moe_collapse_max_load
+                        )
+                        or (
+                            config.moe_collapse_min_load is not None
+                            and step_min_expert_load.item()
+                            <= config.moe_collapse_min_load
+                        )
+                    )
                 ):
                     consecutive_moe_collapses += 1
                 else:
@@ -1551,14 +1572,19 @@ def launch(hydra_config: DictConfig):
                     metric_one,
                 )
                 moe_collapse_stop_reached = (
-                    config.moe_collapse_max_load is not None
+                    (
+                        config.moe_collapse_max_load is not None
+                        or config.moe_collapse_min_load is not None
+                    )
                     and consecutive_moe_collapses >= config.moe_collapse_patience
                 )
                 if moe_collapse_stop_reached and RANK == 0:
                     print(
-                        "MoE collapse guard reached: maximum expert load "
-                        f"{step_max_expert_load.item():.6f} stayed at or above "
-                        f"{config.moe_collapse_max_load} for "
+                        "MoE collapse guard reached: expert-load range "
+                        f"[{step_min_expert_load.item():.6f}, "
+                        f"{step_max_expert_load.item():.6f}] violated "
+                        f"[{config.moe_collapse_min_load}, "
+                        f"{config.moe_collapse_max_load}] for "
                         f"{consecutive_moe_collapses} steps; saving and stopping",
                         flush=True,
                     )
@@ -1736,6 +1762,7 @@ def launch(hydra_config: DictConfig):
             "all_step_seconds": bench_step_times,
             "last_metrics": bench_last_metrics,
             "metric_history": bench_metric_history,
+            "stopped_for_moe_collapse": moe_collapse_stop_reached,
         }
         if benchmark_fingerprint is not None:
             summary["state_fingerprint"] = benchmark_fingerprint

@@ -335,6 +335,24 @@ read-only and write a separately sampled OpenEuroLLM-tokenized corpus. A
 step represents roughly 1.13--1.36B tokens and is a routing/specialization
 pilot, not Chinchilla-complete training of a roughly 1.8B-parameter model.
 
+For matched architecture selection, `data/sampled_dfm9_mini` is the established
+permissively licensed DFM9 subset. A stale ablation note describes three epochs
+and a 44.31GB backing file; the verified repaired artifact supersedes it with
+ten epochs averaging 5.689B sampled tokens each and a complete 407GB shared
+token store. `scripts/run_moe_dfm9_mini_train.sh` reads that dataset in place,
+writes only to a unique repository-local `hrm-moe-runs/` directory, disables
+W&B, checkpoints locally, and stops on persistent expert starvation or
+dominance. This stage intentionally retains DFM9-mini's Gemma tokenization to
+compare architecture against the existing HRM ablations. It does not replace
+the settled OpenEuroLLM contract for subsequent final training.
+
+The primary stabilized comparison is E8/top-2 with half-width routed experts.
+Relative to E4/top-1 full-width experts, it preserves total routed-expert
+parameters (`8 × 0.5 = 4`) and activated expert width per token
+(`2 × 0.5 = 1`) while giving each token two routing paths. Four-expert and
+eight-expert rows remain separate ablations rather than interpreting the expert
+count change as a free quality improvement.
+
 Local MoE runs log one JSONL record per optimizer step when `log_interval=1`.
 `scripts/plot_moe_training.py <run-root>` renders those records into a
 four-panel PNG containing loss/objective, auxiliary router

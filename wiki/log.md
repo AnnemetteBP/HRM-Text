@@ -1,5 +1,11 @@
 # Knowledge Bundle Update Log
 
+- 2026-09-03: Added a W&B-free DFM9-mini MoE training launcher and reconciled
+  the stale three-epoch/44.31GB ablation note with the verified repaired
+  ten-epoch/407GB artifact. The stabilized matched-compute candidate is now
+  E8/top-2 with half-width experts, local checkpoints/metrics, and automatic
+  starvation/dominance termination.
+
 - 2026-09-03: Corrected the HRM-MoE collapse path: auxiliary losses now
   normalize over differentiable recurrent calls rather than all six L calls;
   the candidate router uses previous-batch loss-free selection bias, sigmoid

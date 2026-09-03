@@ -20,8 +20,9 @@ bp_max_steps: 5
 H_moe_layers: []
 L_moe_layers: [-1]
 
-moe_num_experts: 4
+moe_num_experts: 8
 moe_top_k: 2
+moe_expert_expansion_scale: 0.5
 moe_router_weighting: renormalized
 moe_router_score_function: sigmoid
 moe_router_init_std: 0.01
