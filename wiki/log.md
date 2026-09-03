@@ -1,5 +1,10 @@
 # Knowledge Bundle Update Log
 
+- 2026-09-03: Added a dependency-free local MoE training plotter. It converts
+  the per-step `metrics.jsonl` already emitted by W&B-disabled runs into an
+  isolated SVG with loss/objective, router losses, expert loads, and router
+  probabilities, refusing to overwrite an existing figure.
+
 - 2026-09-03: The pinned-OpenEuroLLM real-data HRM-MoE launcher completed its
   first 20-step eight-B200 smoke. All six L router calls were differentiable
   and all four experts were live, but final top-1 loads were imbalanced at

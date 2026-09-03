@@ -281,6 +281,14 @@ before a longer multi-GPU screening run, then measure routing on held-out
 source-labelled probes rather than assigning semantic expert names from these
 20 steps.
 
+Local MoE runs log one JSONL record per optimizer step when `log_interval=1`.
+`scripts/plot_moe_training.py <run-root>` renders those records into a
+dependency-free four-panel SVG containing loss/objective, auxiliary router
+losses, all four expert loads, and all four mean router probabilities. It
+refuses to overwrite an existing figure. The active XL pilot uses this JSONL
+contract even though its launcher predates the plot command; generate the SVG
+after training completes and after updating the checkout.
+
 ## UCloud B200 smoke-run workflow
 
 UCloud hardware is selected when the job is created in the UCloud UI, before
