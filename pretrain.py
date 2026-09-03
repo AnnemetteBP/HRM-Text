@@ -1670,7 +1670,34 @@ def launch(hydra_config: DictConfig):
         if bench_path:
             with open(bench_path, "w") as f:
                 json.dump(summary, f, indent=2)
-        print(f"[bench] {json.dumps({k: v for k, v in summary.items() if k != 'all_step_seconds'})}", flush=True)
+        compact_metric_names = (
+            "train/loss",
+            "train/objective",
+            "train/accuracy",
+            "train/moe/aux_loss",
+            "train/moe/balance_loss",
+            "train/moe/z_loss",
+            "train/moe/router_calls",
+        )
+        compact_metrics = {
+            name: bench_last_metrics[name]
+            for name in compact_metric_names
+            if name in bench_last_metrics
+        }
+        compact_metrics.update(
+            {
+                name: value
+                for name, value in bench_last_metrics.items()
+                if name.startswith("train/moe/expert_") and name.endswith("/load")
+            }
+        )
+        compact_summary = {
+            key: value
+            for key, value in summary.items()
+            if key not in ("all_step_seconds", "last_metrics", "metric_history")
+        }
+        compact_summary["last_metrics"] = compact_metrics
+        print(f"[bench] {json.dumps(compact_summary)}", flush=True)
 
     # finalize
     if dist.is_initialized():

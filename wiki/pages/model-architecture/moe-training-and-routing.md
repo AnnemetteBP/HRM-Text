@@ -230,6 +230,9 @@ the timer starts before the training loop and a successful one-step diagnostic
 writes its JSON summary. Training can also run without a W&B session by setting
 `wandb_enabled=false`; set `local_metrics_path` to retain run metadata and every
 logged train/validation record as JSON Lines inside the run directory.
+The terminal benchmark line is intentionally compact: full per-call router
+metrics and metric history remain in `summary.json`, while stdout reports only
+timing, core losses/accuracy, router-call count, and aggregate expert loads.
 
 When the full sampled DFM9 storage is unavailable, use
 `scripts/prepare_moe_real_pilot.py` for a bounded real-data training gate rather
