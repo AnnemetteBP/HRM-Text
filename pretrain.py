@@ -112,6 +112,8 @@ class PretrainConfig(pydantic.BaseModel):
     run_name: Optional[str] = None
     wandb_run_id: Optional[str] = None
     wandb_resume: Optional[str] = None
+    wandb_enabled: bool = True
+    local_metrics_path: Optional[str] = None
     checkpoint_path: Optional[str] = None
     checkpoint_format: Literal["sharded", "unsharded"] = "sharded"
     resume_checkpoint_path: Optional[str] = None
@@ -1031,8 +1033,17 @@ def reduce_metrics(local_metrics: dict[str, Tensor], prefix: str):
     return {prefix + name: metrics[idx] for idx, name in enumerate(metric_keys)}
 
 
+def append_local_metrics(path: Optional[str], payload: dict) -> None:
+    if path is None:
+        return
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+
 def save_code_and_config(config: PretrainConfig, train_metadata: V1DatasetMeta):
-    if config.checkpoint_path is None or wandb.run is None:
+    if config.checkpoint_path is None:
         return
 
     os.makedirs(config.checkpoint_path, exist_ok=True)
@@ -1054,7 +1065,8 @@ def save_code_and_config(config: PretrainConfig, train_metadata: V1DatasetMeta):
         yaml.dump(train_metadata.model_dump(), f)
 
     # Log code
-    wandb.run.log_code(config.checkpoint_path)
+    if config.wandb_enabled and wandb.run is not None:
+        wandb.run.log_code(config.checkpoint_path)
 
 
 def save_checkpoint_metadata(
@@ -1392,20 +1404,35 @@ def launch(hydra_config: DictConfig):
     if RANK == 0:
         progress_bar = tqdm.tqdm(total=train_state.total_steps, initial=train_state.step)
 
-        wandb.init(
-            project=config.project_name,
-            name=config.run_name,
-            id=config.wandb_run_id,
-            resume=config.wandb_resume,
-            config=config.model_dump() | {"train_metadata": train_metadata.model_dump()},
-            settings=wandb.Settings(_disable_stats=True),
-        )  # type: ignore
+        if config.wandb_enabled:
+            wandb.init(
+                project=config.project_name,
+                name=config.run_name,
+                id=config.wandb_run_id,
+                resume=config.wandb_resume,
+                config=config.model_dump() | {"train_metadata": train_metadata.model_dump()},
+                settings=wandb.Settings(_disable_stats=True),
+            )  # type: ignore
         num_params = sum(x.numel() for x in train_state.model.parameters())
-        if resume_state is None:
-            wandb.log({"num_params": num_params}, step=0)
-        else:
-            wandb.run.summary["num_params"] = num_params  # type: ignore[union-attr]
+        append_local_metrics(
+            config.local_metrics_path,
+            {
+                "event": "run_start",
+                "step": train_state.step,
+                "num_params": num_params,
+                "project_name": config.project_name,
+                "run_name": config.run_name,
+            },
+        )
+        if config.wandb_enabled:
+            if resume_state is None:
+                wandb.log({"num_params": num_params}, step=0)
+            else:
+                wandb.run.summary["num_params"] = num_params  # type: ignore[union-attr]
         save_code_and_config(config, train_metadata)
+        if config.max_steps is not None:
+            synchronize_device(device)
+            bench_last_time = time.perf_counter()
 
     # Training Loop
     stop_after_step_reached = (
@@ -1523,9 +1550,15 @@ def launch(hydra_config: DictConfig):
                     if config.max_steps is not None:
                         bench_metric_history.append({"step": train_state.step, **metrics})
                     progress_bar.update(train_state.step - progress_bar.n)  # type: ignore
-                    trace_print(config, RANK, f"wandb_log_begin step={train_state.step}")
-                    wandb.log(metrics | train_extra_args | {"train/lr": lr}, step=train_state.step)
-                    trace_print(config, RANK, f"wandb_log_end step={train_state.step}")
+                    logged_metrics = metrics | train_extra_args | {"train/lr": lr}
+                    append_local_metrics(
+                        config.local_metrics_path,
+                        {"event": "metrics", "step": train_state.step, **logged_metrics},
+                    )
+                    if config.wandb_enabled:
+                        trace_print(config, RANK, f"wandb_log_begin step={train_state.step}")
+                        wandb.log(logged_metrics, step=train_state.step)
+                        trace_print(config, RANK, f"wandb_log_end step={train_state.step}")
 
             if (
                 val_loader is not None
@@ -1557,7 +1590,12 @@ def launch(hydra_config: DictConfig):
                 if val_metrics is not None:
                     val_metrics = reduce_metrics(val_metrics, prefix="val/")
                     if RANK == 0:
-                        wandb.log(val_metrics, step=train_state.step)
+                        append_local_metrics(
+                            config.local_metrics_path,
+                            {"event": "validation", "step": train_state.step, **val_metrics},
+                        )
+                        if config.wandb_enabled:
+                            wandb.log(val_metrics, step=train_state.step)
 
             del metrics
 
@@ -1637,7 +1675,8 @@ def launch(hydra_config: DictConfig):
     # finalize
     if dist.is_initialized():
         dist.destroy_process_group()
-    wandb.finish()
+    if config.wandb_enabled:
+        wandb.finish()
 
 
 if __name__ == "__main__":

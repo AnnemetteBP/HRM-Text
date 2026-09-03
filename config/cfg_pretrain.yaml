@@ -24,6 +24,8 @@ ephemeral_checkpoint_step_interval: null  # Optional resumability checkpoint cad
 checkpoint_format: sharded  # sharded uses FSDP/DCP fsdp2_{tag}; unsharded writes unsharded_{tag}.pt from global rank 0
 wandb_run_id: null
 wandb_resume: null
+wandb_enabled: true
+local_metrics_path: null
 resume_checkpoint_path: null
 resume_checkpoint_tag: null
 resume_epoch: null

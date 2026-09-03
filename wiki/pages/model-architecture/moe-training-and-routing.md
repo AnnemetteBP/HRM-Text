@@ -224,6 +224,13 @@ balance loss `1.06573`. The run emitted a nonfatal FlashAttention/CuTe
 optimizer step and finalized metrics. Treat timing as provisional until that
 diagnostic is characterized in a longer smoke.
 
+The earlier benchmark writer started its timer after the first optimizer step,
+so a `max_steps=1` diagnostic did not create `BENCH_OUTPUT`. As of 2026-09-03,
+the timer starts before the training loop and a successful one-step diagnostic
+writes its JSON summary. Training can also run without a W&B session by setting
+`wandb_enabled=false`; set `local_metrics_path` to retain run metadata and every
+logged train/validation record as JSON Lines inside the run directory.
+
 ## UCloud B200 smoke-run workflow
 
 UCloud hardware is selected when the job is created in the UCloud UI, before
@@ -405,10 +412,8 @@ set -o pipefail
 
 RUN_ID="hrm-moe-e4-b200-smoke-$(date +%Y%m%d-%H%M%S)"
 RUN_ROOT="hrm-moe-runs/$RUN_ID"
-mkdir -p "$RUN_ROOT/logs" "$RUN_ROOT/results" "$RUN_ROOT/checkpoints" "$RUN_ROOT/wandb"
+mkdir -p "$RUN_ROOT/logs" "$RUN_ROOT/results" "$RUN_ROOT/checkpoints"
 
-WANDB_MODE=offline \
-WANDB_DIR="$RUN_ROOT/wandb" \
 BENCH_OUTPUT="$RUN_ROOT/results/summary.json" \
 OMP_NUM_THREADS=1 \
 MKL_NUM_THREADS=1 \
@@ -432,6 +437,8 @@ torchrun --nproc_per_node=1 pretrain.py \
   lr_warmup_steps=10 \
   max_steps=20 \
   log_interval=1 \
+  wandb_enabled=false \
+  local_metrics_path="$RUN_ROOT/results/metrics.jsonl" \
   checkpoint_step_interval=20 \
   checkpoint_format=unsharded \
   checkpoint_path="$RUN_ROOT/checkpoints" \
@@ -442,10 +449,11 @@ torchrun --nproc_per_node=1 pretrain.py \
 python -m json.tool "$RUN_ROOT/results/summary.json"
 ```
 
-Reattach after reconnecting with `tmux attach -t hrm-moe-b200`. Offline W&B
-data stays under `wandb/`; it can be synchronized later rather than placing an
-API token in shell history. The DFM9 sample is not in Git; its explicit Hydra
-path override points training at the attached persistent data folder.
+Reattach after reconnecting with `tmux attach -t hrm-moe-b200`. This launch
+does not initialize W&B; metrics stay in `results/metrics.jsonl` and the
+benchmark summary in `results/summary.json`. The DFM9 sample is not in Git; its
+explicit Hydra path override points training at the attached persistent data
+folder.
 
 [^flexolmo]: FlexOlmo, arXiv:2507.07024.
 [^olmoe]: OLMoE, arXiv:2409.02060.
