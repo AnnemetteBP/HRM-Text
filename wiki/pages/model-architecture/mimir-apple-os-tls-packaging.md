@@ -4,7 +4,7 @@ title: Mimir Apple OS-only TLS packaging
 description: Pinned custom Flutter and Dart runtimes, pre-signing replacement, package audits, and Apple qualification evidence.
 tags: [mimir, apple, flutter, packaging, tls]
 status: draft
-last_updated: 2026-10-03
+last_updated: 2026-10-07
 confidence: high
 ---
 # Mimir Apple OS-only TLS packaging
@@ -116,3 +116,14 @@ The user authorized a reply and expanded review notes; the text is in
 23:13 CEST on 3 October 2026. Apple confirmed **Waiting for Review** for macOS
 under the same submission ID. This supersedes the pending-sign-in state and
 the earlier rejection; it is not approval of the entitlement or app.
+
+## Status inquiry — 7 October 2026
+
+Both platforms still showed Waiting for Review. At the user's request, sent
+one Apple Developer Support → App Review Status email inquiry covering both
+submissions, including their IDs, dates and the macOS entitlement clarification.
+The form required one platform, so iOS was selected and the message explicitly
+included macOS. Apple confirmed case **102988405559** and will reply by email.
+This was a status inquiry, not an expedited-review request; neither submission
+was withdrawn or modified. Confirmation screenshot:
+`logs/sdu-store/submission-13/status-inquiry-102988405559.png`.
