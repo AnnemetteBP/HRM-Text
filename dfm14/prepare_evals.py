@@ -99,7 +99,7 @@ def build_eval_definitions(root, manifest, suite_path, previous):
             bindings=copy.deepcopy(next(p['metrics'] for p in previous['populations']
                 if p['kind']==kind.replace('dfm14','dfm13')))
         bindings.update(copy.deepcopy(metrics))
-        populations.append(dict(id=kind+'_v1',kind=kind,languages=list(bindings),metrics=bindings,
+        populations.append(dict(id=kind+'_v2',kind=kind,languages=list(bindings),metrics=bindings,
             required_tasks={l:list(v) for l,v in bindings.items()},
             aggregation_policy='available_tasks_then_available_languages_v1'))
     registry=dict(schema_version=1,populations=populations)

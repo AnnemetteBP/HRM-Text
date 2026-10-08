@@ -9,6 +9,28 @@ tags: [dfm14, training, xl, handoff]
 ---
 # DFM14 XL Handoff at 3250K
 
+## Corrected Population Baseline (2026-10-08)
+
+The original DFM14 3250K average retained epoch 10.609039833146502. The DFM13
+segment finalizer updated only its own job-ID prefix, missing the later-added
+DFM14 rows. The actual checkpoint epoch is 10.812711203938841, as recorded in
+the export and EuroEval artifacts. Epoch validation therefore correctly omitted
+240 available metrics from the 50-language average; weakening validation would
+hide this error.
+
+Recomputation at the actual epoch gives all-language 0.5954273687057958
+(396/396 metrics), multilingual 0.5896957685334531 (357/357), and new-language
+0.39119770480387983 (32/32). DFM14 population IDs now use `_v2`; `_v1` is
+superseded because it contains an already-published point at the wrong epoch.
+Shared config generation preserves this version for future preparation.
+
+`scripts/schedule_dfm14_average_correction.py` queues the corrected baseline
+after the running 3300K training segment and before its evaluations, preserving
+exclusive W&B writes. Receipt and complete local preview are under
+`data/dfm14/average-epoch-correction-3250k/`. Future DFM14 segment finalization
+already selects all rows by boundary rather than a job-ID prefix, including the
+new average rows. No GPU evaluations or training restarts are required.
+
 ## Readiness Gate Repair (2026-10-08)
 
 Transfer verification and exact packing completed (final step 3768319), followed

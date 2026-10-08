@@ -2,7 +2,7 @@
   "schema_version": 1,
   "populations": [
     {
-      "id": "dfm14_new_languages_v1",
+      "id": "dfm14_new_languages_v2",
       "kind": "dfm14_new_languages",
       "languages": [
         "ga",
@@ -285,7 +285,7 @@
       "aggregation_policy": "available_tasks_then_available_languages_v1"
     },
     {
-      "id": "dfm14_multilingual_v1",
+      "id": "dfm14_multilingual_v2",
       "kind": "dfm14_multilingual",
       "languages": [
         "nb",
@@ -2775,7 +2775,7 @@
       "aggregation_policy": "available_tasks_then_available_languages_v1"
     },
     {
-      "id": "dfm14_all_languages_v1",
+      "id": "dfm14_all_languages_v2",
       "kind": "dfm14_all_languages",
       "languages": [
         "nb",
