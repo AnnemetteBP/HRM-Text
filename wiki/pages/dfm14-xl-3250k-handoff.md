@@ -9,6 +9,17 @@ tags: [dfm14, training, xl, handoff]
 ---
 # DFM14 XL Handoff at 3250K
 
+## Readiness Gate Repair (2026-10-08)
+
+Transfer verification and exact packing completed (final step 3768319), followed
+by the 3250K evaluations and averages. The handoff wait then failed with
+`KeyError: 'plan_dir'` because the gate constructor omitted required scheduler
+metadata. Added the plan directory and a regression test invoking the real wait
+handler. Reset only the failed gate after checking its isolated checkpoint;
+preserved completed evaluations. The installed wrapper pin was refreshed only
+for this reviewed change; backups and evidence are in `gate-plan-dir-fix.json`
+and `installed.before-gate-plan-dir-fix.json` under the control directory.
+
 ## Policy
 
 The owner authorized switching after step3250000. Current DFM13 training

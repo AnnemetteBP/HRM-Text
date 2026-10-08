@@ -38,7 +38,7 @@ def validate_future(future):
             raise ValueError('Future job already attempted: ' + j.job_id)
 
 
-def arm_rows(jobs, control=CONTROL):
+def arm_rows(jobs, control=CONTROL, plan=PLAN):
     if any(j.job_id == GATE for j in jobs):
         raise ValueError('Gate already installed')
     current = [j for j in jobs if boundary(j) == START]
@@ -53,7 +53,7 @@ def arm_rows(jobs, control=CONTROL):
                name='DFM14 verified transfer, exact packing and isolated resume',
                deps=tuple(j.job_id for j in current if j.status != JobStatus.SKIPPED),
                max_retries=0, log_dir=str(control / 'readiness'), metadata=dict(
-                   ckpt_path=str(control / 'resume'), ckpt_tag=f'step_{START}',
+                   plan_dir=str(plan), ckpt_path=str(control / 'resume'), ckpt_tag=f'step_{START}',
                    checkpoint_carry_ranks=8, checkpoint_wait_seconds=30, checkpoint_wait_max_seconds=0))
     out = [j.with_updates(deps=tuple(dict.fromkeys((*j.deps, GATE))))
            if j.job_id in future_ids and j.action == Action.TRAIN_UNTIL_STEP else j for j in jobs] + [gate]
@@ -65,7 +65,7 @@ def arm(plan=PLAN, control=CONTROL):
     with PlanLock(plan):
         jobs = read_plan(plan / 'plan.tsv')
         validate_extension(jobs)
-        out = arm_rows(jobs, control)
+        out = arm_rows(jobs, control, plan)
         if (control / 'armed.json').exists():
             raise ValueError('Prior arm receipt exists')
         write_plan(control / 'plan-before-gate.tsv', jobs)
@@ -319,7 +319,7 @@ def main():
     if args.mode == 'preview':
         with PlanLock(args.plan_dir):
             jobs = read_plan(args.plan_dir / 'plan.tsv')
-        out = arm_rows(jobs, args.control)
+        out = arm_rows(jobs, args.control, args.plan_dir)
         write_plan(args.control / 'gate-preview.tsv', out)
         write_json(args.control / 'preview.json', dict(old_jobs=len(jobs), gate=GATE,
                    future_training_rows=sum(boundary(j) > START and j.action == Action.TRAIN_UNTIL_STEP for j in jobs),

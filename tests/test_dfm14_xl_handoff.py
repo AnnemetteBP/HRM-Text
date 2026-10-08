@@ -35,6 +35,14 @@ def test_gate_preserves_current_and_requires_every_current_eval():
     assert set(armed[-1].deps) == {j.job_id for j in jobs[:8]}
 
 
+def test_gate_runs_real_checkpoint_wait(tmp_path, monkeypatch):
+    from eval_scheduler import runtime
+    gate = h.arm_rows(fixture(), control=tmp_path / 'control', plan=tmp_path / 'plan')[-1]
+    assert gate.metadata['plan_dir'] == str(tmp_path / 'plan')
+    monkeypatch.setattr(runtime, 'checkpoint_ready', lambda job: (True, 'verified'))
+    assert runtime.run_wait_checkpoint(gate) == 0
+
+
 def test_clone_new_language_coverage_and_final_boundary():
     jobs = h.arm_rows(fixture()); out, retired, generated = h.build(jobs, run())
     assert next(j for j in out if j.job_id == 'train3250') == jobs[0]
