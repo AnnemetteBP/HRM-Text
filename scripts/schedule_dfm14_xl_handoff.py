@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'eval_scheduler'))
 from dfm12.io import file_hash, load, lock, write_json
 from eval_scheduler.locking import PlanLock
-from eval_scheduler.model import Action, Job, JobStatus, read_plan, write_plan
+from eval_scheduler.model import Action, Job, JobStatus, plan_database, read_plan, write_plan
 from scripts import prepare_dfm14_xl_handoff as prep
 from scripts import schedule_dfm12_xl_epoch11 as base
 from scripts.schedule_dfm13_xl_handoff import replace_tree
@@ -143,9 +143,9 @@ def training_arguments(run, overrides):
         raise ValueError('Unexpected training override')
     args = base.training_arguments(dict(start_step=2877261, end_step=run['end_step']), [])
     changes = {'data': 'dfm14', 'data.path': str(prep.SAMPLE), 'epochs': '1',
-               'lr': '3e-4', 'lr_auto': 'true', 'lr_min_ratio': '1', 'lr_warmup_steps': '0',
+               'lr': '3e-4', 'lr_auto': 'true', 'lr_min_ratio': str(1 / 30), 'lr_warmup_steps': '0',
                'lr_rewarm_steps': '0', 'lr_rewarm_start_step': 'null',
-               'lr_decay_start_step': 'null', 'lr_decay_end_step': 'null',
+               'lr_decay_start_step': '3500000', 'lr_decay_end_step': '3750000',
                'lr_cooldown_checkpoint': 'null', 'arch.bp_warmup_ratio': '0',
                'checkpoint_path': str(OUTPUT), **dict(x.split('=', 1) for x in overrides)}
     present = {x.split('=', 1)[0] for x in args if '=' in x}
@@ -282,6 +282,14 @@ def segment(plan, control, overrides):
     epoch = display_epoch(parent_epoch, state, run['packing']['packed_rows'], tag == 'epoch_1')
     with PlanLock(plan):
         jobs = read_plan(plan / 'plan.tsv')
+        database = plan_database(plan / 'plan.tsv')
+        if database:
+            from eval_scheduler.store import SQLiteJobStore
+            SQLiteJobStore(database).finalize_eval_epoch(
+                [j.job_id for j in jobs if boundary(j) == min(target, run['end_step'])
+                 and j.action != Action.TRAIN_UNTIL_STEP], epoch,
+                ('dfm14_cursor_epoch_pending', 'dfm13_cursor_epoch_pending'))
+            return
         out = [j.with_updates(metadata={**j.metadata, 'eval_epoch': epoch,
                'dfm14_cursor_epoch_pending': False, 'dfm13_cursor_epoch_pending': False})
                if boundary(j) == min(target, run['end_step']) and j.action != Action.TRAIN_UNTIL_STEP

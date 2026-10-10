@@ -4,7 +4,7 @@ title: HRM-Text XL Training FLOPs
 description: Recurrence-aware upper-bound calculation for HRM-Text XL training compute.
 tags: [architecture, hrm, xl, training, flops]
 status: stable
-last_updated: 2026-08-15
+last_updated: 2026-10-10
 confidence: high
 ---
 # HRM-Text XL Training FLOPs
@@ -43,4 +43,32 @@ usually much shorter than 4,096 tokens, so actual attention work and total
 algorithmic FLOPs should be below the 11.9-ZFLOP bound. This accounting excludes
 optimizer updates, distributed communication, checkpointing, evaluation,
 compiler work, and inefficiency relative to peak hardware throughput.
+
+## Current XL Lineage Planning Estimate
+
+As of 2026-10-10, the historical 1.65M-step figure above is not the total for
+the continued XL lineage. For planning, assume BP8, global batch 262,144,
+and dense 4,096-token attention throughout its history. BP8 gives 24 recurrent
+forward equivalents, yielding 35,634,806,784 major FLOPs/token and
+9.341450789584896e15 FLOPs/step. Do not multiply again by GPU count or GAS.
+
+| Boundary | Major FLOPs | With 5% planning allowance |
+| --- | ---: | ---: |
+| 3,400,000 steps | 3.1761e22 | 3.3349e22 |
+| Planned epoch end, 3,768,319 steps | 3.5202e22 | 3.6962e22 |
+
+These are conservative architecture-based estimates under the stated assumptions,
+not audited legal upper bounds. The allowance is not a measured error margin.
+Verify historical context lengths, batches, inherited weights and any contributing
+replays before making a formal declaration; lower historical BP/batches reduce
+the estimate. Synthetic generation compute is not included here.
+
+The [Commission GPAI guidelines](https://digital-strategy.ec.europa.eu/en/library/guidelines-scope-obligations-providers-general-purpose-ai-models-under-ai-act)
+use 1e23 FLOPs as an indicative GPAI criterion, not an automatic exemption below
+it. The AI Act's 1e25-FLOP systemic-risk presumption is not a maximum permitted
+compute budget. Annex A distinguishes parameter-update compute from broader
+systemic-risk accounting, which includes relevant nonpublic synthetic generation
+and inherited weights. Public synthetic generation, purely diagnostic evaluation,
+and activation recomputation are excluded from that cumulative accounting.
+Consequently this training estimate alone does not establish regulatory exemption.
 

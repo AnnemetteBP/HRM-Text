@@ -90,9 +90,16 @@ def test_lr_and_hydra_actual_arguments():
     assert 'data=dfm14' in args and 'data=dfm13' not in args
     with initialize_config_dir(version_base=None, config_dir=str(h.ROOT / 'config')):
         c = compose(config_name='cfg_pretrain', overrides=args[3:])
-    assert c.lr == 3e-4 and c.lr_auto and c.lr_min_ratio == 1
+    assert c.lr == 3e-4 and c.lr_auto and c.lr_min_ratio == 1 / 30
     assert c.lr_warmup_steps == c.lr_rewarm_steps == 0
-    assert c.lr_decay_start_step is c.lr_decay_end_step is c.lr_cooldown_checkpoint is None
+    assert c.lr_decay_start_step == 3500000 and c.lr_decay_end_step == 3750000
+    assert c.lr_cooldown_checkpoint is None
+    from models.module_learning_rates import windowed_cosine_lr
+    for step, expected in [(3300000, 3e-4), (3500000, 3e-4),
+                           (3625000, 1.55e-4), (3750000, 1e-5), (3768319, 1e-5)]:
+        actual = windowed_cosine_lr(c.lr, c.lr_min_ratio, step,
+                                   c.lr_decay_start_step, c.lr_decay_end_step)
+        assert abs(actual - expected) < 1e-12
     assert c.epochs == 1 and c.data.path == str(p.SAMPLE) and c.data.target_only
     assert c.gradient_accumulation_steps == 2 and c.global_batch_size == 262144
     assert not c.reset_ema_on_resume
