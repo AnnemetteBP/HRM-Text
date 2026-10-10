@@ -107,3 +107,37 @@ plus English MMLU/ARC-C/MATH/HumanEval and Danish retention, with equal-token
 ablations where feasible. Keep benchmark test items and translations out of
 training. English improvement is a hypothesis, not a guaranteed side effect
 of adding languages.
+
+## Decision-Head Conversion Candidates (2026-10-08)
+
+This is an inventory/proposal, not authorization to alter the training mixture.
+The current `config/dfm14_sources.json` inherits DFM13; include its inherited
+sources when discussing DFM14, not only the 277 registered new components.
+The interfaces under discussion are binary, candidate choice, and ordinal score.
+
+Best direct-label candidates are multilingual DaLA acceptability (including
+the sixteen `dfm14-dala-v2-*-compact` packages), inherited BoolQ/RACE/DREAM
+training components, `jjzha/dutch-central-exam-mcq`, `jjzha/imdb-dutch-instruct`,
+and the inherited DSL sentiment lexicon. SkillSpan, Kompetencer, GREEN, DaNE,
+DaCoref and DSL FrameNet support candidate-conditioned span/type/relation
+decisions rather than unconstrained extraction.
+
+Arena, AI Arenaen, Compar:IA, Expert5K and HelpSteer3 are preference candidates,
+but the accepted SFT exports are not complete pairwise decision datasets.
+Recover original pairs and votes through source provenance. HelpSteer3's
+`overall_preference` supports ordinal preference strength; it is not an
+absolute correctness rating. Do not transplant a preference label onto an
+auditor-repaired response without rechecking it.
+
+GEC/denoising, reordering, span filling, verified math/code, tool dialogues,
+translation and grounded instruction are secondary candidates requiring
+validated distractors or explicit labels. Multiple valid corrections,
+translations, orderings and equivalent math answers must not become false
+negatives. Audit infrastructure failures are not negative quality examples.
+Use training partitions only, preserve source-family heldouts, randomize
+candidate order, and assess calibration on separate held-out decisions.
+
+Evidence: `config/dfm14_sources.json`, `config/dfm13_sources.json`,
+`data_io/prefix_config_dfm11.yaml`, and
+`scripts/review_dfm13_arena_candidates.py`. No decision corpus or head was
+trained during this inventory.

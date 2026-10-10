@@ -8,6 +8,20 @@ confidence: high
 ---
 # DFM13 Workspace Panel Readiness
 
+## DFM14 v2 Panels (2026-10-08)
+
+Workspace `3fvncok3gjh` now uses `avg_population/dfm14_multilingual_v2/score`
+for its main multilingual headline. Both Headline Averages and Multilingual
+Headline Metrics start with the corrected 48-language, all-50-language and
+new-16-language population panels, on `avg_population/epoch`. The latter two
+use `dfm14_all_languages_v2` and `dfm14_new_languages_v2`. Existing historical
+population panels, all other panels, section ordering and run selections are
+preserved. Reproducible patch: `scripts/patch_dfm14_average_panels.py`.
+Before/intended/after snapshots are under
+`logs/wandb_workspace_specs/3fvncok3gjh-dfm14-v2-20261008/`.
+The corrected baseline history sync is queued after 3300K training, so the new
+panels may be empty until then; no metric history was written by this patch.
+
 ## Live headline correction (2026-10-07)
 
 The owner requested replacing the stale Multilingual headline panel in
