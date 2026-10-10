@@ -9,6 +9,56 @@ confidence: high
 ---
 # Multi-Node Evaluation Scheduler Plan
 
+## Node-Local Shared Gateway Preparation (2026-10-09)
+
+`eval_scheduler/shared_pool.py` provides opt-in `SharedServerPool` glue for
+the asynchronous `gateway.Gateway`. This is CPU-tested preparation, not a live
+deployment or a replacement for cluster-wide ownership. `run_client(job,
+callback)` registers a lazy route and supplies URL, per-client log, isolated
+process-like monitor and model alias. No GPU is allocated for client lifetime.
+The gateway alone owns request admission and stream completion; the pool owns
+model residency and lazy startup. Default admission is 1024/server; explicit
+`--max-num-seqs` overrides that fallback, including values above 1024. Startup threads restore captured/reserved server
+affinity rather than inheriting client-only CPU limits.
+The provisional per-key startup queue is at least three times GPU count times
+configured server capacity (24,576 with eight GPUs at the default); registering
+a larger explicit capacity increases that bound before admitting its route.
+
+First demand provisions unused GPUs in parallel. An incompatible group takes
+one drained GPU when no unused GPU remains; existing routes can re-provision
+without permanently disabling their keys. When a compatibility group's last
+client unregisters, an event-driven bounded rebalance transfers its idle GPUs
+to a remaining registered/provisioned group. Busy donor GPUs remain resident
+until their final response drains, then join the surviving group. This avoids
+leaving a survivor stranded on one GPU while seven old servers sit idle;
+eight-GPU regressions cover both immediate and delayed final-GPU reuse.
+No periodic database scan or request-level executor is involved.
+Model/config/tokenizer identities
+are part of compatibility. Model eviction waits for gateway tickets to drain.
+Superseding the initial failure-stalls policy: after gateway tickets drain,
+failed backends are terminated through their owned pool process and exit is
+confirmed before residency release. Unconfirmed termination still blocks reuse.
+New job/retry route registration also retires failed backends for its key under
+the placement lock and resets completed failed provisioning tasks.
+Normal registration bypasses that lock unless failure reconciliation is needed,
+so unrelated GPU startup cannot stall registering a healthy route. The next
+inference lazily restarts them. This supersedes drain-only recovery, but is not
+autonomous OOM replacement within an already registered client; its request
+retries can still fail until a new registration or drain. No foreign process
+is signaled. Monitoring exposes active/queued/capacity both at top level and in
+totals, with per-GPU jobs and one-second cached gateway metrics; unavailable
+metrics remain unknown rather than fabricated zeroes.
+
+`close_all()` fences admission and drains before unloading owned servers;
+`reopen()` follows exclusive training/export. Final-only `shutdown()` also
+joins the CPU gateway host and shuts down startup workers. A drain timeout
+does not kill busy servers. Managed Transformers judge jobs are rejected by
+`preflight(jobs)` before claiming work; supplying an independently managed
+judge endpoint and removing `judge_server_model` is the supported alternative.
+Do not silently substitute a vLLM judge. Runtime/CLI/database integration is
+separately owned. Pool tests cover real CPU HTTP forwarding, model-alias
+translation, interleaved incompatible clients, drain/reopen and shutdown.
+
 ## Objective
 
 Extend `eval_scheduler` from one local eight-GPU runner into a fixed-membership

@@ -1,6 +1,37 @@
 import pytest
+from argparse import Namespace
+from unittest.mock import AsyncMock, MagicMock, patch
+from fastapi.testclient import TestClient
 
-from scripts.native_compatible_openai_proxy import fit_native_prompt
+from scripts.native_compatible_openai_proxy import fit_native_prompt, make_app
+
+
+def test_proxy_reuses_http_client_and_preserves_completion_payload():
+    args = Namespace(target_base_url='http://localhost:1234/v1',
+                     target_model_name='target', model_name='public',
+                     timeout=60, log_jsonl=None, api_key='test',
+                     prompt_tokenizer=None)
+    response = MagicMock(status_code=200)
+    response.json.return_value = {'model': 'target', 'choices': []}
+    client = AsyncMock()
+    client.post.return_value = response
+    with patch('scripts.native_compatible_openai_proxy.httpx.AsyncClient') as constructor:
+        constructor.return_value.__aenter__.return_value = client
+        with TestClient(make_app(args)) as http:
+            for _ in range(2):
+                result = http.post('/v1/completions', json={
+                    'model': 'public', 'prompt': 'example', 'max_tokens': 32,
+                    'temperature': 0, 'stop': ['END'],
+                })
+                assert result.status_code == 200
+                assert result.json()['model'] == 'public'
+        assert constructor.call_count == 1
+        assert client.post.await_count == 2
+        assert client.post.call_args.kwargs['json'] == {
+            'model': 'target', 'prompt': 'example', 'max_tokens': 32,
+            'temperature': 0, 'stop': ['END'],
+        }
+        constructor.return_value.__aexit__.assert_awaited_once()
 
 
 class Tokenizer:

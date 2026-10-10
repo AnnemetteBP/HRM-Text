@@ -8,6 +8,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+shared = [
+    "fastapi>=0.115",
+    "httpx>=0.27",
+    "uvicorn>=0.30",
+]
 rich = [
     "rich>=13",
 ]

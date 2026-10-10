@@ -615,20 +615,24 @@ def read_running_events(plan_dir: Path) -> dict[str, RunningEvent]:
 
 
 def runnable_pending(jobs: list[Job]) -> list[Job]:
+    by_id = {job.job_id: job for job in jobs}
+    failure_cache: dict[str, bool] = {}
     return [
         job
         for job in jobs
-        if job.status == JobStatus.PENDING and dependencies_satisfied(job, jobs)
+        if job.status == JobStatus.PENDING and dependencies_satisfied(
+            job, jobs, jobs_by_id=by_id, failure_cache=failure_cache)
     ]
 
 
 def blocked_pending_jobs(jobs: list[Job]) -> list[tuple[Job, list[str]]]:
     by_id = {job.job_id: job for job in jobs}
+    failure_cache: dict[str, bool] = {}
     blocked: list[tuple[Job, list[str]]] = []
     for job in jobs:
         if job.status != JobStatus.PENDING:
             continue
-        if dependencies_satisfied(job, jobs):
+        if dependencies_satisfied(job, jobs, jobs_by_id=by_id, failure_cache=failure_cache):
             continue
         unmet: list[str] = []
         for dep in job.deps:

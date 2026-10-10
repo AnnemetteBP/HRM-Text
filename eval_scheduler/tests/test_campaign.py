@@ -48,6 +48,35 @@ def test_default_catalog_has_no_valeu():
     assert not any(name.startswith('valeu-') for name in EUROEVAL_GROUPS)
 
 
+def test_ready_jobs_reuses_dependency_index(tmp_path, monkeypatch):
+    jobs = [job('done', status=JobStatus.DONE),
+            job('ready', deps=('done',)), job('blocked', deps=('missing',))]
+    runtime.write_plan(tmp_path / 'plan.tsv', jobs)
+    original = runtime.dependencies_satisfied
+    indices = []
+
+    def checked(candidate, snapshot, *, jobs_by_id=None, failure_cache=None):
+        assert jobs_by_id is not None
+        indices.append(jobs_by_id)
+        assert original(candidate, snapshot) == original(candidate, snapshot, jobs_by_id=jobs_by_id)
+        return original(candidate, snapshot, jobs_by_id=jobs_by_id)
+
+    monkeypatch.setattr(runtime, 'dependencies_satisfied', checked)
+    assert [j.job_id for j in runtime.Runner(tmp_path, []).ready_jobs()] == ['ready']
+    assert len(indices) == 2 and indices[0] is indices[1]
+
+
+def test_dependency_failure_cache_is_snapshot_local(tmp_path):
+    failed = job('failed', status=JobStatus.FAILED)
+    blocked = job('blocked', deps=('failed',))
+    gate = job('gate', deps=('blocked',), deps_mode='terminal')
+    runner = runtime.Runner(tmp_path, [])
+    runtime.write_plan(tmp_path / 'plan.tsv', [failed, blocked, gate])
+    assert [j.job_id for j in runner.ready_jobs()] == ['gate']
+    runtime.write_plan(tmp_path / 'plan.tsv', [failed.with_updates(status=JobStatus.RUNNING), blocked, gate])
+    assert runner.ready_jobs() == []
+
+
 def test_shared_dependency_graph_is_visited_once():
     class CountingDict(dict):
         reads = 0
