@@ -1,5 +1,7 @@
 # Operational Knowledge and Plans
 
+* [XL Andersen Evaluation Backfill](andersen-xl-evaluation-backfill.md) - Main-line checkpoint inventory and missing validation-split prerequisites.
+
 * [Shared Audit Pipeline](shared-audit-pipeline.md) - Reusable continuous scheduling and minimal non-thinking accept/reject reviews.
 
 * [DFM14 Additional Instructions](dfm14-additional-instruction-candidates.md) - New language-specific leads versus already registered multilingual sources.
