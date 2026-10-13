@@ -33,6 +33,8 @@ If new information contradicts an existing page, do not silently overwrite it. M
 
 ## Eval Scheduler Runner Launch
 
+- **Training continuity is mandatory**: failed evals, unfinished merges/averages/syncs, and abandoned administrative locks must not strand training. Release edit locks before stepping away and verify the handoff actually starts. Respect explicit user pauses and GPU/checkpoint safety. See [training continuity](wiki/pages/training-continuity.md).
+
 - **CRITICAL**: Prepend `PATH="/home/ucloud/miniforge3/envs/hrm/bin:$PATH"` so `torchrun` and `ninja` are on PATH.
 - Always use `--persistent-vllm` for efficiency (reuses vLLM servers across eval shards).
 - Launch detached with `setsid` so the runner survives shell timeouts.
@@ -52,6 +54,9 @@ setsid /home/ucloud/miniforge3/envs/hrm/bin/python -m eval_scheduler run \
 - Status: `python -m eval_scheduler status --plan-dir <PLAN_DIR>`.
 - Monitor: `python -m eval_scheduler monitor --plan-dir <PLAN_DIR>`.
 - For multi-node scheduling, use [`wiki/pages/model-architecture/multinode-eval-scheduler-plan.md`](wiki/pages/model-architecture/multinode-eval-scheduler-plan.md); never start unrestricted legacy runners on multiple nodes.
+
+Cooperative training suspension is opt-in in `pretrain.py`; managed launches
+must have exactly one recovery supervisor. See the [suspension runbook](wiki/pages/cooperative-cuda-suspension.md) before changing holds, launchers or evaluation handoffs.
 
 ## Data Audit Defaults
 

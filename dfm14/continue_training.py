@@ -18,7 +18,7 @@ from dfm12.prepare_xl_epoch11 import count_steps
 from dfm14.reconcile_inheritance import ROOT, validate, verify_imported_sources
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'eval_scheduler'))
 from eval_scheduler.locking import PlanLock
-from eval_scheduler.model import Action, JobStatus, read_plan, write_plan
+from eval_scheduler.model import Action, JobStatus, plan_database, read_plan, write_plan
 from scripts.stop_training_at_complete_checkpoint import complete, preserve
 from scripts.schedule_dfm13_wave34_baseline import check_graph
 from scripts.schedule_identity_final_ema_full import canonical_log_dir
@@ -273,6 +273,10 @@ def segment(command):
         print(time.strftime('%FT%T'),'Waiting for GPUs 0-7: no compute clients and >=178000 MiB free each',flush=True)
         time.sleep(120)
     subprocess.run(command,check=True)
+    finalize_segment(command)
+
+
+def finalize_segment(command):
     target=int(next(x.split('=',1)[1] for x in command if x.startswith('stop_after_step=')))
     run=load(CONTROL/'run.json')
     final=complete(CKPT,'epoch_3')
@@ -282,13 +286,30 @@ def segment(command):
     state=load(CKPT/f'checkpoint_state_{tag}.json')
     fraction=1 if final else state['global_row_cursor_in_epoch']/run['epoch_rows']
     boundary=run['end_step'] if final else target
-    with PlanLock(PLAN):
-        jobs=read_plan(PLAN/'plan.tsv')
-        jobs=[j.with_updates(metadata={**j.metadata,'eval_epoch':run['historical_epoch']+fraction,
-                                       'eval_step':state['step']})
-              if j.job_id.startswith(PREFIX) and j.metadata.get('dfm14_boundary')==boundary
-              and j.status==JobStatus.PENDING else j for j in jobs]
-        write_plan(PLAN/'plan.tsv',jobs)
+    finalize_boundary(PLAN, boundary, run['historical_epoch']+fraction, state['step'])
+
+
+def finalize_boundary(plan, boundary, epoch, step):
+    """Publish exact checkpoint coordinates without replacing SQLite runtime state."""
+    with PlanLock(plan):
+        path = plan/'plan.tsv'
+        jobs = read_plan(path)
+        ids = [j.job_id for j in jobs if j.job_id.startswith(PREFIX)
+               and j.metadata.get('dfm14_boundary') == boundary
+               and j.action != Action.TRAIN_UNTIL_STEP
+               and j.status in (JobStatus.PENDING, JobStatus.RUNNING)]
+        database = plan_database(path)
+        if database:
+            from eval_scheduler.store import SQLiteJobStore
+            SQLiteJobStore(database).finalize_eval_epoch(ids, epoch, train_step=step)
+        else:
+            selected = set(ids)
+            if any(j.job_id in selected and j.status == JobStatus.RUNNING
+                   and j.action != Action.WAIT_CHECKPOINT for j in jobs):
+                raise RuntimeError('Evaluation already started before epoch finalization')
+            write_plan(path, [j.with_updates(metadata={**j.metadata, 'eval_epoch':epoch,
+                                                      'eval_step':step})
+                              if j.job_id in selected else j for j in jobs])
 
 
 def watch():
@@ -340,9 +361,10 @@ def watch():
 
 def main():
     parser=argparse.ArgumentParser(__doc__)
-    parser.add_argument('mode',choices=['watch','segment'])
+    parser.add_argument('mode',choices=['watch','segment','finalize'])
     args,command=parser.parse_known_args()
     if args.mode=='segment':segment(command)
+    elif args.mode=='finalize':finalize_segment(command)
     else:watch()
 
 

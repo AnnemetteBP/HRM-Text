@@ -8,7 +8,7 @@ tags:
 - catalog
 - operations
 status: stable
-last_updated: 2026-10-07
+last_updated: 2026-10-08
 confidence: high
 part_of: /entities/scripts.md
 ---
@@ -218,3 +218,193 @@ formatting/truncation contributing to differences. See the
 [regression review](/pages/dfm12-identity-euroeval-regression-review.md).
 This new raw-tokenizer smoke verifies the corrected JSON protocol; it does not
 reproduce the release's patched-tokenizer evaluation scores.
+
+The owner subsequently requested the full eight-language run. Eight detached
+clients started on 2026-10-07 using the same server pool, tokenizer policy,
+and memory guard, with test splits, zero-shot, and ten iterations. EuroEval
+selected 116 language-dataset jobs in total (da 17, en 13, nb 12, nn 12, sv 16,
+is 15, fo 13, nl 18). This entry records launch, not completion. Results,
+per-language logs/status, the manifest, and a periodically updated
+`progress.json` live under
+`/work/dfm/euroeval-runs/mimir-v1.5-18.2-full/`.
+
+The owner expanded the run to remaining official EuroEval languages. A detached
+scheduler (`/tmp/mimir-full-182/scheduler.py`) queues 25 additional full language
+suites and one generic Norwegian job restricted to four tasks not selected by
+Bokmål/Nynorsk (WMT24++, FLORES, RAGTruth, Multi-BFCL). European Portuguese is
+omitted as a separate job because its nine tasks are included in Portuguese.
+Each server takes a queued job only after its current client exits, its health
+check passes, and its running/waiting request counts are zero. Failed clients
+are recorded rather than silently treated as successful. No server restart or
+memory-budget increase is required. `scheduler-state.json` and `scheduler.log`
+in the full-run directory track assignments; telemetry now follows dynamic
+language-to-port assignments and remains active through the entire queue.
+
+The owner subsequently requested stopping evaluation on 2026-10-07. The
+scheduler, active clients, telemetry/watchers, memory guard, and all eight
+run-owned vLLM servers were terminated. Training processes were left running.
+Completed results, partial-run caches, logs, and telemetry were preserved;
+active and queued jobs are marked stopped in `scheduler-state.json`.
+
+The owner then authorized automatic full-memory resumption once training
+releases the GPUs. No vLLM servers remained at setup. The detached
+`/tmp/mimir-full-182/resume_when_free.py` watcher requires three consecutive
+30-second checks with no GPU compute processes and at least 96% free memory
+on all eight GPUs. It then starts eight servers with utilization 0.95 and the
+same model, tokenizer, FLASH_ATTN, eager execution, and concurrency 64. It
+waits for all health checks before resuming interrupted languages ahead of the
+remaining queue. Existing result files and caches are retained. The former
+15 GB memory guard is not restarted. `resume-status.json` records whether the
+watcher is waiting, starting, resumed, or failed; server logs/commands are
+stored in `full-memory-servers/`. This documents scheduling, not a completed
+restart. Training processes are never terminated by the watcher.
+
+After full-memory resumption, six language clients reached RAGTruth and spent
+extended periods on CPU while their servers had no requests. The API clients
+hide CUDA, and the hallucination metric invokes a separate transformer detector
+per prediction. The user reported idle GPUs. The scheduler was changed to admit
+one additional queued language after a server has had zero running/waiting
+requests for 30 seconds, bounded at two live language clients per server.
+Existing clients keep scoring and may subsequently share inference capacity.
+This replaces the earlier strict one-client-per-server policy, without changing
+model outputs, scoring configuration, or server memory settings. Telemetry labels
+show both assigned languages where applicable.
+
+On 2026-10-08, completed local v1.5 records were compared with live
+euroeval.com CSV assets for `danish-foundation-models/DFM-Mimir`, selecting
+its zero-shot validation rows. There are 224 matched datasets (447 metric
+pairs), plus 38 supplementary values/hallucination metric pairs. Primary
+scores are higher on 126, lower on 97, equal on one. Knowledge and common-sense
+scores mostly increase; reading comprehension mostly decreases. SQuAD F1
+85.75 to 27.89 and Icelandic sentiment MCC 18.20 to 0.07 are notable flags,
+with zero locally reported failed instances. This is descriptive only: v1 uses
+validation and mostly EuroEval 18.0.0; v1.5 uses test, 18.2.0, corrected JSON,
+and explicit raw training tokenization. Six shared Norwegian datasets were
+counted once, using Bokmål records. No causal model-quality or leaderboard-rank
+claim follows. Sources, complete comparison CSV/JSON, duplicate records, and
+caveats are retained in the full-run directory's `comparison-with-mimir-v1/`.
+
+On 2026-10-08 the owner requested all validation splits after XXL-wide reaches
+874K and releases the GPUs. A separate campaign is staged under
+`/work/dfm/euroeval-runs/mimir-v1.5-18.2-validation/`. Its detached watcher
+`/tmp/mimir-validation-182/resume_when_free.py` polls every ten seconds and
+requires three consecutive checks with no GPU compute processes and 96% free
+memory on all eight GPUs before launching the previous 0.95-utilization,
+FLASH_ATTN, eager, 4096-context, 64-sequence server configuration. This is a
+GPU-release gate, not independent verification of the training checkpoint.
+
+All 34 language selections explicitly use `--evaluate-val-split`, zero-shot,
+and ten iterations. Generic Norwegian covers its four additional tasks;
+European Portuguese is covered by Portuguese. CPU-scoring clients no longer
+reserve the server: the scheduler admits another queued language after ten
+seconds without running or waiting requests, with no two-client cap. There
+are only 34 language jobs total. A wrapper records RAGTruth CPU metric phases
+without changing metric inputs or computation. Metrics and per-process GPU
+utilization are logged as in the test campaign. Context-window failures receive
+at most two retries with client prompt budgets 4032 and 3968; the initial
+budget and server limit remain 4096, and each adjustment is recorded. Completed
+datasets remain saved and are skipped on retry. Test results stay separate.
+
+Before GPU takeover, the owner expanded validation to both zero-shot and
+few-shot. The queue now contains 68 language/mode jobs (34 per mode), using
+explicit `--zero-shot` or `--few-shot` with `--evaluate-val-split` and ten
+iterations. Result directories are `zero-shot/<language>/` and
+`few-shot/<language>/` under the validation campaign root, with independent
+caches and status files. EuroEval's task-specific zero-shot requirements still
+apply within a few-shot suite. The same idle-server dispatch and GPU-release
+gate remain active; training was not interrupted.
+
+The validation campaign also has a detached submission exporter. Native
+`euroeval_benchmark_results.jsonl` files are preserved for restart behavior.
+The canonical model name/ID stays `danish-foundation-models/DFM-Mimir-v1.5`;
+shot mode and validation split come from the actual record fields. Under
+`submission/`, the exporter refreshes `DFM-Mimir-v1.5__validation__zero-shot.jsonl`,
+`DFM-Mimir-v1.5__validation__few-shot.jsonl`, and an `all-modes` bundle every
+30 seconds. It deduplicates dataset/mode identities, prefers the corresponding
+explicit-mode source, records duplicate provenance and validation errors, and
+marks unfinished bundles partial in `submission-index.json`. It does not
+rename model IDs, relabel forced-zero-shot tasks, modify native records, or
+upload/approve results. The manifest retains the exact checkpoint, tokenizer,
+server settings, and prompt-budget retry policy for submission review.
+
+The owner explicitly authorized 8192-token context after Faroese few-shot
+ZebraPuzzlesEasy exceeded the 4096 server window. On 2026-10-08 the validation
+pool was restarted with `--max-model-len 8192`,
+`--max-num-batched-tokens 8192`, and `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1`.
+Weights, tokenizer, FLASH_ATTN, eager execution, memory utilization 0.95, and
+concurrency 64 remain unchanged; no RoPE scaling was introduced. Client
+budgets are now 8192, and the ineffective smaller-budget retries are disabled.
+Interrupted and context-failed jobs were requeued while saved dataset results
+were retained. This leaves completed 4096-context records alongside new
+8192-context records; the transition is recorded in the manifest and snapshot
+`state-before-8192.json` for submission provenance. All eight servers became
+healthy. A real completion request with 4100 prompt tokens and one output token
+succeeded (`context-8192-probe.json`).
+
+### Correction: 8K request limit did not extend the HRM RoPE cache
+
+On 2026-10-08, the remaining Faroese few-shot non-Zebra tasks completed on
+GPU0: grammatical correctness exact match 3.98, semantic relations MCC 35.67 /
+accuracy 48.51, metaphorical explanations MCC 41.39 / accuracy 58.29.
+The subsequent Zebra investigation reproduced a different failure from the
+original context rejection: a 4229-token few-shot prompt caused NaN log
+probabilities without JSON constraints, and XGrammar rejected generated token
+0 with HTTP 500 when JSON constraints were enabled. A 436-token control worked.
+
+Installed `vllm/model_executor/models/hrm_text.py` builds `get_rope` using
+`config.max_position_embeddings`, still 4096. The earlier
+`VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` plus server limit 8192 only permitted longer
+requests; it did not extend that cache. The prior 4100-token smoke checked
+HTTP success without checking finite logits and was insufficient verification.
+
+GPU0 was restarted with `--hf-overrides '{"max_position_embeddings":8192}'`.
+Replaying the exact long prompt then succeeded both with and without JSON,
+with finite log probabilities. The full constrained response was valid JSON,
+stopped normally, and used 4229 input + 53 output tokens. RoPE frequencies,
+weights, and tokenizer are unchanged. This establishes a serving configuration
+error, not a demonstrated model inability to handle 8K or a JSON-schema error.
+Only GPU0 was corrected in this investigation. The remaining Zebra evaluation
+was restarted there. Earlier requests whose positions exceeded 4096 require
+an audit before leaderboard submission; the manifest records this limitation.
+Evidence: validation campaign `zebra-investigation/`.
+
+The corrected Faroese few-shot Zebra rerun completed all ten iterations with
+zero failed instances: cell-wise accuracy 60.08 and puzzle-level accuracy
+22.50. The short-prompt before/after control had identical generated text and
+identical token log probabilities. All 68 language/mode jobs now have saved
+results; refreshed bundles contain 442 records per mode and 739 deduplicated
+records combined. This completion does not clear the documented audit of earlier
+requests above 4096 positions. Submission index metadata includes that audit.
+
+
+## 2026-10-08: SQuAD zero-shot regression diagnosed
+
+Confidence: high for the reproduced output failure; training origin unverified.
+A fresh one-iteration validation reproduction on the uploaded v1.5 weights,
+raw tokenizer, FLASH_ATTN, and corrected 8192-position RoPE cache scored
+25.33 F1 / 20.00 EM zero-shot versus 88.57 F1 / 75.29 EM few-shot.
+Of 170 unique zero-shot evaluation requests, 125 hit the 32-token output
+limit and 124 emitted literal `<think>` text. All 170 few-shot responses
+stopped normally and none emitted `<think>`. Maximum input lengths were
+549 and 1039 tokens respectively, ruling out the earlier 4096-position issue.
+
+The Gemma chat template's `enable_thinking=false` omits the special thinking
+marker; it does not enforce suppression of literal `<think>` generation.
+EuroEval's reading-comprehension extractor lowercases the entire generated
+answer and does not remove these reasoning strings. Thus the metric sees
+truncated preambles instead of short answer spans. The model was explicitly
+asked to answer in at most three words, but often did not comply zero-shot.
+
+Diagnostic interventions on 160 context-matched unique questions raised F1
+from 26.11 to 73.95 by appending an explicit answer-only/no-reasoning instruction
+with the same 32-token budget. Eighteen responses still entered thinking mode
+and hit the limit. On 16 selected baseline length failures, raising only the
+output allowance to 512 tokens left 10 length failures; raw F1 was 3.73
+versus 4.06 at baseline. Removing completed think spans post hoc yielded
+22.81 F1 on those 16, still not a sufficient fix. These probes use subsets
+rather than the benchmark's bootstrapped scoring and are diagnostic only.
+Do not substitute modified-prompt probe scores into the official bundles.
+
+Artifacts and scripts: `/work/dfm/euroeval-runs/mimir-v1.5-18.2-validation/squad-investigation/`.
+One temporary GPU7 server used about 12.1 GB alongside training and was
+stopped after the probes. Official submission records were unchanged.

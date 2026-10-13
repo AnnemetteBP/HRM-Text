@@ -61,17 +61,27 @@ def test_epoch_finalization_preserves_wait_claim_and_concurrent_metadata(tmp_pat
     store.import_jobs([job('wait', action=Action.WAIT_CHECKPOINT, metadata={'keep': 1}),
                        job('eval', deps=('wait',), metadata={'keep': 2})])
     claim = store.claim_jobs(['wait'])['wait']
-    store.finalize_eval_epoch(['wait', 'eval'], 12.5, ['dfm14_cursor_epoch_pending'])
+    store.finalize_eval_epoch(['wait', 'eval'], 12.5, ['dfm14_cursor_epoch_pending'],
+                              train_step=950000)
     assert store.attempt_token('wait') == claim.token
     assert store.finish('wait', claim.token, {'status': JobStatus.DONE})
     rows = store.load_jobs()
     assert [j.metadata['eval_epoch'] for j in rows] == [12.5, 12.5]
+    assert [j.metadata['eval_step'] for j in rows] == [950000, 950000]
     assert [j.metadata['keep'] for j in rows] == [1, 2]
     assert all(j.metadata['dfm14_cursor_epoch_pending'] is False for j in rows)
     store.claim_jobs(['eval'])
     with pytest.raises(ValueError, match='already started'):
         store.finalize_eval_epoch(['wait', 'eval'], 13)
     assert store.load_jobs()[0].metadata['eval_epoch'] == 12.5  # Entire update rolls back.
+
+
+@pytest.mark.parametrize('step', [-1, 1.5, True])
+def test_epoch_finalization_rejects_invalid_step(tmp_path, step):
+    store = SQLiteJobStore(tmp_path/'jobs.sqlite')
+    store.import_jobs([job()])
+    with pytest.raises(ValueError, match='training step'):
+        store.finalize_eval_epoch(['a'], 3.2, train_step=step)
 
 
 def test_claim_token_and_crash_reopen(tmp_path):

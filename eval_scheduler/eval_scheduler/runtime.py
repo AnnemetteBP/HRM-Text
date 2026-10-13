@@ -565,6 +565,9 @@ def split_command_environment(argv: list[str]) -> tuple[dict[str, str], list[str
 
 
 def run_training_until_step(job: Job, gpus: tuple[int, ...]) -> int:
+    if job.metadata.get('cooperative_training'):
+        from .cooperative_training import run_boundary
+        return run_boundary(job, gpus)
     target_step = int(job.metadata["stop_after_step"])
     ckpt_tag = str(job.metadata.get("ckpt_tag") or f"step_{target_step}")
     completion_checkpoint_tag = str(
@@ -1302,7 +1305,7 @@ def start_native_proxy(
     if job.metadata.get("hrm_vllm_gemma_bfcl_tools"):
         argv.append("--gemma-native-bfcl-tools")
     if job.metadata.get('euroeval_context_policy') == 'native_head_tail_v1':
-        argv.extend(['--prompt-tokenizer', str(job.metadata['hf_export_dir']),
+        argv.extend(['--prompt-tokenizer', str(job.metadata.get('hf_export_dir') or vllm_model_path(job)),
                      '--prompt-chat-template', str(Path('evaluation/chat_templates/gemma4_native_chat.jinja').resolve()),
                      '--max-context', str(job.metadata.get('vllm_max_model_len', 4096))])
     log_path.parent.mkdir(parents=True, exist_ok=True)

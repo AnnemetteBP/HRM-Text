@@ -9,6 +9,12 @@ tags: [data, dfm14, multilingual, planning]
 ---
 # DFM14 Plan
 
+## Evaluation Baseline
+
+Use the [DFM14/DFM15 evaluation specification](dfm14-evaluation-baseline.md)
+and its exact inventory for both machines. All inherited language evaluations
+remain required; the 16 new languages do not replace earlier coverage.
+
 ## Naming and Boundary
 
 ### Authorized completion and XXL-wide handoff (2026-10-07)

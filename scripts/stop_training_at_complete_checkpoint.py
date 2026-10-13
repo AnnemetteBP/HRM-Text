@@ -7,6 +7,7 @@ import pickle
 import shutil
 import signal
 import time
+import psutil
 
 def complete(root, tag):
     sidecar = root / f"checkpoint_state_{tag}.json"
@@ -63,6 +64,7 @@ def main():
     preserve(args.checkpoint_dir, args.preserve_dir, args.tag)
     if not alive(args.pid) or command_path.read_bytes() != command:
         raise RuntimeError("Process identity changed before stop")
+    workers = psutil.Process(args.pid).children(recursive=True)
     os.killpg(args.pid, signal.SIGINT)
     print(f"Preserved {args.tag}; sent SIGINT to {args.pid}", flush=True)
     deadline = time.monotonic() + 180
@@ -70,6 +72,22 @@ def main():
         if time.monotonic() > deadline:
             raise RuntimeError("Training did not exit within 180 seconds")
         time.sleep(2)
+    # Launcher exit does not imply NCCL workers have exited.
+    _, remaining = psutil.wait_procs(workers, timeout=30)
+    for worker in remaining:
+        try:
+            worker.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    _, remaining = psutil.wait_procs(remaining, timeout=15)
+    for worker in remaining:
+        try:
+            worker.kill()
+        except psutil.NoSuchProcess:
+            pass
+    _, remaining = psutil.wait_procs(remaining, timeout=15)
+    if any(p.is_running() and p.status() != psutil.STATUS_ZOMBIE for p in remaining):
+        raise RuntimeError('Training workers remained after shutdown')
     print("Training stopped. Scheduler remains paused; no automatic resume.", flush=True)
 
 

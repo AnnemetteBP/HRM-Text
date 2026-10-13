@@ -345,7 +345,7 @@ class SQLiteJobStore:
         with self._transaction() as db:
             return bool(db.execute("SELECT locked FROM administration WHERE singleton=1").fetchone()[0])
 
-    def finalize_eval_epoch(self, job_ids, epoch, pending_flags=()):
+    def finalize_eval_epoch(self, job_ids, epoch, pending_flags=(), *, train_step=None):
         """Publish cursor-derived epoch without resetting concurrent wait claims.
 
         Only checkpoint waits may already be running: evaluation clients must
@@ -354,6 +354,8 @@ class SQLiteJobStore:
         allowed_flags = {'dfm13_cursor_epoch_pending', 'dfm14_cursor_epoch_pending'}
         if not math.isfinite(epoch) or epoch < 0 or set(pending_flags) - allowed_flags:
             raise ValueError('Invalid epoch finalization')
+        if train_step is not None and (type(train_step) is not int or train_step < 0):
+            raise ValueError('Invalid training step finalization')
         with self._transaction(write=True) as db:
             for job_id in job_ids:
                 row = db.execute('SELECT * FROM jobs WHERE job_id=?', (job_id,)).fetchone()
@@ -364,6 +366,8 @@ class SQLiteJobStore:
                     raise ValueError(f'Evaluation already started before epoch finalization: {job_id}')
                 metadata = {**job.metadata, 'eval_epoch': epoch,
                             **{name: False for name in pending_flags}}
+                if train_step is not None:
+                    metadata['eval_step'] = train_step
                 self._write_definition(db, job.with_updates(metadata=metadata), row['position'])
 
     def set_admin_lock(self, locked: bool) -> None:
