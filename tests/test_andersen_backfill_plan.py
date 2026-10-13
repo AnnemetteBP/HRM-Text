@@ -11,7 +11,7 @@ def test_backfill_gating_and_idempotence(tmp_path):
                   deps_mode='terminal')
     template = Job(job_id='old-eval', action=Action.EVAL_DFM,
                    name='andersen_modernization', family='dfm', status=JobStatus.SKIPPED,
-                   metadata={'skip_reason': 'missing validation'})
+                   metadata={'skip_reason': 'missing validation', 'python_bin': '/env/bin/python'})
     merge = Job(job_id='old-merge', action=Action.MERGE_DFM, name=template.name, family='dfm')
     rows = [dict(step=2500000, export='export', export_exists=True, epoch=9.04),
             dict(step=2150000, existing_result='old-result')]
@@ -23,6 +23,7 @@ def test_backfill_gating_and_idempotence(tmp_path):
     assert 'skip_reason' not in evaluation.metadata
     assert evaluation.metadata['eval_epoch'] == 9.04
     assert evaluation.metadata['no_ema'] is False
+    assert merged.metadata['python_bin'] == '/env/bin/python'
     assert merged.deps == (evaluation.job_id,)
     updated_barrier = next(j for j in jobs if j.job_id == barrier.job_id)
     assert merged.job_id in updated_barrier.deps

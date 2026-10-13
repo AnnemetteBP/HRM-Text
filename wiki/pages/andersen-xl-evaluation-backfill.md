@@ -4,7 +4,7 @@ title: XL Andersen Evaluation Backfill
 description: Coverage inventory and prerequisites for historical Andersen modernization evaluation.
 tags: [evaluation, andersen, xl, dfm10]
 status: draft
-last_updated: 2026-10-11
+last_updated: 2026-10-12
 confidence: high
 ---
 # XL Andersen Evaluation Backfill
@@ -58,3 +58,15 @@ use EMA, exact fractional epoch metadata, and the original XL W&B run. Historica
 work waits for the current 3450K training segment; subsequent training terminal
 barriers include the new merges without making exhausted failures block training.
 Receipts and pre-change backup live under `logs/andersen-xl-backfill/schedule/`.
+
+## Merge-wrapper repair, 2026-10-12
+
+Thirteen Andersen merges (2900K through 3500K) exhausted retries because copying
+export metadata also copied `python_bin=.../resume_xl_dfm12_epoch11.sh`. This
+dispatch wrapper treated the merge script as training overrides and raised
+`Only scheduler stop/resume overrides are accepted`. Inference was successful;
+this was not a model, GPU or scoring failure. Corrected all 19 failed/pending
+Andersen merges to the hrm Python interpreter under the administrative lock and
+reset only the 13 failed merges. Preserved all inference and successful syncs.
+The builder now retains the evaluator interpreter instead of the export wrapper.
+Backup: `before-andersen-python-fix.sqlite` in the production plan directory.

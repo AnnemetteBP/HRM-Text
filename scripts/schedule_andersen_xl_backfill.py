@@ -41,6 +41,8 @@ def prepare(jobs, records, root, plan, after_training):
             fix_mistral_regex=False, log_wandb=True, shards=1,
             plan_dir=str(plan), dfm_single_tasks_config=str(root/'config/dfm_evals_hrm_single_tasks.yaml'))
         meta['xl_boundary'] = step
+        # Export rows can use a training/export dispatch wrapper, not Python.
+        meta['python_bin'] = template.metadata['python_bin']
         if not row.get('export_job'):
             meta['ckpt_path'] = str(root/'checkpoints/dfm11/XL-from-dfm10-epoch9')
             meta['model_prefix'] = 'hrm-dfm11-XL'
