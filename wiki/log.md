@@ -1,5 +1,189 @@
 # Knowledge Bundle Update Log
 
+- 2026-10-13: Merged upstream main through `137ce1f`, preserving local broker removal, environment sync-once and backfill changes. Resolved documentation conflicts by retaining both histories. Retained verified `/work/mimir` DFM14 evaluation paths because upstream `/work/dfm` paths do not exist on this node; data hashes and task definitions are unchanged. All seven submodules match their intended upstream tips (including `llama.cpp`'s `codex/mixedlm`). No live training or scheduler restart.
+
+- 2026-10-13: Verified 243 repaired EuroEval retries, all 1,047 1M inference jobs complete, and same-process CUDA restoration after a roughly 103-minute pause. Also verified the short 1,015,800 pause/resume. Split [local XXL handoff history](pages/model-architecture/xxl-wide-scheduler-handoffs.md) from the general scheduler runbook. Pre-commit validation: 332 CPU tests passed; no GPU training interrupted.
+
+- 2026-10-12: Harmonized local XXL-wide 1M-to-final evaluation inventory and all nine average jobs with remote XL on SSH port 2546. Added 403 inference jobs per checkpoint with pinned historical inputs; preserved active training and completed results. Missing 1M tasks run at the 1.05M suspension. See [deployment details](pages/dfm14-evaluation-baseline.md#2026-10-12-local-xxl-campaign-reconciliation-installed).
+
+- 2026-10-12: Moved opt-in suspension into `pretrain.py`, removed the temporary copy, and added launcher-owned disk fallback plus SQLite evaluation handoffs. Compiled XXS main-entry parity and injected restore-failure recovery passed. Prepared 1M-to-epoch-end continuous training with 50K suspension boundaries; current segment untouched. See [rollout and limitations](pages/cooperative-cuda-suspension.md).
+
+- 2026-10-12: Inspected live training launch/config and installed Inductor: CUDA graphs are not enabled. Started detached compiled eight-rank XXS NCCL-shim campaign with two two-hour offloaded pauses; full-size and multi-node deferred by user. Results pending in the [suspension runbook](pages/cooperative-cuda-suspension.md).
+
+- 2026-10-12: Isolated NCCL 2.32.3 checkpoint shim passed two-rank and compiled eight-rank XXS offload/restore parity with cuMem/NVLS enabled. Two cycles, zero owned GPU memory while offloaded, exact model/optimizer/EMA/metrics. Documented required double preload, isolated builds, timings and remaining long-pause/full-size gates; production untouched. [Evidence](pages/cooperative-cuda-suspension.md).
+
+- 2026-10-12: Narrowed experimental CUDA suspension compatibility to `NCCL_CUMEM_ENABLE=0 NCCL_NVLS_ENABLE=0`. Compiled eight-rank XXS passed two 15-minute offloaded pauses with exact weights, optimizer/EMA and metric parity; 50 checks showed 0 MiB owned GPU allocation. Individual overrides still fail; default NCCL remains incompatible on the tested stack. Sixteen CPU tests pass; production untouched. [Evidence](pages/cooperative-cuda-suspension.md).
+
+- 2026-10-12: Completed short-context XXS suspension tests: single GPU, legacy-NCCL two GPUs and compiled eight GPUs all match uninterrupted weights, optimizer/EMA and every step metric exactly over two cycles. Default two-rank NCCL checkpoint stalled; no production migration. Thirteen CPU tests pass. See [evidence and limitations](pages/cooperative-cuda-suspension.md).
+
+- 2026-10-12: Added isolated [cooperative CUDA suspension](pages/cooperative-cuda-suspension.md) and an experimental pretrain copy. CPU protocol tests and a two-cycle single-GPU XXS parity smoke pass; default multi-rank checkpoint compatibility remains under investigation. Production training is untouched.
+
+- 2026-10-12: Installed cuda-checkpoint 610.57.04 and source-built CRIU 4.2.1 with its CUDA plugin in the isolated `cuda-checkpoint-test` conda environment. [Build details](pages/training-continuity.md) record prefix-only dependencies and verification; no live processes were suspended.
+
+- 2026-10-11: Recorded mandatory [training continuity](pages/training-continuity.md) after an abandoned admin lock caused approximately 57 idle GPU-hours. Failed evals and unfinished publication must not strand training; AGENTS.md now requires lock release and verified handoff.
+
+- 2026-10-10: Added the [DFM14/DFM15 evaluation baseline](pages/dfm14-evaluation-baseline.md), exact task/shard inventory, Andersen requirement and proposed native-reasoning diagnostics. Explicitly distinguish required coverage from still-pending cross-machine reconciliation.
+
+- 2026-10-10: Completed the XXL-wide 950K SQLite handoff, then restored [all-50-language DaLA/GEC coverage](pages/model-architecture/request-shared-eval-scheduler.md) at the user's request. Reconstructed the earlier 34 languages' exact pinned heldouts from HF and verified 272 shards; added 68 tasks per remaining checkpoint without replaying completed work. Training barriers and multilingual averages include the additions.
+
+- 2026-10-10: Prepared the local XXL-wide 950K [SQLite scheduler migration](pages/model-architecture/request-shared-eval-scheduler.md): legacy runner drains without interrupting training, local-disk authority, 64 direct clients, explicit judge-first and failure-tolerant training gates. Added exact step/epoch finalization for the XXL-wide wrapper; 77 focused tests passed. Detached handoff awaits the 950K boundary; migration is not yet complete.
+- 2026-10-11: Recovered the original Andersen validation split and eight DFM10 XL EMA exports/results from the old machine. Added the checksum-tested evaluation asset and scheduled 20 missing historical plus eight future Andersen eval/merge pairs behind ongoing training; see [XL Andersen backfill](pages/andersen-xl-evaluation-backfill.md).
+
+- 2026-10-10: Removed the obsolete HTTP broker and dedicated simulations; direct server sharing and native-template adaptation remain. All286 remaining scheduler/proxy tests pass. Recorded the [XL Andersen backfill](pages/andersen-xl-evaluation-backfill.md), blocked on the original validation split and historical artifacts.
+
+- 2026-10-10: Split pending DFM/DFM IFEval export and EuroEval publication into bounded CPU jobs in the SQLite scheduler; parallelized owned-server shutdown. The [64-client follow-up](pages/model-architecture/request-shared-eval-scheduler.md) completed 50,000 examples in 147s versus direct-32's 166s; the sampled request-completion window fell from 44s to 38s. No W&B writes, failures, or preemptions. Resumed original XL training from preserved 3,387,500 with 64 eval clients; 288 tests passed.
+
+- 2026-10-10: Replaced the default scheduler HTTP broker with [direct shared-server assignments](pages/model-architecture/request-shared-eval-scheduler.md). vLLM handles request queues; the pool tracks compatible model residency and safe failed-client draining. 281 tests passed. At the preserved 3,386,000 ephemeral, the direct benchmark completed 100 tasks/50,000 examples in 166s versus legacy 244s and proxy 303s, without W&B logging. Small score differences remain; no bitwise-parity claim. Production resumed on the original XL W&B run with the direct pool.
+
+- 2026-10-10: Resumed production XL from 3,367,500 after cancelling the failed shared-scheduler GPU comparison. Fixed HTTP-error fan-out into unrelated client termination. Added [mixed-latency CPU simulations](pages/model-architecture/request-shared-eval-scheduler.md): the real isolated SQLite coordinator plus gateway completed 100 jobs, 50,000 responses and a merge in 337 seconds despite injected and real loopback transport errors. GPU validation remains pending; training was not interrupted by the CPU tests.
+
+- 2026-10-10: Paused XL with the completed 3,367,500 ephemeral as its prepared resume point. Validated [shared target/judge routing](pages/model-architecture/request-shared-eval-scheduler.md) at production memory settings and replayed 101 real judge requests with exact parity. Added production-suite score/timing checks and fixed redundant judge replication, serialized model startup and speculative tail expansion. Final timing 158s shared versus 152s legacy; exact regenerated suite-score parity remains not passed. No W&B writes or production scheduler migration; 299 automated tests passed.
+
+- 2026-10-09: Hardened the [SQLite/request-shared scheduler](pages/model-architecture/request-shared-eval-scheduler.md) with original-engine managed judge pairs, process receipts, local-filesystem enforcement/backups, and transactional DFM14 epoch finalization. Warmed real-XL transport parity passed; full-headroom paired/suite rollout gates remain. Live training and TSV scheduler continue unchanged; the compatible handoff script pin was refreshed.
+
+- 2026-10-09: Consolidated duplicated HTTP lifecycle handling in the [request-shared scheduler](pages/model-architecture/request-shared-eval-scheduler.md); 257 tests and the 4,096-request mock simulation passed. No live rollout.
+
+- 2026-10-09: Added the opt-in [SQLite/request-shared scheduler runbook](pages/model-architecture/request-shared-eval-scheduler.md). The live TSV campaign remains unchanged; isolated tests and mock-server simulation are required before rollout.
+- 2026-10-09: Assigned the completed native-reasoning repair to [DFM15](pages/dfm15-plan.md), retaining DFM14 unchanged. Relocated validated staging and its path references without copying or modifying token arrays; recorded original build provenance and verified the live DFM14 metadata/config were unchanged.
+
+- 2026-10-07: Consolidated incoming main through `4a51a45` with the local XL DFM14 transfer and 50-language evaluation extension. Shared heldout configuration generation, retained verified local source paths, and added the transfer/packing-gated XL 3250K handoff at constant base LR `3e-4`. Existing training was not interrupted; dataset readiness is still receipt-gated. See [the XL handoff](pages/dfm14-xl-3250k-handoff.md) and [CPU release reconciliation](pages/dfm14-cpu-release.md).
+
+- 2026-10-07: Fast-forwarded main to `8932540` without conflicts and preserved active training/CPU release processes. Reviewed and versioned DFM14 preparation, shared auditing, accepted release/selection integration, source inventories and wiki evidence. Local audit/DFM14 tests: 61 passed; incoming evaluation/average tests: 65 passed. Dataset publication/readiness remains governed by release receipts, not by this source commit.
+
+- 2026-10-07: Resumed XXL-wide DFM13 at 866500 and gated the 900K DFM14 handoff. Started the accepted-only CPU release, native tokenization, verified HF publication and three-epoch sampling pipeline. See [DFM14 CPU release](pages/dfm14-cpu-release.md); completion remains gated by its receipts.
+
+- 2026-10-07: Prepared 1.12M English instruction candidates, submitted the 1.21M-row Asian additions audit and chained English/enrichment audits on existing shared servers. Recovered Mandarin OPUS coverage and exact-English pivots, reducing empty pairings from 259 to 41. Repaired knowledge-source adapters and measured unused OpenStax/ATOMIC reservoirs. V6 calibration improved contract completion but failed negative controls; bulk remains held. See [the operational update](pages/dfm14-additions-audit-expansion.md).
+
+- 2026-10-06: Finished curated DFM14 CPU audit-input merging: 4,080,616 candidates in 8,216 chunks, plus 9,600 six-family calibration requests. Added Wikisource and Irish/Maltese institutional grounding without broad web corpora. Training remains untouched. See [handoff](pages/dfm14-curated-cpu-audit.md) for verification artifacts and remaining admission gates.
+
+- 2026-10-06: Owner approved Wikipedia and requested deletion of DFM14 web corpora. Removed seven broad-web source families from the registry and 144 source/download/candidate directories across all preparation passes; preserved instruction/chat and curated sources. Updated status to report surviving receipts separately from historical counters. Ten focused tests pass. See [non-DaLA preparation](pages/dfm14-non-dala-startup.md).
+
+- 2026-10-06: Recorded the owner's curated-grounding preference and broad-web admission hold in [DFM14 non-DaLA preparation](pages/dfm14-non-dala-startup.md), including web-PDF derivatives. CPU pass finished: 247 prepared files, 1,010,915 instruction candidates, 1,993,255 document seeds and 5,563,763 transformation candidates; none admitted. No further jobs launched; existing artifacts retained for inspection.
+
+- 2026-10-06: Completed all sixteen DFM14 DaLA exports, native train integrations and verified public HF uploads. Retained 17,973,493 source records across both tasks and all heldouts; registered 32 train components with 28,749,258 rows and 2,653,005,386 tokens, zero drops. Remote hashes, both configurations/all five splits and final registry bindings pass. The release concept lists all sixteen dataset URLs and immutable revision prefixes. No native-human validation or changes to live DFM13 training are claimed.
+
+- 2026-10-06: Corrected DFM14 export prior-index handling before publication: additive producer indexes include this campaign’s base candidates, while the actual first-release baseline is empty. Added a regression fixture, retained measured index counts/pins, archived the unpublished initial attempt, and restarted export. Both release tests, the native tokenizer smoke check and HF card validation pass. Evidence: `data/dfm14/dala-audited-20261006-v1/implementation-checks.json` in HRM-Text.
+
+- 2026-10-06: Started [non-DaLA DFM14 CPU preparation](pages/dfm14-non-dala-startup.md) with a 320-worker ceiling and eight download threads. Expanded to 117 source components/53 repositories, implemented bounded pinned candidate preparation and four Unicode-aware transformation families; native training-template smoke and seven focused tests passed. No GPU generation, training-data mutation or DaLA changes.
+
+- 2026-10-06: Started [DFM14 DaLA release](pages/dfm14-dala-release.md) after explicit export/integration/upload authorization. Added pass-only release and publisher pipelines, separate native train-only registry, source/heldout protection and immutable HF verification. Two focused tests pass; final receipts remain pending.
+
+- 2026-10-06: Completed [XXL-wide 859500 handoff](pages/dfm13-xxlw-859500-shared-gemma.md): verified/preserved checkpoint, stopped training, prepared pending resume row and left scheduler paused. Eight shared Gemma4 26B-A4B replicas (1024 slots, ports 8800-8807) passed individual chat smoke tests after cold kernel compilation. No automatic training resume.
+
+- 2026-10-06: Pulled main to `cc0c023` without textual conflicts and recovered the pinned `dfm-evals` commit `1789d64` from the source host after the initial recursive fetch failed (a subsequent direct GitHub fetch also succeeded). Added [non-DaLA DFM14 startup assessment](pages/dfm14-non-dala-startup.md), including corrected per-epoch OPUS budgets, script-aware transformations and isolated sharded production. No training interruption or DFM14 jobs launched.
+
+- 2026-10-06: Added the [DFM14 remote production handoff](pages/dfm14-remote-production-handoff.md), separating remote generation ownership from live DFM13 XL training and identifying non-Git reference inputs and historical hardcoded campaign guards. Preserved evaluation expansion, Talemaader v2 and training logging continuity work; no training interruption for staging/commits.
+
+- 2026-10-05: Resolved the pull merge by preserving both the DFM13/DFM14 work history and upstream Apple packaging history. No training, evaluation or dataset processes changed.
+
+- 2026-10-05: Preserved DFM13 integration/parallel verification, XL handoff preparation, DFM14 plans and durable review reports in scoped commits. All seven submodules were clean at recorded gitlinks. Runtime locks, build intermediates, caches and raw/downloaded audit artifacts remain local; running jobs unchanged.
+
+- 2026-10-05: Restarted final DFM13 verification with 32 spawned source workers and 32-thread hash checks, parent-only publication and reusable per-source receipts. Reloaded waiting CPU follow-ups; training/evals unchanged. Identical already-included Faroese registration is idempotent. Focused tests: 70 passed.
+
+- 2026-10-05: Prepared a CPU-only DFM13 XL 3150K handoff watcher, gated on final sample validation/provenance, with exact packed-step budgeting. Original W&B/optimizer/EMA continuity is recorded; current training, verification and live plan remain unchanged. See [handoff](pages/dfm13-xl-3150k-handoff.md).
+
+- 2026-10-05: Clarified MMLU/ARC-C/MATH capability targets and estimated the separate 500K knowledge pilot at 1-2 GPU days and 2-4 days end-to-end, excluding model training/evaluation. Distinguishes new generation from existing-source auditing; no launch authorized.
+
+- 2026-10-05: Recorded the 16-language DFM14 scope, remaining European gaps and volume-dependent production estimates using historical accepted-generation and audit throughput. No GPU jobs or dataset changes started.
+
+- 2026-10-05: Added the reusable new-language expansion playbook: six core components, exact row-versus-token allocation bases, synthetic family quotas, identity/eval support, audit/repair gates and eight-ledger throughput-safe execution guidance. No runtime changes.
+
+- 2026-10-05: Owner renamed the provisional post-DFM13 scope to DFM14. Renamed the three research pages and updated links; added the DFM14 plan and language-source readiness assessment. This is planning only; DFM13 assembly is unchanged.
+
+- 2026-10-05: Owner reports Matina Persian corpus access granted; superseded earlier access blocker and reserved follow-up for post-DFM13. Added Chinese source shortlist and qualified cross-language transfer evidence; no dataset or runtime changes.
+
+- 2026-10-05: Expanded post-DFM13 research to Japanese and English knowledge/commonsense sources; recorded inherited OpenStax scale, science/commonsense candidates and a proposed bounded pilot. No runtime or assembly changes.
+
+- 2026-10-05: Recorded [post-DFM13 language priorities](pages/dfm14-language-priorities.md), distinguishing missing dedicated coverage, actual EuroEval dataset availability and unproven English reasoning transfer. No dataset or runtime changes.
+
+- 2026-10-05: Consolidated [potential post-DFM13 additions](pages/dfm14-potential-additions.md), including all Dyna scan candidates, replacements, deferred sources and the completed 70K Faroese campaign; no current dataset or runtime changes.
+
+- 2026-10-05: Recorded [Dyna source update review](pages/dyna-source-updates-20261005.md): 37 Hub repositories inventoried, new Polish subsets and Danish/Faroese Logir identified; no automatic inclusion or running-verifier changes.
+
+- 2026-10-04: Added [DFM13 inherited-base readiness](pages/dfm13-inherited-base-readiness.md): targeted base/index/tokenizer checks passed; identified292later source names and nine identity replacements requiring explicit coverage reconciliation.
+
+- 2026-10-04: Split [W4 CPU recovery and XL resume](pages/dfm13-wave4-xl-resume.md) from the handoff journal; recorded cancelled top-up, uncapped Luxembourgish recovery, owned-server teardown, same-plan DFM12 launch and corrected progress verification.
+
+- 2026-10-04: Added [TLPC grounded Persian campaign](pages/dfm13-tlpc-grounded-campaign.md):106,212 disjoint source documents,16 launched64-concurrency QA/chat clients,12 focused tests and strict accepted-only release gates; shared servers and existing clients unchanged.
+
+- 2026-10-04: Documented [DaLA SQLite throughput changes](pages/dfm13-dala-db-throughput.md): bounded configurable cache/mmap, covering-index reporting, equivalent batched SQL,29 tests. Live client untouched; parent owns code-pin restart. Eight-ledger design deferred to a new campaign.
+
+- 2026-10-04: Added [Baltic disconnect diagnosis](pages/dfm13-baltic-disconnect-diagnosis.md):30 bounded raw failures, inherited pacing history and likely keepalive mismatch; no runtime changes.
+
+- 2026-10-04: Recorded [Fars final strict audit](pages/dfm13-fars-final-strict-audit.md):16 terminal controls, two material false accepts, six contract failures; final exclusion of pn_sum/wiki_sum, no bulk or repairs.
+
+- 2026-10-04: Added [Baltic semantic reviewer calibration](pages/dfm13-baltic-semantic-review-calibration.md):80 terminal comparisons; reduced verification holds did not establish safe acceptance, so the isolated adapter remains undeployed.
+
+- 2026-10-04: Added [DFM13 completion status](pages/dfm13-completion-status.md), separating verified additions from the in-progress combined assembly, source-quality holds, synthetic targets, DaLA finalization and HF publication gaps.
+
+- 2026-10-04: Added [DaLA compact finalization](pages/dfm13-dala-compact-finalization.md): explicit non-per-edit acceptance adapter, terminal-group read-only snapshots, independent controls, all-split exports and train-only local tokenization.15 tests; detached CPU pipeline launched, Tesla central assembly ownership preserved.
+
+- 2026-10-03: Added [DaLA v2 audit inventory](pages/dfm13-dala-v2-audit-inventory.md):26 requested languages,52 hashed final CPU candidate exports,24,075,603 pairs and3,624,839 controls with separate evaluation splits. Producer census counts explicitly distinguished from independent file hashing; no DaLA edits or GPU launch.
+
+- 2026-10-03: Added [nonadmitting31B capacity measurement](pages/dfm13-31b-capacity-measurement.md):32 actual native-tokenizer-preflighted prompts, lifecycle-bound measurements, production-matching keepalive and unique per-request cache salts. Documented installed vLLM salt propagation and repeated-prefix-cache bias;51 mocked tests, no live model calls or capacity approval.
+
+- 2026-10-03: Applied only the authorized [44 Croatian reordering exclusions](pages/dfm13-croatian-wiki-transform-review.md): 30,942 rows / 39,505,426 tokens in a new content-addressed root, same HF repo with 13 verified attachments, registry integrated. Other HR tasks untouched; old finalizer blocked only for reordering. Assembly-v4 marked historical in transition evidence, not rewritten; all 215 historical HR arrays verified. 95 tests; no GPU actions.
+
+- 2026-10-03: Completed [Croatian-specific structural census](pages/dfm13-croatian-wiki-transform-review.md) of 203,291 transform rows. Reordering: 22,810 detect at least two prose blocks, 8,132 remain unresolved/list-bearing, 44 narrow furniture-only candidates were all manually read and source-replayed. Proposed only those 44 IDs; preserved meaningful lists and other tasks. Ten tests; no publication/filter/GPU changes.
+
+- 2026-10-03: Independently reviewed [16 Croatian Wiki transforms](pages/dfm13-croatian-wiki-transform-review.md): all exact source/window/message replays; all four reordering cases include metadata, one has only one prose paragraph and conflicting source birth months. No category-only windows in the sample; meaningful lists/prose retained as counterexamples. Read-only reports, no Persian regex reuse or population-rate claim.
+
+- 2026-10-03: Implemented the [P3 calibrated blind-pairing coordinator](pages/dfm13-latvian-p3-export.md) with 140 diagnostic controls, explicit model-versus-manual receipt labels, terminal ambiguity/disagreement rejects, bounded repair and fresh re-audit. Uses the shared strict31B endpoint gate; preparation only, no review calls. Calibration remains pending and source holds persist.
+
+- 2026-10-03: Applied exactly the authorized [Persian structural subset](pages/dfm13-persian-wiki-transform-review.md): 7,086 exclusions, 234,956 retained rows, 168,662,614 freshly tokenized tokens. Same four HF repos, 44 verified attachments, new hash-addressed arrays and scoped assembler replay; old exports/receipts/arrays retained. Unfiltered publisher blocked, 81 CPU tests pass. No broader filter or GPU action.
+
+- 2026-10-03: Prepared the full [P3 source-fidelity queue](pages/dfm13-latvian-p3-export.md): 7,680 rows, explicit unverified alignment alternatives, idempotent consumer/repair/re-audit protocol, and all-row native 31B context checks. Content retrieval recovers only 11/20 diagnostic references, not alignment certification; both source holds persist. No review calls or GPU/server changes.
+
+- 2026-10-03: Independently reviewed [16 Persian Wikipedia transforms](pages/dfm13-persian-wiki-transform-review.md), four per task. All source/window/target replays match; documented metadata-as-paragraphs, category-only continuations and inherited source defects separately from Persian-language uncertainty. Hash-bound full examples; no GPU, production or eligibility changes and no population-rate claim.
+
+- 2026-10-03: Resolved four missing Baltic component-specific audit jobs through the existing queue API; all passed once and affected EN-LT/EN-LV component ledgers are terminal. No historical model-invalid failures were reset. Pair finalization remains with the existing selector; three recovery tests passed.
+
+- 2026-10-03: Applied [source-wide Baltic QA holds](pages/dfm13-baltic-qa-quality-holds.md) to 118,866 LT/LV rows, preserving published data/revision pins; added stale-snapshot/preexisting-assembly gates and verified README-only HF warnings. Prepared 20 unsubmitted source-aware 31B requests plus all-row bindings; 87 CPU tests passed. Durable Epicurus schema handoff; no GPU actions.
+
+- 2026-10-03: Split oversized fourth-wave source page into [source assessment](pages/fourth-language-extension-wave.md) and [operational history](pages/fourth-wave-operational-history.md), preserving original heading anchors as forwarding links. Read-only31B readiness snapshot confirms active wave4 source/audit/repair blockers; no process intervention.
+
+- 2026-10-03: Verified six newly tokenized wave sources after assembly v3 (246,758 rows / 171,569,405 tokens), respecting new Baltic QA, P3 and Fars summary holds. Added explicit close to five monitor/transition read connections; 95 tests passed. No full rebuild, sampling or GPU/process restart.
+
+- 2026-10-03: Crosschecked all accepted wave registry payloads/receipts without repeated token scans; zero mismatches. Fixed pt-PT HF card serialization and published two stalled pairs (4,716 rows). Closed leaked read SQLite connections in three controller/selection paths; 75 focused tests passed. P3 source-fidelity holds remain intact.
+
+- 2026-10-03: Superseded P3 accepted-uploaded eligibility with whole-partition source-fidelity holds, preserved data/token pins, and issued README-only HF warnings. [P3 runbook](pages/dfm13-latvian-p3-export.md) records full English-reference packets, unresolved bilingual-link limits and 28 unsent 31B calibration requests; no eight-row filtered release.
+
+- 2026-10-03: Added the isolated [worked-MATH assembly adapter](pages/dfm13-verified-additions-assembly.md), freshly verifying 7,496 rows / 2,431,145 existing tokens with repeat 5 and explicit inherited RLVR overlap. 57 helper/assembler tests passed; no retokenization, full assembly or sampling.
+
+- 2026-10-03: Published [accepted-only LT summaries](pages/dfm13-lt-summary-privacy.md#accepted-only-publication-2026-10-03): 1,740 exact full-message privacy passes, all nine Hub attachments hash-verified, mandatory NewGenLTU attribution/model-use conditions, final-target markers and scoped assembler adapter. All 1,740 native renders verified at 3,081,653 tokens; 68 tests passed. Holds remain excluded and unchanged.
+
+- 2026-10-03: Refreshed BE/BS quality status with current quarantine logic and published all eight nonempty task packages, 322,951 accepted rows, without duplicating BG. Documented ownership-checked idle-only transform refresh and healthy current instruction/selection controllers; 11 release/repair tests passed.
+
+- 2026-10-03: Owner authorized [terminal Latvian P3 publication](pages/dfm13-latvian-p3-export.md#authorized-terminal-publication). Added scoped two-license publisher with all-file remote hash checks, tested tokenizer/assembler receipt compatibility, and detached terminal repair/re-audit refresh before upload. Four restricted/unverified constituents remain held; actual revisions/counts require the completion receipt.
+
+- 2026-10-03: Fixed BLKT's missing accepted-uploaded status without re-upload, then verified all three watcher-tokenized entries with the assembler's current API (48,201 rows / 67,424,145 tokens). Scoped receipt adapter retains model-use conditions and attachment hashes; 70 tests pass. No full assembly run.
+
+- 2026-10-03: Completed [LT summary privacy screening](pages/dfm13-lt-summary-privacy.md): 1,946 final quality accepts reviewed, 1,740 remain after 205 model holds and one independent-review override; 66 repairs rejected. All inputs resolved, accepted-only publication handoff with notices, no blanket review gate or PII-free claim.
+
+- 2026-10-03: Published and remotely hash-verified all three [NewGenLTU BLKT packages](pages/dfm13-baltic-publication-rights.md), 48,201 rows, and integrated repeat-1 records with explicit downstream/model-use conditions. Future model privacy duties are not a dataset-publication gate. 25 focused tests pass; no GPU/worker changes.
+
+- 2026-10-03: Added [Latvian P3 rights-separated preparation](pages/dfm13-latvian-p3-export.md), isolated adapter/tests, primary evidence snapshots, and a 6,037-row partial preview. Restricted/unverified constituents remain held; no upload, registry edits or BLKT changes.
+
+- 2026-10-03: After parent completion of the BLKT repair ledger, prepared and hash-verified 48,201 accepted rows in three NewGenLTU task packages (67,424,145 recorded tokens). No CC rows exist in this ledger; no empty or unaudited partitions were created. 21 tests pass; no upload/admission.
+
+- 2026-10-03: Implemented isolated [BLKT license-separated preparation](pages/dfm13-baltic-publication-rights.md) with 20 focused tests. Actual invocation correctly blocked on the absent completed release ledger; no publication, registry or worker changes.
+
+- 2026-10-03: Documented [verified DFM13 additions assembly](pages/dfm13-verified-additions-assembly.md): 72 ready sources, explicit base and final-target token basis, sampled native parity limits, and 15 non-wave entries requiring Arena/jjzha/MATH adapters. Registry and sampling unchanged.
+
+- 2026-10-03: Added [LT summary privacy screening](pages/dfm13-lt-summary-privacy.md): separate full-final-record hash-bound queue, source pins, manual holds and no automatic publication. Prepared 1,939 privacy jobs with 73 quality repairs pending; privacy clients await owner inspection.
+
+- 2026-10-03: Added [Baltic publication rights](pages/dfm13-baltic-publication-rights.md), separating explicit constituent grants from unresolved evidence and documenting minimal BLKT license-partition and LT summary privacy paths. Linked prior hold notes without clearing them; documentation only.
+
+- 2026-10-03: Split wave-three/four synthetic calibration and seed-allocation findings into [a focused runbook](pages/dfm13-wave-synthetic-calibration.md), preserving links from the fourth-wave source plan.
+
+- 2026-10-03: Owner confirmed twelve languages in wave 2 and the standing synthetic-instruction recipe: 35K accepted conversations for languages with sufficient existing instruction amount and breadth, 70K where supply is scarce or narrow; recorded in both wave documents.
+
+- 2026-10-03: Documented [language waves](pages/language-extension-waves.md), clarifying that wave 2 contains twelve rather than nine variants, and [fourth-wave source research](pages/fourth-language-extension-wave.md). Recorded explicit owner approval for Matina/TLPC without changing their published licenses, verified MIZAN's CC-BY-4.0 declaration, and distinguished thin Belarusian/Luxembourgish parallel supply from substantial candidate pools. No workloads launched.
+
+- 2026-10-03: Completed [Baltic CPU preparation](pages/dfm13-baltic-language-sources.md): selective train-only Latvian P3, parsed LT/LV ParlaMint, native transformations, all 43 direct/pivot translation pairs, and 5,194,017 unique pending audit jobs. Native-template preflight and queue sealing passed; 140K synthetic target and 120 calibration requests prepared. No GPU jobs or final sampling launched.
+
+- 2026-10-03: Located [Lithuanian/Latvian DFM13 sources](pages/dfm13-baltic-language-sources.md), verified counts and revisions, and recorded transformation/SFT gates while leaving DaLA to its parallel owner.
+
 - 2026-10-03: Replied to Apple's macOS server-entitlement notice, saved local API reproduction steps in review notes, and resubmitted unchanged build 13; verified Waiting for Review. See [Apple packaging](pages/model-architecture/mimir-apple-os-tls-packaging.md).
 
 - 2026-10-03: Uploaded SDU-signed OS-TLS build 13 and submitted both iOS/macOS 0.1.5 for App Review; verified Waiting for Review with manual release. Recorded rights confirmation, OS-only encryption answers and submission IDs in [Apple packaging](pages/model-architecture/mimir-apple-os-tls-packaging.md).
@@ -172,6 +356,7 @@
   caveats in the [DFM12 plan](pages/dfm12-plan.md).
 
 - 2026-10-02: Uploaded reviewed SDU iPhone/iPad/Mac store screenshots; recorded [real-engine capture workflow and remaining listing gates](pages/model-architecture/mimir-v1.5-ggufs.md#sdu-store-screenshot-upload--2026-10-02).
+- 2026-10-02: Started [DFM13 transfer and build](pages/dfm13-local-build.md): hash-verified admitted sources, native tokenizer parity, and frozen DFM12 inheritance. Pending-audit candidates excluded; training launch remains pending dataset readiness.
 
 - 2026-09-23: Published [DFM Mimir 0.1.5 with v1.5 Q4_K_M](pages/model-architecture/mimir-v1.5-ggufs.md#015-publication-complete); verified four packages and checksums, preserved the 0.1.4 release, and prepared unsigned iOS build 7.
 
@@ -2697,3 +2882,12 @@ checksum-verified following explicit user authorization. Portuguese HF card
 metadata corrected to pt + BCP47 pt-PT; corresponding local integration manifest
 pins updated, with training data/tokens unchanged. See
 [audited European DaLA](pages/dfm12-audited-european-dala.md).
+## 2026-10-07 BAAI access and expansion
+
+Recorded verified COIG-PC/IndustryCorpus2 payload access and completed bounded
+Infinity/IndustryInstruction preparation in [BAAI access](pages/dfm14-baai-access.md).
+# 2026-10-07: Shared audit pipeline
+
+Added the [shared audit runbook](pages/shared-audit-pipeline.md): compact
+non-thinking decisions, bounded continuous refill and dedicated CPU/disk owners.
+Historical journals and accepted rows are preserved during client migration.

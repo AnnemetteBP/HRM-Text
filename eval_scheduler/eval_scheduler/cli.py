@@ -24,7 +24,8 @@ from .cluster_monitor import (
 from .cluster_protocol import ClusterClient, read_cluster_token
 from .cluster_runtime import ClusterCoordinator, ClusterWorker, install_signal_handlers
 from .locking import PlanLock
-from .model import Action, Job, JobStatus, read_plan, write_plan
+from .model import Action, Job, JobStatus, plan_database, read_plan, write_plan
+from .database_cli import database_app
 from .monitor import rich_status_renderable, rich_watch, status_text, watch
 from .plan import (
     PlanConfig,
@@ -41,6 +42,7 @@ plan_app = typer.Typer(help="Create and edit scheduler plans.")
 cluster_app = typer.Typer(help="Run and operate a fixed-membership multi-node scheduler.")
 app.add_typer(plan_app, name="plan")
 app.add_typer(cluster_app, name="cluster")
+app.add_typer(database_app, name="database")
 
 
 def parse_gpus(value: str) -> list[int]:
@@ -802,7 +804,50 @@ def run(
         False,
         help="Demand-start and reuse compatible vLLM servers on each GPU.",
     ),
+    backend: str = typer.Option("tsv", help="tsv (legacy) or sqlite (request-shared, opt-in)."),
+    cpu_cores: int = typer.Option(256, min=1, help="Node CPU budget, capped by process affinity."),
+    reserve_cores: int = typer.Option(8, min=0, help="CPUs reserved for model servers."),
+    client_cpu_cores: int = typer.Option(2, min=1, help="Default CPU lease per client; metadata cpu_cores overrides."),
+    max_clients: int = typer.Option(128, min=1, help="Concurrent clients, not inference requests."),
+    server_concurrency: int = typer.Option(1024, min=1, help="Shared server max sequences unless explicitly configured."),
 ) -> None:
+    if backend not in {"tsv", "sqlite"}:
+        raise typer.BadParameter("backend must be tsv or sqlite")
+    if backend == "sqlite":
+        from .cpu_budget import CpuBudget
+        from .database_runner import DatabaseRunner
+        from .shared_pool import SharedServerPool
+        from .store import SQLiteJobStore
+
+        database = plan_database(plan_path(plan_dir))
+        if database is None:
+            raise typer.BadParameter("Import the stopped plan using database import first")
+        if not persistent_vllm:
+            raise typer.BadParameter("SQLite request sharing requires --persistent-vllm")
+        budget = CpuBudget(cpu_cores, reserve_cores)
+        affinity = tuple(sorted(set(budget.affinity_core_ids) - set(budget.worker_core_ids)))
+        if not affinity or budget.capacity < client_cpu_cores:
+            raise typer.BadParameter("Reserve server CPUs and enough CPUs for at least one client")
+        pool = SharedServerPool(plan_dir, parse_gpus(gpus), event=typer.echo,
+                                max_requests_per_gpu=server_concurrency,
+                                server_affinity=affinity)
+        runner = DatabaseRunner(plan_dir, SQLiteJobStore(database), parse_gpus(gpus), pool,
+                                cpu_budget=budget, max_clients=max_clients,
+                                client_cpu_cores=client_cpu_cores, event=typer.echo)
+        previous = {}
+        def request_stop(_signum, _frame):
+            runner.request_stop()
+        try:
+            for signum in (signal.SIGINT, signal.SIGTERM):
+                previous[signum] = signal.signal(signum, request_stop)
+            result = runner.run()
+            runner.store.export_tsv(plan_dir / "plan.snapshot.tsv")
+            typer.echo(f"database_runner\t{result}")
+        finally:
+            for signum, handler in previous.items():
+                signal.signal(signum, handler)
+            pool.shutdown()
+        return
     Runner(
         plan_dir,
         parse_gpus(gpus),
@@ -869,6 +914,27 @@ def monitor(
     rich: bool = typer.Option(False, "--rich", help="Use a Rich table/live display instead of plain text."),
 ) -> None:
     gpu_ids = parse_gpus(gpus)
+    if plan_database(plan_path(plan_dir)) is not None:
+        from .database_monitor import read_status, render_text, rich_status_renderable as database_rich
+        def render():
+            return database_rich(plan_dir, gpus=gpu_ids) if rich else render_text(read_status(plan_dir, gpus=gpu_ids))
+        if once:
+            if rich:
+                from rich.console import Console
+                Console().print(render())
+            else:
+                typer.echo(render())
+        elif rich:
+            from rich.live import Live
+            with Live(render(), auto_refresh=False, screen=True) as live:
+                while True:
+                    time.sleep(interval)
+                    live.update(render(), refresh=True)
+        else:
+            while True:
+                typer.echo(render())
+                time.sleep(interval)
+        return
     if once:
         if rich:
             from rich.console import Console

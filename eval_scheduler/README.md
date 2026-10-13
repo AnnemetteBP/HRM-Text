@@ -1,6 +1,42 @@
 # HRM Eval Scheduler
 
-This is a new plan-first scheduler for HRM-Text evaluations.
+## Opt-In SQLite and Shared Inference
+
+`run --backend sqlite --persistent-vllm` uses authoritative local SQLite state
+and direct connections from compatible clients to shared servers. There is no
+HTTP broker implementation remains in the package. The default backend remains the
+legacy TSV runner. Migrate only a stopped plan using `database import`; the
+`database` command group provides explicit import/export, edits, locks and resets.
+
+Default capacity is 1,024 sequences per model server. vLLM handles its own
+request queue and continuous batching; existing task concurrency settings are
+preserved. Ready clients spread across GPUs, then share compatible replicas.
+CPU work is affinity-limited by `--cpu-cores 256`, `--reserve-cores 8`, and
+per-client CPU leases. Before claims begin, pending DFM/DFM IFEval and EuroEval
+jobs are atomically split into inference and CPU export/merge jobs. Original
+job IDs stay on publication, preserving downstream dependencies. CPU jobs do
+not count against `--max-clients` or hold server residency. Evaluator-internal
+scoring is unchanged; it may still run inside the inference subprocess.
+A client holds shared model residency, not an exclusive GPU or per-request
+scheduler slot. Use `monitor --rich` normally after migration.
+Failed clients fence a replica from new assignments until existing clients
+finish, then its owned processes are stopped before reuse. Request counts are
+obtained from vLLM telemetry, not inferred from client counts.
+Owned target/judge pairs are shut down concurrently across GPUs after clients
+drain, preserving judge-before-target order within each pair.
+
+See the [migration and safety runbook](../wiki/pages/model-architecture/request-shared-eval-scheduler.md).
+This opt-in single-node path is not an automatic migration of existing campaigns
+or multi-node workers; mock simulation is not a real-model numerical benchmark.
+Managed target/judge pairs preserve the existing judge engine and drain together.
+`database preflight` is read-only; `database backup` includes committed WAL data.
+Keep the authoritative database on local disk (not `/work/mimir` WekaFS). The
+runner publishes `state.backup.sqlite` to the plan directory every minute and
+on clean exit. Real-model paired/suite canaries remain required before rollout.
+
+## Overview
+
+This is a plan-first scheduler for HRM-Text evaluations.
 
 It is intentionally separate from `scripts/schedule_checkpoint_evals.sh`.  It
 does not import that shell scheduler.  The package owns its job-plan format,
@@ -9,7 +45,7 @@ evaluation entrypoints as external commands.
 
 ## Design
 
-The scheduler writes an explicit TSV plan:
+The default legacy backend writes an explicit TSV plan:
 
 ```tsv
 job_id	action	family	name	shard	shards	deps	deps_mode	initial_batch	max_retries	gpu_policy	status	attempt	log_dir	metadata_json
@@ -53,6 +89,14 @@ Runtime state is append-only:
 - `status.tsv`: event log (`START`, `END`, `RETRY`, `SKIP`, `BLOCKED`).
 - `attempts.tsv`: per-attempt telemetry, including GPU memory and OOM status.
 - `plan.tsv`: editable desired plan with current status fields.
+- Persistent runner startup splits pending vLLM EuroEval jobs into GPU
+  inference and CPU-only `merge_euroeval` publication jobs, with a locked plan
+  backup. The original job ID remains the publication job, so averages and
+  training still wait for successful sync. CPU retries do not rerun inference.
+  Already running or completed jobs are left unchanged.
+- The same split applies to vLLM DFM shards: `export_dfm_results` converts
+  completed Inspect logs on CPU, and shard merges depend on that export.
+  GPU launch claims are batched into one locked plan transaction.
 - `plan.lock`: advisory interprocess lock used by scheduler commands.
 - `plan.lock.holder.json`: metadata for a background lock holder started by
   `plan lock`.

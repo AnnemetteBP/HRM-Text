@@ -1,8 +1,86 @@
 # Operational Knowledge and Plans
 
+* [XL Andersen Evaluation Backfill](andersen-xl-evaluation-backfill.md) - Main-line checkpoint inventory and missing validation-split prerequisites.
+* [Cooperative CUDA Suspension](cooperative-cuda-suspension.md) - Isolated prototype, atomic-file handshake, recovery controller and parity evidence.
+
+* [Training Continuity](training-continuity.md) - Mandatory failure-tolerant evaluation handoffs and administrative-lock discipline.
+
+* [DFM14/DFM15 Evaluation Baseline](dfm14-evaluation-baseline.md) - Required inherited suites, all-50-language coverage, Andersen and versioned additions.
+* [DFM14 Evaluation Inventory](dfm14-evaluation-inventory.md) - Exact benchmark names and shard counts for campaign reconciliation.
+
+* [Shared Audit Pipeline](shared-audit-pipeline.md) - Reusable continuous scheduling and minimal non-thinking accept/reject reviews.
+
+* [DFM14 Additional Instructions](dfm14-additional-instruction-candidates.md) - New language-specific leads versus already registered multilingual sources.
+
+* [DFM14 BAAI Access](dfm14-baai-access.md) - Verified gated-source access, candidate counts and source-selection boundaries.
+
+* [DFM13 Multilingual Evaluation Preparation](dfm13-multilingual-evaluation.md) - Verified heldout tasks, EuroEval availability and new34-language averages.
+
+* [DFM13 Evaluation Expansion](dfm13-evaluation-expansion.md) - Talemaader rejudging, new-language baseline scheduling, and held-out DaLA coverage audit.
+
+* [New Language Expansion Recipe](new-language-expansion-playbook.md) - Six-component recipe, exact sizing bases, audit/repair gates and sharded bottleneck-resistant execution.
+
+* [DFM13 Parallel Verification](dfm13-parallel-verification.md) - Thirty-two source workers, restart receipts and single-writer publication.
+* [XL Non-Eager Evaluation Capacity](xl-non-eager-eval-capacity.md) - Bounded real-prompt eight-GPU capacity measurement, no W&B or plan changes.
+* [DFM13 XL 3150K Handoff](dfm13-xl-3150k-handoff.md) - Verified-sample gate and CPU-only exact budget preparation; not an activated training switch.
+* [DFM14 Plan](dfm14-plan.md) - Sixteen-language expansion and research scope; no changes to current DFM13 assembly.
+* [DFM15 Plan](dfm15-plan.md) - Native reasoning and direct-answer supervision; DFM14 remains unchanged.
+* [DFM14 XL 3250K Handoff](dfm14-xl-3250k-handoff.md) - Verified-transfer gate, exact one-pass packing and steady-LR continuation on the original XL run.
+* [DFM14 CPU Release](dfm14-cpu-release.md) - Accepted-only exports, publication, sampling and the 900K XXL-wide handoff gate.
+* [DFM14 Remote Production Handoff](dfm14-remote-production-handoff.md) - Transfer inputs, implementation order and isolation from live DFM13 training.
+* [DFM14 Non-DaLA Startup](dfm14-non-dala-startup.md) - Local readiness, code hazards and staged implementation without waiting on DaLA.
+* [DFM14 Curated CPU Audit Handoff](dfm14-curated-cpu-audit.md) - Final instruction/grounding inventory, calibration requests and GPU admission gates.
+* [DFM14 Additions and Translation Expansion](dfm14-additions-audit-expansion.md) - Audit submissions, translation gaps, knowledge preparation and calibration blockers.
+* [DFM14 Production Estimate](dfm14-production-estimate.md) - Volume-dependent time budget based on previous generation and audit measurements.
+* [DFM14 Language Source Readiness](dfm14-language-source-readiness.md) - Concrete instruction/text candidates and preparation gaps for ten main and six smaller European languages.
+
+* [DFM14 Knowledge and Commonsense Sources](dfm14-knowledge-commonsense.md) - English enrichment candidates, Japanese research and inherited-source checks.
+
+* [DFM14 Language Priorities](dfm14-language-priorities.md) - Missing-language shortlist, source/eval readiness and qualified MMLU/ARC-C transfer expectations.
+
+* [Potential DFM14 Additions](dfm14-potential-additions.md) - Prioritized Dyna source candidates, replacement policies and resolved Faroese generation shortfall.
+
+* [DynaWord and DynaInstruct Update Scan](dyna-source-updates-20261005.md) - Pinned inventory comparison and prioritized new-source recommendations.
+
+* [DaLA Audit SQLite Throughput](dfm13-dala-db-throughput.md) - Tested opt-in batching and memory/reporting improvements, parent-owned deployment.
+
+* [Baltic Disconnect Diagnosis](dfm13-baltic-disconnect-diagnosis.md) - Inherited pacing, pre-header failures, keepalive mismatch and health-preserving recommendations.
+
+* [Fars Final Strict Audit](dfm13-fars-final-strict-audit.md) - Failed one-shot source-fidelity gate and final exclusion of Persian summary components.
+
+* [Baltic Semantic Reviewer Calibration](dfm13-baltic-semantic-review-calibration.md) - Bounded reviewer comparison, separate contract failures and false-accept deployment hold.
+
+* [DFM13 Completion Status](dfm13-completion-status.md) - Finished-additions assembly and remaining audits, synthetic production, source holds and publication gaps.
+
+* [DFM13 DaLA Compact Finalization](dfm13-dala-compact-finalization.md) - Terminal accepted subsets, frozen audit evidence and train-only CPU tokenization.
+
+* [DFM13 DaLA V2 Audit Inventory](dfm13-dala-v2-audit-inventory.md) - Frozen26-language candidate exports, split counts and compact review contracts.
+* [DFM13 DaLA Pair Audit](dfm13-dala-pair-audit.md) - Bounded full-pool batch client, canonical pair deduplication and source-preserving LA/GEC decisions.
+
+* [DFM13 Local Wave Integration](dfm13-local-wave-integration.md) - CPU tokenization of quota-held accepted packages, separate from canonical publication.
+
+* [Language Extension Waves](language-extension-waves.md) - Membership of waves 0-4 and the shared translation, instruction, transformation and DaLA recipe.
+* [Fourth Language Extension Sources](fourth-language-extension-wave.md) - Eleven-language parallel/text/SFT research, Persian pointers and source-specific gates.
+* [Fourth Wave Operational History](fourth-wave-operational-history.md) - Dated preparation, audit, repair and release observations moved from the source assessment.
+* [DFM13 Wave Synthetic Calibration](dfm13-wave-synthetic-calibration.md) - Synthetic quality controls, source allocation and production-path probes.
+* [DFM13 Source7 26B Calibration](dfm13-source7-26b.md) - Completed source-preserving seven-case probe and independent findings.
+* [DFM13 Compact LV Fars Finalization](dfm13-compact-lv-fars-finalization.md) - Exact-hash accepted staging and source-fidelity publication gates.
+* [DFM13 Baltic Compact Production](dfm13-baltic-compact-production.md) - Authorized70K-per-language26B successor, shared128/server budget and preserved holds.
+* [Baltic To Wave4 Synthetic Handoff](dfm13-baltic-wave4-handoff.md) - Guarded140K-to-770K sequential generation/audit queue and explicit failure blockers.
+* [W4 CPU Recovery and XL Resume](dfm13-wave4-xl-resume.md) - Final recovery policy, cancelled top-up, owned-server release and same-plan DFM12 resume.
+* [DFM13 Inherited DFM12 Base Readiness](dfm13-inherited-base-readiness.md) - Base integrity, raw OpenHermes exclusion, and later inventory reconciliation gaps.
+* [DFM13 Generation Constraints](dfm13-generation-constraints.md) - Model-neutral generation rules, compact audit adapter and preserved preparation history.
+
+* [DFM13 Lithuanian and Latvian Sources](dfm13-baltic-language-sources.md) - Text, SFT and translation shortlist; DaLA remains separately owned.
+* [DFM13 Baltic Publication Rights](dfm13-baltic-publication-rights.md) - Pinned P3 constituent terms, BLKT license partitions and Lithuanian summary privacy gates.
+* [Baltic FinePDF and Europarl Rights](dfm13-baltic-finepdf-europarl-rights.md) - Exact-document FinePDF releases and unresolved Europarl excerpt/adaptation scope.
+* [Baltic 31B Fresh Twelve Review](dfm13-baltic-gemma31-fresh12-review.md) - Independent paired content review, schema failures and judge limitations.
+* [Latvian P3 Rights-Separated Export](dfm13-latvian-p3-export.md) - Review-only CC BY/CC BY-SA partitions, immutable ledger snapshots and terminal repair/re-audit refresh.
+
 * [DFM13 RepoChat Full Campaign](dfm13-repochat-full-campaign.md) - Whole-source native trajectories and automatic bounded technical follow-up.
 
 * [DFM13 Dataset Additions](dfm13-plan.md) - Vote-selected AI-Arenaen chats and incremental source preparation.
+* [DFM13 Verified Additions Assembly](dfm13-verified-additions-assembly.md) - Explicit base references, completed wave snapshot, token-count bases and remaining non-wave adapters; no epoch sampling.
 * [DFM13 jjzha Native Additions and Audit](dfm13-jjzha-native-additions.md) - Train-only structured conversions, IMDb sampling and full CroCo audit clients.
 * [DFM13 Pending Arena Preparation](dfm13-pending-arena-preparation.md) - Local-only preferred-target audit candidates, source pins, duplicate ledgers and remaining coverage gaps.
 * [DFM13 Arena Quality Review](dfm13-arena-quality-review.md) - Preferred-response samples and retrieval/tool-context feasibility.
@@ -68,6 +146,8 @@
 * [DFM11 Nemotron Assessment History](dfm11-nemotron-history.md) - Superseded proposal retained during origin/local reconciliation.
 
 ## Operations
+
+* [DFM13 Local Transfer and Build](dfm13-local-build.md) - Remote admitted additions and frozen DFM12 inheritance, tokenization and three-epoch sampling.
 
 * [Mimir v1.5 Model Card](mimir-v1-5-model-card.md) - Published comparison and training-data provenance with checkpoint identities.
 
@@ -180,3 +260,18 @@
 * [TP8 Training Headroom](dfm13-tp8-training-headroom.md) - Small owned Gemma service beside XL training and measured capacity.
 * [Repo Bulk Interlude](dfm13-repo-bulk-checkpoint-interlude.md) - Complete checkpoint gate, all-GPU-stage completion and automatic existing-plan resume.
 * [Mimir Search](dfm13-mimir-evidence.md) - Danish/English/multilingual search corpus, temporal quotas and evidence-quality gates.
+* [LT Summary Privacy](dfm13-lt-summary-privacy.md) - Hash-bound screening, manual holds, accepted-only publication and tokenizer/assembler integration.
+* [Baltic QA Quality Holds](dfm13-baltic-qa-quality-holds.md) - Source-wide LTQA/LVQA gates, preserved Hub data, and unsubmitted source-aware 31B packets.
+* [Baltic QA31 Consumer](dfm13-baltic-qa31-consumer.md) - Full-record held-source preparation and calibration-gated review, repair and fresh re-audit.
+* [Baltic QA31 Article Twenty Review](dfm13-baltic-qa31-article20-review.md) - Independent casewise source fidelity, unsupported keeps and repair correctness.
+* [31B Capacity Measurement](dfm13-31b-capacity-measurement.md) - Nonadmitting frozen workload, cache-isolated pressure and lifecycle-bound all-eight measurement evidence.
+* [Persian Wiki Transform Review](dfm13-persian-wiki-transform-review.md) - Sixteen hash-bound examples: exact mechanical fidelity, metadata-window and inherited-source concerns.
+* [Croatian Wiki Transform Review](dfm13-croatian-wiki-transform-review.md) - Sixteen exact source replays; one definite layout-versus-paragraph mismatch, with no blanket Persian filter transfer.
+* [DFM13 Audit-First Processing](dfm13-audit-first.md) - Compact judgments, unchanged good rows and targeted repair/re-audit.
+* [DaLA v2 Multilingual Audit](dfm13-dala-v2-audit.md) - Requested 26-language scope, frozen source exports and pair/control audit semantics.
+* [TLPC Grounded Persian Campaign](dfm13-tlpc-grounded-campaign.md) - Sixteen independent QA/chat clients, pinned source preparation and accepted-only release gates.
+* [DaLA Evaluation Coverage Snapshot](dfm13-dala-eval-coverage.md) - Read-only34-language source/version/split comparison, actual completed results and prepared-vs-scheduled coverage.
+* [DFM13 Workspace Panel Readiness](dfm13-wandb-panel-readiness.md) - Exact Forge workspace backup, existing metric keys and pending multilingual/average panel changes.
+* [XXL-wide 859500 Shared Gemma Handoff](dfm13-xxlw-859500-shared-gemma.md) - Checkpoint-safe local training pause and eight owned generation/audit servers.
+
+* [DFM14 DaLA release](dfm14-dala-release.md) — authorized audited language export, train-only integration and verified HF publication.

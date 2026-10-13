@@ -332,17 +332,6 @@ def make_plan(config: PlanConfig) -> list[Job]:
                 log_dir=f"{config.euroeval_log_root}/{config.ckpt_tag}/{group}",
                 metadata=metadata,
             )
-            if group == "valeu-da":
-                job = job.with_updates(
-                    status=JobStatus.SKIPPED,
-                    metadata=job.metadata
-                    | {
-                        "skip_reason": (
-                            "EuroEval ValEU-da aborts the whole task on invalid labels; "
-                            "skipped for failure-free DFM6 checkpoint sweeps."
-                        )
-                    },
-                )
             add(job)
             euroeval_job_ids.append(job.job_id)
             euroeval_job_by_group[group] = job.job_id
@@ -737,6 +726,35 @@ def make_plan(config: PlanConfig) -> list[Job]:
 
 def plan_path(plan_dir: Path) -> Path:
     return plan_dir / "plan.tsv"
+
+
+def split_euroeval_postprocessing(jobs: list[Job]) -> list[Job]:
+    """Keep existing dependencies attached to publication, not just inference."""
+    ids = {job.job_id for job in jobs}
+    out = []
+    for job in jobs:
+        if (job.status != JobStatus.PENDING
+                or (job.action == Action.EVAL_EUROEVAL and job.name.startswith("valeu-"))
+                or job.action not in {Action.EVAL_EUROEVAL, Action.EVAL_EUROEVAL_BATCHED_IFEVAL,
+                                      Action.EVAL_DFM, Action.EVAL_DFM_IFEVAL}
+                or job.metadata.get("defer_euroeval_merge")
+                or job.metadata.get("defer_dfm_export")
+                or job.metadata.get("hrm_server_backend") != "vllm"):
+            out.append(job)
+            continue
+        inference_id = job.job_id + "-inference"
+        if inference_id in ids:
+            raise ValueError(f"EuroEval inference ID already exists: {inference_id}")
+        ids.add(inference_id)
+        is_dfm = job.action in {Action.EVAL_DFM, Action.EVAL_DFM_IFEVAL}
+        out.append(job.with_updates(job_id=inference_id,
+                   metadata={**job.metadata, "defer_dfm_export" if is_dfm else "defer_euroeval_merge": True}))
+        out.append(job.with_updates(action=Action.EXPORT_DFM_RESULTS if is_dfm else Action.MERGE_EUROEVAL,
+                   deps=(inference_id,), deps_mode="success", attempt=0,
+                   initial_batch=None, gpu_policy="any", gpu_count=0,
+                   execution_scope="control", required_capability="control", node_selector="",
+                   metadata={**job.metadata, "euroeval_inference_action": job.action.value}))
+    return out
 
 
 def _job_counter(job: Job) -> int:

@@ -31,6 +31,8 @@ class Action(StrEnum):
     MERGE_STANDARD = "merge_standard"
     MERGE_DFM = "merge_dfm"
     MERGE_IFEVAL = "merge_ifeval"
+    MERGE_EUROEVAL = "merge_euroeval"
+    EXPORT_DFM_RESULTS = "export_dfm_results"
     AVERAGE = "average"
     AVERAGE_LONG_CONTEXT = "average_long_context"
     RELOG_PROJECT_AVERAGES = "relog_project_averages"
@@ -67,6 +69,8 @@ ACTION_PROFILES: dict[Action, tuple[ExecutionScope, Capability, int]] = {
     Action.MERGE_STANDARD: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
     Action.MERGE_DFM: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
     Action.MERGE_IFEVAL: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
+    Action.MERGE_EUROEVAL: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
+    Action.EXPORT_DFM_RESULTS: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
     Action.AVERAGE: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
     Action.AVERAGE_LONG_CONTEXT: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
     Action.RELOG_PROJECT_AVERAGES: (ExecutionScope.CONTROL, Capability.CONTROL, 0),
@@ -231,7 +235,25 @@ class Job:
         return cls.from_row({key: str(item) for key, item in value.items()})
 
 
+def plan_database(path: Path) -> Path | None:
+    """Resolve an explicitly migrated plan; a missing database is an error."""
+    if path.name != "plan.tsv":
+        return None
+    marker = path.parent / "database.json"
+    if not marker.exists():
+        return None
+    data = json.loads(marker.read_text())
+    database = Path(data["database"])
+    if not database.is_absolute() or not database.is_file():
+        raise ValueError(f"Invalid or unavailable authoritative database: {marker}")
+    return database
+
+
 def read_plan(path: Path) -> list[Job]:
+    database = plan_database(path)
+    if database is not None:
+        from .store import SQLiteJobStore
+        return SQLiteJobStore(database).load_jobs()
     if not path.exists():
         return []
     with path.open("r", newline="") as f:
@@ -240,6 +262,8 @@ def read_plan(path: Path) -> list[Job]:
 
 
 def write_plan(path: Path, jobs: list[Job]) -> None:
+    if plan_database(path) is not None:
+        raise ValueError("This plan is SQLite-managed; use database edit/import/export, not a TSV writer")
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w", newline="") as f:

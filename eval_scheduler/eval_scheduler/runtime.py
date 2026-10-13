@@ -11,10 +11,11 @@ import socket
 import subprocess
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from threading import Lock
+from threading import Lock, local
 from typing import Callable, Iterable
 from urllib.request import urlopen
 
@@ -22,15 +23,45 @@ import yaml
 
 from .catalog import dfm_suite, ifeval_suite
 from .locking import PlanLock
-from .model import Action, Job, JobStatus, append_tsv, read_plan, write_plan
-from .plan import plan_path
+from .model import Action, Job, JobStatus, append_tsv, plan_database, read_plan, write_plan
+from .plan import plan_path, split_euroeval_postprocessing
+from .ownership import spawn
 
 OOM_RE = re.compile(r"OutOfMemoryError|CUDA out of memory|out of memory", re.IGNORECASE)
 CLIENT_FATAL_RE = re.compile(
     r"BadRequestError|Task interrupted|ServerDisconnectedError|APIConnectionError|APITimeoutError",
     re.IGNORECASE,
 )
+SHARED_CLIENT_FATAL_RE = re.compile(r"BadRequestError|Task interrupted", re.IGNORECASE)
 STOP_STATUS = 130
+_client_cpu = local()
+
+
+@contextmanager
+def client_cpu_lease(budget, lease):
+    """Constrain this worker thread and its children, never the coordinator."""
+    previous = getattr(_client_cpu, "allocation", None)
+    affinity = os.sched_getaffinity(0)
+    _client_cpu.allocation = (budget, lease)
+    try:
+        os.sched_setaffinity(0, lease.core_ids)
+        yield
+    finally:
+        os.sched_setaffinity(0, affinity)
+        _client_cpu.allocation = previous
+
+
+def prepare_client_command(argv, env):
+    from .environments import without_project_sync
+    argv = without_project_sync(argv)
+    allocation = getattr(_client_cpu, "allocation", None)
+    if allocation is None:
+        return argv, env
+    budget, lease = allocation
+    argv, env = budget.prepare(argv, env, lease)
+    # Shared clients use HTTP; accidental local scoring/model loads must stay CPU-only.
+    env["CUDA_VISIBLE_DEVICES"] = ""
+    return argv, env
 
 
 class SchedulerError(RuntimeError):
@@ -146,13 +177,15 @@ class VLLMServerPool:
                 self._leases.pop(gpu, None)
 
             # Reserve a compact per-process block that cannot overflow TCP's
-            # 16-bit port range when all eight GPUs start concurrently.
+            # 16-bit port range when all eight GPUs start concurrently. Stay
+            # below Linux's ephemeral range: concurrent clients can otherwise
+            # claim a probed port before the vLLM child binds it.
             # Keep each GPU in its own modulo-8 port lane.  A plain
             # find-free-port scan is racy when eight servers start together:
             # two threads can observe the same port before either child binds
             # it, and the resulting client may reach another server.
             port = find_free_port(
-                20000 + ((os.getpid() + int(job.metadata["port_base"])) % 4000) * 8 + gpu,
+                20000 + ((os.getpid() + int(job.metadata["port_base"])) % 1000) * 8 + gpu,
                 host=key.host,
                 stride=8,
             )
@@ -288,9 +321,10 @@ def contains_oom(paths: Iterable[Path]) -> bool:
     return False
 
 
-def contains_client_fatal(paths: Iterable[Path]) -> bool:
+def contains_client_fatal(paths: Iterable[Path], *, shared_client: bool = False) -> bool:
+    pattern = SHARED_CLIENT_FATAL_RE if shared_client else CLIENT_FATAL_RE
     for path in paths:
-        if path.exists() and CLIENT_FATAL_RE.search(tail(path)):
+        if path.exists() and pattern.search(tail(path)):
             return True
     return False
 
@@ -410,9 +444,10 @@ def vllm_chat_template(job: Job) -> str | None:
 
 
 def run_command(argv: list[str], *, log_path: Path, env: dict[str, str] | None = None) -> int:
+    argv, env = prepare_client_command(argv, env)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w") as log:
-        proc = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT, env=env)
+        proc = spawn(argv, stdout=log, stderr=subprocess.STDOUT, env=env)
         return proc.wait()
 
 
@@ -532,6 +567,9 @@ def split_command_environment(argv: list[str]) -> tuple[dict[str, str], list[str
 
 
 def run_training_until_step(job: Job, gpus: tuple[int, ...]) -> int:
+    if job.metadata.get('cooperative_training'):
+        from .cooperative_training import run_boundary
+        return run_boundary(job, gpus)
     target_step = int(job.metadata["stop_after_step"])
     ckpt_tag = str(job.metadata.get("ckpt_tag") or f"step_{target_step}")
     completion_checkpoint_tag = str(
@@ -603,7 +641,7 @@ def run_training_until_step(job: Job, gpus: tuple[int, ...]) -> int:
         log.write(f"\n{now()}\tcommand\t{shlex.join(argv)}\n")
         log.write(f"{now()}\tgpus\t{env['CUDA_VISIBLE_DEVICES']}\n")
         log.flush()
-        process = subprocess.Popen(
+        process = spawn(
             argv,
             cwd=cwd,
             env=env,
@@ -828,9 +866,12 @@ def validate_export_rope_config(job: Job, export_dir: Path) -> None:
             raise ValueError(f"RoPE factor mismatch: checkpoint={expected_factor}, export={actual_factor}")
 
 
-def wait_for_server(url: str, expected_model: str | None = None, *, timeout: int = 480) -> None:
+def wait_for_server(url: str, expected_model: str | None = None, *, timeout: int = 480,
+                    process: subprocess.Popen[bytes] | None = None) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if process is not None and process.poll() is not None:
+            raise SchedulerError(f"server exited with code {process.returncode} before readiness: {url}")
         try:
             with urlopen(url, timeout=2) as response:
                 if response.status != 200:
@@ -963,6 +1004,9 @@ def start_vllm_server(job: Job, gpu: int, *, port: int, model_name: str, log: Pa
             "TORCHINDUCTOR_CACHE_DIR": str(cache_root / "torchinductor"),
             "TRITON_CACHE_DIR": str(cache_root / "triton"),
             "CUDA_CACHE_PATH": str(cache_root / "cuda"),
+            # Separate each GPU's internal rendezvous ports from ephemeral
+            # client connections and the public API listener range.
+            "VLLM_PORT": str(10000 + gpu * 128),
             # vLLM imports FlashInfer's sampler even when attention is routed
             # through FlashAttention.  This machine has no matching cubin
             # package for the installed FlashInfer Python package, so use the
@@ -988,7 +1032,7 @@ def start_vllm_server(job: Job, gpu: int, *, port: int, model_name: str, log: Pa
             f"{now()}\tVLLM_USE_FLASHINFER_SAMPLER=0\t"
             "FLASHINFER_DISABLE_VERSION_CHECK=1\n"
         )
-    return subprocess.Popen(argv, stdout=log.open("a"), stderr=subprocess.STDOUT, env=env)
+    return spawn(argv, stdout=log.open("a"), stderr=subprocess.STDOUT, env=env)
 
 
 def wait_for_vllm_server(job: Job, server: subprocess.Popen[bytes], *, server_log: Path, health_url: str) -> int:
@@ -1025,6 +1069,8 @@ def run_with_vllm_server(
     callback,
     server_pool: VLLMServerPool | None = None,
 ) -> int:
+    if server_pool is not None and callable(getattr(type(server_pool), "run_client", None)):
+        return server_pool.run_client(job, callback)
     if server_pool is not None:
         lease = server_pool.acquire(job, gpu)
         try:
@@ -1196,9 +1242,10 @@ def run_client_with_server_monitor(
     server_proc: subprocess.Popen[bytes],
     env: dict[str, str],
 ) -> int:
+    argv, env = prepare_client_command(argv, env)
     client_log.parent.mkdir(parents=True, exist_ok=True)
     with client_log.open("w") as log:
-        client = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT, env=env)
+        client = spawn(argv, stdout=log, stderr=subprocess.STDOUT, env=env)
         while client.poll() is None:
             if server_proc.poll() is not None:
                 log.write(f"\nServer process {server_proc.pid} exited while client was running.\n")
@@ -1209,7 +1256,7 @@ def run_client_with_server_monitor(
                 terminate(client)
                 terminate(server_proc)
                 return 72
-            if contains_client_fatal([client_log]):
+            if contains_client_fatal([client_log], shared_client=bool(getattr(server_proc, 'shared_client', False))):
                 log.write(
                     f"\nClient log contains a fatal task/API error; terminating paired server {server_proc.pid}.\n"
                 )
@@ -1231,7 +1278,11 @@ def start_native_proxy(
     run_dir: Path,
     port_offset: int,
 ) -> tuple[subprocess.Popen[bytes], str, Path]:
-    port = find_free_port(local_service_port(job, port_offset), host=str(job.metadata.get("host", "127.0.0.1")))
+    # Keep ownership until the child inherits the socket; probing then closing races.
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind((str(job.metadata.get("host", "127.0.0.1")), 0))
+    listener.listen(2048)
+    port = listener.getsockname()[1]
     log_path = run_dir / "server.log"
     argv = [
         python_bin(job),
@@ -1240,6 +1291,8 @@ def start_native_proxy(
         str(job.metadata["host"]),
         "--port",
         str(port),
+        "--fd",
+        str(listener.fileno()),
         "--target-base-url",
         target_base_url,
         "--model-name",
@@ -1254,21 +1307,25 @@ def start_native_proxy(
     if job.metadata.get("hrm_vllm_gemma_bfcl_tools"):
         argv.append("--gemma-native-bfcl-tools")
     if job.metadata.get('euroeval_context_policy') == 'native_head_tail_v1':
-        argv.extend(['--prompt-tokenizer', str(job.metadata['hf_export_dir']),
+        argv.extend(['--prompt-tokenizer', str(job.metadata.get('hf_export_dir') or vllm_model_path(job)),
                      '--prompt-chat-template', str(Path('evaluation/chat_templates/gemma4_native_chat.jinja').resolve()),
                      '--max-context', str(job.metadata.get('vllm_max_model_len', 4096))])
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w") as log:
         log.write(f"{now()}\tSTART_PROXY\t{shlex.join(argv)}\n")
-    proc = subprocess.Popen(
-        argv,
-        stdout=log_path.open("a"),
-        stderr=subprocess.STDOUT,
-        env=env_with_gpu(None),
-    )
+    try:
+        with log_path.open("a") as log:
+            argv, env = prepare_client_command(argv, env_with_gpu(None))
+            proc = spawn(
+                argv, stdout=log, stderr=subprocess.STDOUT,
+                env=env, pass_fds=(listener.fileno(),),
+            )
+    finally:
+        listener.close()
     base_url = f"http://{job.metadata['host']}:{port}/v1"
     try:
-        wait_for_server(f"http://{job.metadata['host']}:{port}/health", timeout=120)
+        wait_for_server(f"http://{job.metadata['host']}:{port}/health",
+                        expected_model=model_name, timeout=120, process=proc)
     except Exception:
         terminate(proc)
         raise
@@ -1301,7 +1358,7 @@ def start_hrm_server(job: Job, gpu: int, *, port: int, model_name: str, batch: i
     if job.metadata.get("no_ema"):
         argv.append("--no-ema")
     log.parent.mkdir(parents=True, exist_ok=True)
-    return subprocess.Popen(argv, stdout=log.open("w"), stderr=subprocess.STDOUT, env=env_with_gpu(gpu))
+    return spawn(argv, stdout=log.open("w"), stderr=subprocess.STDOUT, env=env_with_gpu(gpu))
 
 
 def managed_judge_enabled(job: Job) -> bool:
@@ -1342,7 +1399,7 @@ def start_judge_server(job: Job, gpu: int, *, port: int, log: Path) -> subproces
     with log.open("w") as f:
         f.write(f"{now()}\tSTART_JUDGE\t{shlex.join(argv)}\n")
         f.write(f"{now()}\tCUDA_VISIBLE_DEVICES={gpu}\n")
-    return subprocess.Popen(argv, stdout=log.open("a"), stderr=subprocess.STDOUT, env=env_with_gpu(gpu))
+    return spawn(argv, stdout=log.open("a"), stderr=subprocess.STDOUT, env=env_with_gpu(gpu))
 
 
 def start_managed_judge(job: Job, gpu: int, run_dir: Path) -> tuple[subprocess.Popen[bytes] | None, str | None, Path | None]:
@@ -1529,7 +1586,11 @@ def run_dfm_external(
         ]
         if job.metadata.get("judge_model"):
             argv.extend(["--judge-model", str(job.metadata["judge_model"])])
-        judge_server, managed_judge_base_url, _judge_log = start_managed_judge(job, gpu, run_dir)
+        shared_judge_url = getattr(server, "judge_base_url", None) if getattr(server, "shared_client", False) else None
+        if shared_judge_url:
+            managed_judge_base_url = shared_judge_url
+        else:
+            judge_server, managed_judge_base_url, _judge_log = start_managed_judge(job, gpu, run_dir)
         judge_base_url = managed_judge_base_url or job.metadata.get("judge_base_url")
         if judge_base_url:
             argv.extend(["--judge-base-url", str(judge_base_url)])
@@ -1562,7 +1623,24 @@ def run_dfm_external(
             terminate(judge_server)
         if status != 0:
             return status
-        eee_argv = [
+        if job.metadata.get("defer_dfm_export"):
+            (run_dir / "dfm-export-context.json").write_text(json.dumps({"base_url": base_url}) + "\n")
+            return 0
+        return run_export_dfm_results(job, base_url=base_url)
+
+    return run_with_vllm_server(
+        job, gpu, model_name=model_name, port_offset=0, log=server_log,
+        callback=callback, server_pool=server_pool,
+    )
+
+
+def run_export_dfm_results(job: Job, *, base_url: str | None = None) -> int:
+    run_dir = Path(job.log_dir)
+    inspect_dir = run_dir / "inspect"
+    eee_dir = run_dir / "eee"
+    if base_url is None:
+        base_url = json.loads((run_dir / "dfm-export-context.json").read_text())["base_url"]
+    eee_argv = [
             "uv",
             "run",
             "--project",
@@ -1583,17 +1661,8 @@ def run_dfm_external(
             "--inference-provider-name",
             "vllm-openai",
         ]
-        return run_command(eee_argv, log_path=run_dir / "eee-export.log")
-
-    return run_with_vllm_server(
-        job,
-        gpu,
-        model_name=model_name,
-        port_offset=0,
-        log=server_log,
-        callback=callback,
-        server_pool=server_pool,
-    )
+    return run_command(eee_argv, log_path=run_dir / "eee-export.log",
+                       env={**env_with_gpu(None), "CUDA_VISIBLE_DEVICES": ""})
 
 
 def run_dfm_ifeval(
@@ -1760,28 +1829,10 @@ def run_dfm_ifeval_external(
         )
         if status != 0:
             return status
-        eee_argv = [
-            "uv",
-            "run",
-            "--project",
-            str(job.metadata["dfm_evals_dir"]),
-            "evals",
-            "eee",
-            "inspect",
-            "--log-path",
-            str(inspect_dir),
-            "--output-dir",
-            str(eee_dir),
-            "--source-organization-name",
-            "schneiderkamplab",
-            "--evaluator-relationship",
-            "first_party",
-            "--inference-base-url",
-            base_url,
-            "--inference-provider-name",
-            "vllm-openai",
-        ]
-        return run_command(eee_argv, log_path=run_dir / "eee-export.log")
+        if job.metadata.get("defer_dfm_export"):
+            (run_dir / "dfm-export-context.json").write_text(json.dumps({"base_url": base_url}) + "\n")
+            return 0
+        return run_export_dfm_results(job, base_url=base_url)
 
     return run_with_vllm_server(
         job,
@@ -1800,7 +1851,8 @@ def run_euroeval(
     batch: int,
     server_pool: VLLMServerPool | None = None,
 ) -> int:
-    if is_external_model(job) or (use_vllm_hrm_server(job) and server_pool is not None):
+    if (is_external_model(job) or job.metadata.get("defer_euroeval_merge")
+            or (use_vllm_hrm_server(job) and server_pool is not None)):
         return run_euroeval_openai(job, gpu, batch, server_pool)
     run_root = Path(job.log_dir)
     run_root.mkdir(parents=True, exist_ok=True)
@@ -1861,7 +1913,7 @@ def run_euroeval_batched_ifeval(
     batch: int,
     server_pool: VLLMServerPool | None = None,
 ) -> int:
-    if server_pool is not None and use_vllm_hrm_server(job):
+    if job.metadata.get("defer_euroeval_merge") or (server_pool is not None and use_vllm_hrm_server(job)):
         return run_euroeval_batched_ifeval_openai(job, gpu, batch, server_pool)
     run_root = Path(job.log_dir)
     run_root.mkdir(parents=True, exist_ok=True)
@@ -1904,12 +1956,11 @@ def run_euroeval_batched_ifeval_openai(
     job: Job,
     gpu: int,
     batch: int,
-    server_pool: VLLMServerPool,
+    server_pool: VLLMServerPool | None,
 ) -> int:
     run_root = Path(job.log_dir).resolve()
     run_root.mkdir(parents=True, exist_ok=True)
     results_file = run_root / "euroeval_benchmark_results.jsonl"
-    metrics_file = run_root / "wandb_metrics.json"
     client_log = run_root / "batched_ifeval.log"
 
     def callback(
@@ -1962,25 +2013,7 @@ def run_euroeval_batched_ifeval_openai(
             with client_log.open("a") as log:
                 log.write(f"\nMissing EuroEval results file: {results_file}\n")
             return 3
-        merge_argv = [
-            python_bin(job),
-            "scripts/log_euroeval_to_wandb.py",
-            "--results",
-            str(results_file),
-            "--epoch",
-            str(job.metadata["eval_epoch"]),
-            "--step",
-            eval_step(job),
-            "--output",
-            str(metrics_file),
-            "--prefix",
-            "euroeval",
-            *wandb_args(job),
-        ]
-        return run_command(
-            merge_argv,
-            log_path=run_root / "merge_and_wandb_sync.log",
-        )
+        return 0 if job.metadata.get("defer_euroeval_merge") else run_merge_euroeval(job)
 
     return run_with_vllm_server(
         job,
@@ -2051,13 +2084,17 @@ def run_euroeval_openai(
         if job.metadata.get("euroeval_generative_type"):
             euroeval_argv.extend(["--generative-type", str(job.metadata["euroeval_generative_type"])])
         argv = ["bash", "-lc", f"cd {shlex.quote(str(run_root))} && {shlex.join(euroeval_argv)}"]
+        client_env = env_with_gpu(None)
+        client_env["EUROEVAL_MAX_CONCURRENT_CALLS"] = str(
+            min(batch, int(job.metadata.get("euroeval_max_concurrent_calls") or batch))
+        )
         try:
             status = run_client_with_server_monitor(
                 argv,
                 client_log=euroeval_log,
                 server_log=server_log_path,
                 server_proc=server,
-                env=env_with_gpu(None),
+                env=client_env,
             )
         finally:
             terminate(proxy)
@@ -2067,23 +2104,7 @@ def run_euroeval_openai(
             with euroeval_log.open("a") as log:
                 log.write(f"\nMissing EuroEval results file: {results_file}\n")
             return 3
-        merge_argv = [
-            python_bin(job),
-            "scripts/log_euroeval_to_wandb.py",
-            "--results",
-            str(results_file),
-            "--epoch",
-            str(job.metadata["eval_epoch"]),
-            "--step",
-            eval_step(job),
-            "--output",
-            str(metrics_file),
-            "--prefix",
-            "euroeval",
-            *euroeval_language_args(job),
-            *wandb_args(job),
-        ]
-        return run_command(merge_argv, log_path=run_root / "merge_and_wandb_sync.log")
+        return 0 if job.metadata.get("defer_euroeval_merge") else run_merge_euroeval(job)
 
     return run_with_vllm_server(
         job,
@@ -2094,6 +2115,24 @@ def run_euroeval_openai(
         callback=callback,
         server_pool=server_pool,
     )
+
+
+def run_merge_euroeval(job: Job) -> int:
+    run_root = Path(job.log_dir).resolve()
+    results_file = run_root / "euroeval_benchmark_results.jsonl"
+    if not results_file.is_file() or results_file.stat().st_size == 0:
+        raise SchedulerError(f"Missing EuroEval results file: {results_file}")
+    original_action = job.metadata.get("euroeval_inference_action", job.action.value)
+    language_args = (euroeval_language_args(job)
+                    if original_action == Action.EVAL_EUROEVAL.value else [])
+    metrics_name = ("wandb_metrics.json" if original_action == Action.EVAL_EUROEVAL_BATCHED_IFEVAL.value
+                    else "merged_metrics.json")
+    argv = [python_bin(job), "scripts/log_euroeval_to_wandb.py",
+            "--results", str(results_file), "--epoch", str(job.metadata["eval_epoch"]),
+            "--step", eval_step(job), "--output", str(run_root / metrics_name),
+            "--prefix", "euroeval", *language_args, *wandb_args(job)]
+    return run_command(argv, log_path=run_root / "merge_and_wandb_sync.log",
+                       env={**env_with_gpu(None), "CUDA_VISIBLE_DEVICES": ""})
 
 
 def euroeval_language_args(job: Job) -> list[str]:
@@ -2232,6 +2271,31 @@ def run_merge_ifeval(job: Job) -> int:
 
 
 def run_average(job: Job) -> int:
+    if job.metadata.get("average_prefix") in ("headline_avg_dala_v2", "suite_avg_dala_v2"):
+        argv = [python_bin(job), "scripts/log_expanded_dala_v2_averages.py",
+                "--standard-root", str(job.metadata["log_root"]),
+                "--dfm-root", str(job.metadata["dfm_log_root"]),
+                "--euroeval-root", f"{job.metadata['euroeval_log_root']}/{job.metadata['ckpt_tag']}",
+                "--epoch", str(job.metadata["eval_epoch"]), "--step", eval_step(job),
+                "--report", str(Path(job.log_dir) / "expanded_dala_v2_metrics.json")]
+        extras = job.metadata.get("extra_average_prefixes", [])
+        paired = (job.metadata["average_prefix"] == "headline_avg_dala_v2"
+                  and extras == ["suite_avg_dala_v2"])
+        if not paired:
+            if extras:
+                raise ValueError("Unsupported expanded DaLA average prefix combination")
+            argv.extend(["--metric-prefix", str(job.metadata["average_prefix"])])
+        for suite in ("standard", "dfm", "euroeval"):
+            for root in job.metadata.get(f"additional_{suite}_roots", []):
+                argv.extend([f"--additional-{suite}-root", str(root)])
+        if job.metadata.get("log_wandb", True):
+            argv.extend(["--project", str(job.metadata["wandb_project"]),
+                         "--run-id", str(job.metadata["wandb_run_id"]),
+                         "--run-name", str(job.metadata["wandb_run_name"]),
+                         "--entity", str(job.metadata.get("wandb_entity") or "peter-sk-sdu")])
+        else:
+            argv.append("--dry-run")
+        return run_command(argv, log_path=Path(job.log_dir) / "expanded_dala_v2_average.log")
     if job.metadata.get("multilingual_manifest"):
         argv = [python_bin(job), "scripts/log_multilingual_headline_averages.py",
                 "--manifest", str(job.metadata["multilingual_manifest"]),
@@ -2389,6 +2453,10 @@ def run_job(
         return run_merge_dfm(job)
     if job.action == Action.MERGE_IFEVAL:
         return run_merge_ifeval(job)
+    if job.action == Action.MERGE_EUROEVAL:
+        return run_merge_euroeval(job)
+    if job.action == Action.EXPORT_DFM_RESULTS:
+        return run_export_dfm_results(job)
     if job.action == Action.AVERAGE:
         return run_average(job)
     if job.action == Action.AVERAGE_LONG_CONTEXT:
@@ -2400,43 +2468,59 @@ def run_job(
     raise SchedulerError(f"Unsupported action: {job.action}")
 
 
+def _nonblocking_eval(job: Job) -> bool:
+    return job.action == Action.EVAL_EUROEVAL and job.name.startswith("valeu-")
+
+
 def _cannot_succeed(job_id: str, jobs_by_id: dict[str, Job], visiting: set[str] | None = None) -> bool:
-    job = jobs_by_id.get(job_id)
-    if job is None:
-        return False
-    if job.status in {JobStatus.FAILED, JobStatus.SKIPPED}:
-        return True
-    if job.status in {JobStatus.DONE, JobStatus.RUNNING}:
-        return False
-    if job.deps_mode == "terminal":
-        return False
-    visiting = set() if visiting is None else visiting
-    if job_id in visiting:
-        return False
-    visiting.add(job_id)
-    try:
-        return any(_cannot_succeed(dep, jobs_by_id, visiting) for dep in job.deps)
-    finally:
-        visiting.remove(job_id)
+    # Shared ancestors in a campaign DAG must not be revisited per path.
+    seen = set(visiting or ())
+    pending = [job_id]
+    while pending:
+        current = pending.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        job = jobs_by_id.get(current)
+        if job is None or _nonblocking_eval(job):
+            continue
+        if job.status in {JobStatus.FAILED, JobStatus.SKIPPED}:
+            return True
+        if job.status in {JobStatus.DONE, JobStatus.RUNNING} or job.deps_mode == "terminal":
+            continue
+        pending.extend(job.deps)
+    return False
 
 
-def dependencies_satisfied(job: Job, jobs: list[Job]) -> bool:
-    jobs_by_id = {candidate.job_id: candidate for candidate in jobs}
+def dependencies_satisfied(job: Job, jobs: list[Job], *, jobs_by_id: dict[str, Job] | None = None,
+                           failure_cache: dict[str, bool] | None = None) -> bool:
+    if jobs_by_id is None:
+        jobs_by_id = {candidate.job_id: candidate for candidate in jobs}
+    # Optional VALEU results must never gate averages or training continuation.
+    deps = tuple(dep for dep in job.deps
+                 if dep not in jobs_by_id or not _nonblocking_eval(jobs_by_id[dep]))
     if job.deps_mode == "success":
         return all(
             dep in jobs_by_id and jobs_by_id[dep].status == JobStatus.DONE
-            for dep in job.deps
+            for dep in deps
         )
     if job.deps_mode != "terminal":
         raise SchedulerError(f"Unsupported dependency mode for {job.job_id}: {job.deps_mode}")
     terminal = {JobStatus.DONE, JobStatus.FAILED, JobStatus.SKIPPED}
+    def cannot_succeed(dep: str) -> bool:
+        if failure_cache is None:
+            return _cannot_succeed(dep, jobs_by_id)
+        if dep not in failure_cache:
+            failure_cache[dep] = _cannot_succeed(dep, jobs_by_id)
+        return failure_cache[dep]
+
     return all(
         dep in jobs_by_id
         and (
             jobs_by_id[dep].status in terminal
-            or _cannot_succeed(dep, jobs_by_id)
+            or cannot_succeed(dep)
         )
-        for dep in job.deps
+        for dep in deps
     )
 
 
@@ -2448,6 +2532,8 @@ class Runner:
         *,
         persistent_vllm: bool = False,
     ) -> None:
+        if plan_database(plan_path(plan_dir)) is not None:
+            raise SchedulerError("SQLite-managed plan requires the database runner, not a legacy or cluster runner")
         self.plan_dir = plan_dir
         self.plan_file = plan_path(plan_dir)
         self.status_file = plan_dir / "status.tsv"
@@ -2456,6 +2542,23 @@ class Runner:
         self.lock = Lock()
         self.server_pool = VLLMServerPool(plan_dir, self.event) if persistent_vllm else None
         self._last_headroom_event = 0.0
+        self._plan_signature = None
+        self._plan_snapshot: list[Job] = []
+
+    def _read_locked_plan(self) -> list[Job]:
+        """Reuse immutable job rows only while the locked file is unchanged."""
+        stat = self.plan_file.stat()
+        signature = (stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+        if signature != self._plan_signature:
+            self._plan_snapshot = read_plan(self.plan_file)
+            self._plan_signature = signature
+        return self._plan_snapshot
+
+    def _write_locked_plan(self, jobs: list[Job]) -> None:
+        write_plan(self.plan_file, jobs)
+        stat = self.plan_file.stat()
+        self._plan_snapshot = jobs
+        self._plan_signature = (stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
 
     def load(self) -> list[Job]:
         with PlanLock(self.plan_dir, exclusive=False):
@@ -2470,52 +2573,117 @@ class Runner:
             append_tsv(self.status_file, [now(), message])
 
     def update_job(self, job_id: str, **updates: object) -> Job:
+        return self.update_jobs({job_id: updates})[job_id]
+
+    def update_jobs(self, updates_by_id: dict[str, dict[str, object]]) -> dict[str, Job]:
         with self.lock:
             with PlanLock(self.plan_dir, exclusive=True):
-                jobs = read_plan(self.plan_file)
+                jobs = self._read_locked_plan()
                 out: list[Job] = []
-                updated: Job | None = None
+                updated: dict[str, Job] = {}
                 for job in jobs:
-                    if job.job_id == job_id:
-                        job = job.with_updates(**updates)
-                        updated = job
+                    if job.job_id in updates_by_id:
+                        job = job.with_updates(**updates_by_id[job.job_id])
+                        updated[job.job_id] = job
                     out.append(job)
-                write_plan(self.plan_file, out)
-                if updated is None:
-                    raise SchedulerError(f"Missing job: {job_id}")
+                if updated.keys() != updates_by_id.keys():
+                    raise SchedulerError(f"Missing jobs: {updates_by_id.keys() - updated.keys()}")
+                self._write_locked_plan(out)
                 return updated
 
     def claim_job(self, job_id: str) -> Job | None:
+        return self.claim_jobs([job_id]).get(job_id)
+
+    def claim_jobs(self, job_ids: list[str]) -> dict[str, Job]:
         with self.lock:
             with PlanLock(self.plan_dir, exclusive=True):
-                jobs = read_plan(self.plan_file)
+                jobs = self._read_locked_plan()
+                by_id = {job.job_id: job for job in jobs}
+                requested = set(job_ids)
                 out: list[Job] = []
-                claimed: Job | None = None
+                claimed: dict[str, Job] = {}
                 for job in jobs:
-                    if job.job_id == job_id:
-                        if job.status == JobStatus.PENDING and dependencies_satisfied(job, jobs):
+                    if job.job_id in requested:
+                        if job.status == JobStatus.PENDING and dependencies_satisfied(job, jobs, jobs_by_id=by_id):
                             job = job.with_updates(status=JobStatus.RUNNING)
-                            claimed = job
+                            claimed[job.job_id] = job
                     out.append(job)
-                if claimed is not None:
-                    write_plan(self.plan_file, out)
+                if claimed:
+                    self._write_locked_plan(out)
                 return claimed
 
     def ready_jobs(self) -> list[Job]:
         with PlanLock(self.plan_dir, exclusive=False):
-            jobs = read_plan(self.plan_file)
+            jobs = self._read_locked_plan()
+        jobs_by_id = {job.job_id: job for job in jobs}
+        failure_cache: dict[str, bool] = {}
         return [
             job
             for job in jobs
-            if job.status == JobStatus.PENDING and dependencies_satisfied(job, jobs)
+            if job.status == JobStatus.PENDING and dependencies_satisfied(
+                job, jobs, jobs_by_id=jobs_by_id, failure_cache=failure_cache)
         ]
+
+    def dispatch(self, completed, free_gpus, cpu_slots, wait_slots):
+        """Commit completions and reserve their successors in one plan transaction."""
+        with self.lock, PlanLock(self.plan_dir, exclusive=True):
+            jobs = self._read_locked_plan()
+            by_id = {job.job_id: job for job in jobs}
+            missing = completed.keys() - by_id.keys()
+            if missing:
+                raise SchedulerError(f"Missing jobs: {missing}")
+            changed = {key: by_id[key].with_updates(**updates)
+                       for key, updates in completed.items()}
+            by_id.update(changed)
+            selected = []
+            failure_cache = {}
+            if not stop_requested(self.plan_dir):
+                for original in jobs:
+                    job = by_id[original.job_id]
+                    if job.status != JobStatus.PENDING:
+                        continue
+                    if job.requires_gpu and not free_gpus:
+                        continue
+                    if not job.requires_gpu:
+                        if job.action == Action.WAIT_CHECKPOINT:
+                            if wait_slots <= 0:
+                                continue
+                        elif cpu_slots <= 0:
+                            continue
+                    if not dependencies_satisfied(job, jobs, jobs_by_id=by_id,
+                                                  failure_cache=failure_cache):
+                        continue
+                    if job.requires_gpu:
+                        allocated = self.select_gpus(job, free_gpus)
+                        if allocated is None:
+                            continue
+                        gpu, kind = allocated[0], 'gpu'
+                    elif job.action == Action.WAIT_CHECKPOINT:
+                        gpu, allocated, kind = None, (), 'checkpoint_wait'
+                        wait_slots -= 1
+                    else:
+                        gpu, allocated, kind = None, (), 'non_gpu'
+                        cpu_slots -= 1
+                    job = job.with_updates(status=JobStatus.RUNNING)
+                    changed[job.job_id] = job
+                    selected.append((job, gpu, allocated, kind))
+            if changed:
+                self._write_locked_plan([changed.get(job.job_id, job) for job in jobs])
+            return selected, cpu_slots, wait_slots
 
     def run_one(
         self,
         job: Job,
         gpu: int | None,
         allocated_gpus: tuple[int, ...] = (),
+        state_updates: dict[str, object] | None = None,
     ) -> tuple[str, int]:
+        def update_state(**updates: object) -> None:
+            if state_updates is None:
+                self.update_job(job.job_id, **updates)
+            else:
+                state_updates.update(updates)
+
         if not allocated_gpus and gpu is not None:
             allocated_gpus = (gpu,)
         free_before, used_before, total_before = gpu_snapshot(gpu) if gpu is not None else ("NA", "NA", "NA")
@@ -2570,22 +2738,22 @@ class Runner:
                 ],
             )
         if status == 0:
-            self.update_job(job.job_id, status=JobStatus.DONE)
+            update_state(status=JobStatus.DONE)
             self.event(f"END {job.job_id} {job.action.value} {job.family} {job.name} status_0")
             return job.job_id, 0
         if status == STOP_STATUS:
-            self.update_job(job.job_id, status=JobStatus.PENDING)
+            update_state(status=JobStatus.PENDING)
             self.event(f"STOPPED {job.job_id} {job.action.value} {job.family} {job.name} status_{status}")
             return job.job_id, status
         next_attempt = job.attempt + 1
         if next_attempt <= job.max_retries:
-            self.update_job(job.job_id, status=JobStatus.PENDING, attempt=next_attempt)
+            update_state(status=JobStatus.PENDING, attempt=next_attempt)
             self.event(
                 f"RETRY {job.job_id} {job.action.value} {job.family} {job.name} "
                 f"status_{status} oom_{oom} next_attempt_{next_attempt + 1}"
             )
         else:
-            self.update_job(job.job_id, status=JobStatus.FAILED, attempt=next_attempt)
+            update_state(status=JobStatus.FAILED, attempt=next_attempt)
             self.event(f"FAILED {job.job_id} {job.action.value} {job.family} {job.name} status_{status} oom_{oom}")
         return job.job_id, status
 
@@ -2645,59 +2813,41 @@ class Runner:
         return tuple(sorted(selected))
 
     def run(self) -> None:
+        from .environments import sync_project_environments
+        sync_project_environments(read_plan(self.plan_file), self.plan_dir)
+        if self.server_pool is not None:
+            with PlanLock(self.plan_dir):
+                jobs = read_plan(self.plan_file)
+                split = split_euroeval_postprocessing(jobs)
+                if len(split) != len(jobs):
+                    backup = self.plan_dir / f"plan-before-euroeval-split-{time.time_ns()}.tsv"
+                    shutil.copy2(self.plan_file, backup)
+                    write_plan(self.plan_file, split)
+            if len(split) != len(jobs):
+                self.event(f"EUROEVAL_SPLIT added_cpu_rows_{len(split) - len(jobs)}")
         stop_request_path(self.plan_dir).unlink(missing_ok=True)
         self.event(f"RUN_START gpus_{','.join(map(str, self.gpus))}")
         non_gpu_slots = 4
         checkpoint_wait_slots = int(os.environ.get("EVAL_SCHEDULER_CHECKPOINT_WAIT_SLOTS", "8"))
         try:
             with ThreadPoolExecutor(max_workers=max(1, len(self.gpus) + non_gpu_slots + checkpoint_wait_slots)) as pool:
-                futures: dict[object, tuple[str, tuple[int, ...], str]] = {}
+                futures: dict[object, tuple[str, tuple[int, ...], str, dict[str, object]]] = {}
                 free_gpus = list(self.gpus)
                 free_non_gpu_slots = non_gpu_slots
                 free_checkpoint_wait_slots = checkpoint_wait_slots
+                completed_updates = {}
                 while True:
                     launched = False
                     if stop_requested(self.plan_dir):
                         self.event("STOP_REQUEST_OBSERVED no_new_jobs")
-                    else:
-                        ready = self.ready_jobs()
-                        for job in ready:
-                            if job.requires_gpu:
-                                allocated_gpus = self.select_gpus(job, free_gpus)
-                                if allocated_gpus is None:
-                                    continue
-                                gpu = allocated_gpus[0]
-                                slot = ("gpu", allocated_gpus)
-                            elif job.action == Action.WAIT_CHECKPOINT:
-                                if free_checkpoint_wait_slots <= 0:
-                                    continue
-                                gpu = None
-                                allocated_gpus = ()
-                                free_checkpoint_wait_slots -= 1
-                                slot = ("checkpoint_wait", ())
-                            else:
-                                if free_non_gpu_slots <= 0:
-                                    continue
-                                gpu = None
-                                allocated_gpus = ()
-                                free_non_gpu_slots -= 1
-                                slot = ("non_gpu", ())
-                            claimed = self.claim_job(job.job_id)
-                            if claimed is None:
-                                if slot[0] == "gpu":
-                                    free_gpus.extend(allocated_gpus)
-                                elif slot[0] == "checkpoint_wait":
-                                    free_checkpoint_wait_slots += 1
-                                else:
-                                    free_non_gpu_slots += 1
-                                continue
-                            job = claimed
-                            futures[pool.submit(self.run_one, job, gpu, allocated_gpus)] = (
-                                slot[0],
-                                slot[1],
-                                job.job_id,
-                            )
-                            launched = True
+                    selected, free_non_gpu_slots, free_checkpoint_wait_slots = self.dispatch(
+                        completed_updates, free_gpus, free_non_gpu_slots, free_checkpoint_wait_slots)
+                    completed_updates = {}
+                    for job, gpu, allocated_gpus, slot_kind in selected:
+                        state_updates: dict[str, object] = {}
+                        futures[pool.submit(self.run_one, job, gpu, allocated_gpus, state_updates)] = (
+                            slot_kind, allocated_gpus, job.job_id, state_updates)
+                        launched = True
                     if not futures:
                         remaining = [job for job in self.load() if job.status in {JobStatus.PENDING, JobStatus.RUNNING}]
                         if remaining:
@@ -2726,12 +2876,14 @@ class Runner:
                             self.event(f"BLOCKED remaining_{len(remaining)} examples_{blocked}")
                         break
                     done, _ = wait(futures.keys(), return_when=FIRST_COMPLETED, timeout=5)
+                    done |= {fut for fut in futures if fut.done()}
+                    completed_updates = {}
                     for fut in done:
-                        slot_kind, allocated_gpus, job_id_for_future = futures.pop(fut)
+                        slot_kind, allocated_gpus, job_id_for_future, state_updates = futures.pop(fut)
                         try:
                             fut.result()
                         except BaseException as exc:
-                            self.update_job(job_id_for_future, status=JobStatus.FAILED)
+                            state_updates.update(status=JobStatus.FAILED)
                             self.event(
                                 f"RUN_EXCEPTION {job_id_for_future} "
                                 f"{type(exc).__name__} {str(exc).replace(chr(10), ' ')[:500]}"
@@ -2743,6 +2895,7 @@ class Runner:
                                 free_checkpoint_wait_slots += 1
                             else:
                                 free_non_gpu_slots += 1
+                        completed_updates[job_id_for_future] = state_updates
                     if not launched and not done:
                         time.sleep(1)
         finally:

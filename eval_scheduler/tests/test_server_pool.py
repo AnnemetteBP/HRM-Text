@@ -15,7 +15,9 @@ from eval_scheduler.runtime import (
     local_service_port,
     managed_judge_port,
     run_standard_openai,
+    run_euroeval_openai,
     run_with_vllm_server,
+    start_vllm_server,
 )
 
 
@@ -41,6 +43,22 @@ def make_job(*, utilization: float = 0.9, checkpoint: str = "step_100000") -> Jo
 
 
 class VLLMServerPoolTest(unittest.TestCase):
+    def test_euroeval_persistent_client_receives_retry_concurrency(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            job = make_job().with_updates(
+                log_dir=directory,
+                metadata={**make_job().metadata, "model_prefix": "test", "euroeval_bin": "python guard.py",
+                          "euroeval_max_concurrent_calls": 128},
+            )
+            def invoke(*args, **kwargs):
+                return kwargs["callback"]("http://localhost:8000/v1", Path(directory) / "server.log",
+                                          MagicMock(), "test-model")
+            with patch("eval_scheduler.runtime.run_with_vllm_server", side_effect=invoke), \
+                 patch("eval_scheduler.runtime.run_client_with_server_monitor", return_value=1) as client:
+                for batch, expected in [(64, "64"), (256, "128")]:
+                    self.assertEqual(run_euroeval_openai(job, 0, batch, None), 1)
+                    self.assertEqual(client.call_args.kwargs["env"]["EUROEVAL_MAX_CONCURRENT_CALLS"], expected)
+
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.events: list[str] = []
@@ -62,6 +80,13 @@ class VLLMServerPoolTest(unittest.TestCase):
         self.assertEqual(len(ports), 64)
         self.assertGreaterEqual(min(ports), 20_000)
         self.assertLess(max(ports), 60_000)
+
+    @patch("eval_scheduler.runtime.spawn")
+    def test_internal_vllm_ports_avoid_client_ephemeral_range(self, spawn):
+        for gpu in range(8):
+            start_vllm_server(make_job(), gpu, port=20000 + gpu,
+                              model_name='test', log=Path(self.temp_dir.name) / f'{gpu}.log')
+            self.assertEqual(spawn.call_args.kwargs['env']['VLLM_PORT'], str(10000 + gpu * 128))
 
     @patch("eval_scheduler.runtime.terminate")
     @patch("eval_scheduler.runtime.wait_for_vllm_server", return_value=0)
@@ -85,6 +110,17 @@ class VLLMServerPoolTest(unittest.TestCase):
         self.assertEqual(first.reuse_count, 1)
         start.assert_called_once()
         self.assertTrue(any(event.startswith("VLLM_REUSE") for event in self.events))
+
+    @patch("eval_scheduler.runtime.os.getpid", return_value=989517)
+    @patch("eval_scheduler.runtime.wait_for_vllm_server", return_value=0)
+    @patch("eval_scheduler.runtime.start_vllm_server")
+    def test_pool_port_stays_below_ephemeral_range(self, start, _wait, _pid):
+        start.return_value = MagicMock(pid=123, poll=MagicMock(return_value=None))
+        with patch("eval_scheduler.runtime.find_free_port", side_effect=lambda port, **kw: port):
+            ports = [int(self.pool.acquire(make_job(), gpu).base_url.split(':')[-1].split('/')[0])
+                     for gpu in range(8)]
+        self.assertEqual(len(set(ports)), 8)
+        self.assertLess(max(ports) + 200 * 8, 32768)
 
     @patch("eval_scheduler.runtime.start_vllm_server")
     def test_starts_different_gpus_concurrently(self, start: MagicMock) -> None:

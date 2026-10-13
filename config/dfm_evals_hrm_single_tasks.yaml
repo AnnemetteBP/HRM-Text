@@ -5,7 +5,7 @@ sets:
       - name: dfm_evals/andersen-modernization
         args:
           - -T
-          - data_path=/work/dfm/andersen/pairs_chunked_val.jsonl
+          - data_path=evaluation/data/andersen/pairs_chunked_val.jsonl
           - -T
           - max_gen_toks=1536
     args:

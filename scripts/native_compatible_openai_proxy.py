@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import asynccontextmanager
 import hashlib
 import json
 import re
@@ -21,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18081)
+    parser.add_argument("--fd", type=int, help="Inherited listening socket reserved by the scheduler")
     parser.add_argument("--target-base-url", required=True, help="Target OpenAI base URL, e.g. http://127.0.0.1:9700/v1")
     parser.add_argument("--model-name", required=True, help="Model name exposed by this proxy")
     parser.add_argument("--target-model-name", default=None, help="Model name served by the target; defaults to --model-name")
@@ -401,7 +403,16 @@ def invalid_bfcl_tool_response(model_name: str, reason: str) -> dict[str, Any]:
 
 
 def make_app(args: argparse.Namespace) -> FastAPI:
-    app = FastAPI(title="Native-compatible OpenAI proxy for HRM")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        async with httpx.AsyncClient(
+            timeout=args.timeout,
+            limits=httpx.Limits(max_connections=None, max_keepalive_connections=1024),
+        ) as client:
+            app.state.target_client = client
+            yield
+
+    app = FastAPI(title="Native-compatible OpenAI proxy for HRM", lifespan=lifespan)
     target_base = args.target_base_url.rstrip("/")
     target_model = args.target_model_name or args.model_name
     prompt_tokenizer = None
@@ -423,12 +434,11 @@ def make_app(args: argparse.Namespace) -> FastAPI:
 
     async def post_json(endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
-            async with httpx.AsyncClient(timeout=args.timeout) as client:
-                response = await client.post(
-                    f"{target_base}{endpoint}",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {args.api_key}"},
-                )
+            response = await app.state.target_client.post(
+                f"{target_base}{endpoint}",
+                json=payload,
+                headers={"Authorization": f"Bearer {args.api_key}"},
+            )
             if response.status_code >= 400:
                 raise HTTPException(status_code=response.status_code, detail=response.text)
             return response.json()
@@ -450,6 +460,7 @@ def make_app(args: argparse.Namespace) -> FastAPI:
     @app.post("/v1/chat/completions")
     async def chat_completions(request: Request) -> dict[str, Any]:
         incoming = await request.json()
+        preparation_started = time.perf_counter()
         if incoming.get("model") not in {args.model_name, f"openai/{args.model_name}"}:
             raise HTTPException(status_code=404, detail=f"Unknown model: {incoming.get('model')}")
         prompt = messages_to_prompt(incoming.get("messages", []))
@@ -492,6 +503,7 @@ def make_app(args: argparse.Namespace) -> FastAPI:
             {
                 "time": time.time(),
                 "endpoint": "/v1/chat/completions",
+                "preparation_seconds": time.perf_counter() - preparation_started,
                 "stripped_keys": sorted(set(incoming) - set(outgoing) - {"messages", "max_completion_tokens"}),
                 "incoming_keys": sorted(incoming),
                 "gemma_native_bfcl_tools": bfcl_tools is not None,
@@ -566,7 +578,7 @@ def make_app(args: argparse.Namespace) -> FastAPI:
 
 def main() -> None:
     args = parse_args()
-    uvicorn.run(make_app(args), host=args.host, port=args.port, log_level="info")
+    uvicorn.run(make_app(args), host=args.host, port=args.port, fd=args.fd, log_level="info")
 
 
 if __name__ == "__main__":
