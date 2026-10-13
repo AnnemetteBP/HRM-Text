@@ -1,6 +1,7 @@
 # Model Architecture Concepts
 
 * [SQLite and Request-Shared Evaluation Scheduler](request-shared-eval-scheduler.md) - Opt-in durable job storage, CPU-limited clients, async inference sharing, and migration safety.
+* [Local XXL-wide Scheduler Handoffs](xxl-wide-scheduler-handoffs.md) - Local migration, evaluation repairs, verified suspension and restore history.
 
 * [Mimir Apple OS-only TLS packaging](mimir-apple-os-tls-packaging.md) - Custom engine integration, headless-runtime packaging, audits and qualification evidence.
 

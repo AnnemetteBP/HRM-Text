@@ -11,6 +11,14 @@ confidence: high
 
 ## Scope and Rollout
 
+### 2026-10-12: Early 1M supplement handoff
+
+See [local XXL-wide suspension and retry history](xxl-wide-scheduler-handoffs.md).
+
+### 2026-10-10: XXL-wide /work/dfm migration at 950K
+
+See [the local 950K migration and coverage reconciliation](xxl-wide-scheduler-handoffs.md#2026-10-10-xxl-wide-workdfm-migration-at-950k).
+
 ### 2026-10-10: Resume training despite exhausted evaluation failures
 
 Applied `training_continuation.allow_failed_evals` to all seven remaining

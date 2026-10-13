@@ -1,5 +1,31 @@
 # Knowledge Bundle Update Log
 
+- 2026-10-13: Verified 243 repaired EuroEval retries, all 1,047 1M inference jobs complete, and same-process CUDA restoration after a roughly 103-minute pause. Also verified the short 1,015,800 pause/resume. Split [local XXL handoff history](pages/model-architecture/xxl-wide-scheduler-handoffs.md) from the general scheduler runbook. Pre-commit validation: 332 CPU tests passed; no GPU training interrupted.
+
+- 2026-10-12: Harmonized local XXL-wide 1M-to-final evaluation inventory and all nine average jobs with remote XL on SSH port 2546. Added 403 inference jobs per checkpoint with pinned historical inputs; preserved active training and completed results. Missing 1M tasks run at the 1.05M suspension. See [deployment details](pages/dfm14-evaluation-baseline.md#2026-10-12-local-xxl-campaign-reconciliation-installed).
+
+- 2026-10-12: Moved opt-in suspension into `pretrain.py`, removed the temporary copy, and added launcher-owned disk fallback plus SQLite evaluation handoffs. Compiled XXS main-entry parity and injected restore-failure recovery passed. Prepared 1M-to-epoch-end continuous training with 50K suspension boundaries; current segment untouched. See [rollout and limitations](pages/cooperative-cuda-suspension.md).
+
+- 2026-10-12: Inspected live training launch/config and installed Inductor: CUDA graphs are not enabled. Started detached compiled eight-rank XXS NCCL-shim campaign with two two-hour offloaded pauses; full-size and multi-node deferred by user. Results pending in the [suspension runbook](pages/cooperative-cuda-suspension.md).
+
+- 2026-10-12: Isolated NCCL 2.32.3 checkpoint shim passed two-rank and compiled eight-rank XXS offload/restore parity with cuMem/NVLS enabled. Two cycles, zero owned GPU memory while offloaded, exact model/optimizer/EMA/metrics. Documented required double preload, isolated builds, timings and remaining long-pause/full-size gates; production untouched. [Evidence](pages/cooperative-cuda-suspension.md).
+
+- 2026-10-12: Narrowed experimental CUDA suspension compatibility to `NCCL_CUMEM_ENABLE=0 NCCL_NVLS_ENABLE=0`. Compiled eight-rank XXS passed two 15-minute offloaded pauses with exact weights, optimizer/EMA and metric parity; 50 checks showed 0 MiB owned GPU allocation. Individual overrides still fail; default NCCL remains incompatible on the tested stack. Sixteen CPU tests pass; production untouched. [Evidence](pages/cooperative-cuda-suspension.md).
+
+- 2026-10-12: Completed short-context XXS suspension tests: single GPU, legacy-NCCL two GPUs and compiled eight GPUs all match uninterrupted weights, optimizer/EMA and every step metric exactly over two cycles. Default two-rank NCCL checkpoint stalled; no production migration. Thirteen CPU tests pass. See [evidence and limitations](pages/cooperative-cuda-suspension.md).
+
+- 2026-10-12: Added isolated [cooperative CUDA suspension](pages/cooperative-cuda-suspension.md) and an experimental pretrain copy. CPU protocol tests and a two-cycle single-GPU XXS parity smoke pass; default multi-rank checkpoint compatibility remains under investigation. Production training is untouched.
+
+- 2026-10-12: Installed cuda-checkpoint 610.57.04 and source-built CRIU 4.2.1 with its CUDA plugin in the isolated `cuda-checkpoint-test` conda environment. [Build details](pages/training-continuity.md) record prefix-only dependencies and verification; no live processes were suspended.
+
+- 2026-10-11: Recorded mandatory [training continuity](pages/training-continuity.md) after an abandoned admin lock caused approximately 57 idle GPU-hours. Failed evals and unfinished publication must not strand training; AGENTS.md now requires lock release and verified handoff.
+
+- 2026-10-10: Added the [DFM14/DFM15 evaluation baseline](pages/dfm14-evaluation-baseline.md), exact task/shard inventory, Andersen requirement and proposed native-reasoning diagnostics. Explicitly distinguish required coverage from still-pending cross-machine reconciliation.
+
+- 2026-10-10: Completed the XXL-wide 950K SQLite handoff, then restored [all-50-language DaLA/GEC coverage](pages/model-architecture/request-shared-eval-scheduler.md) at the user's request. Reconstructed the earlier 34 languages' exact pinned heldouts from HF and verified 272 shards; added 68 tasks per remaining checkpoint without replaying completed work. Training barriers and multilingual averages include the additions.
+
+- 2026-10-10: Prepared the local XXL-wide 950K [SQLite scheduler migration](pages/model-architecture/request-shared-eval-scheduler.md): legacy runner drains without interrupting training, local-disk authority, 64 direct clients, explicit judge-first and failure-tolerant training gates. Added exact step/epoch finalization for the XXL-wide wrapper; 77 focused tests passed. Detached handoff awaits the 950K boundary; migration is not yet complete.
+
 - 2026-10-10: Split pending DFM/DFM IFEval export and EuroEval publication into bounded CPU jobs in the SQLite scheduler; parallelized owned-server shutdown. The [64-client follow-up](pages/model-architecture/request-shared-eval-scheduler.md) completed 50,000 examples in 147s versus direct-32's 166s; the sampled request-completion window fell from 44s to 38s. No W&B writes, failures, or preemptions. Resumed original XL training from preserved 3,387,500 with 64 eval clients; 288 tests passed.
 
 - 2026-10-10: Replaced the default scheduler HTTP broker with [direct shared-server assignments](pages/model-architecture/request-shared-eval-scheduler.md). vLLM handles request queues; the pool tracks compatible model residency and safe failed-client draining. 281 tests passed. At the preserved 3,386,000 ephemeral, the direct benchmark completed 100 tasks/50,000 examples in 166s versus legacy 244s and proxy 303s, without W&B logging. Small score differences remain; no bitwise-parity claim. Production resumed on the original XL W&B run with the direct pool.
@@ -13,6 +39,7 @@
 - 2026-10-09: Consolidated duplicated HTTP lifecycle handling in the [request-shared scheduler](pages/model-architecture/request-shared-eval-scheduler.md); 257 tests and the 4,096-request mock simulation passed. No live rollout.
 
 - 2026-10-09: Added the opt-in [SQLite/request-shared scheduler runbook](pages/model-architecture/request-shared-eval-scheduler.md). The live TSV campaign remains unchanged; isolated tests and mock-server simulation are required before rollout.
+- 2026-10-09: Assigned the completed native-reasoning repair to [DFM15](pages/dfm15-plan.md), retaining DFM14 unchanged. Relocated validated staging and its path references without copying or modifying token arrays; recorded original build provenance and verified the live DFM14 metadata/config were unchanged.
 
 - 2026-10-07: Consolidated incoming main through `4a51a45` with the local XL DFM14 transfer and 50-language evaluation extension. Shared heldout configuration generation, retained verified local source paths, and added the transfer/packing-gated XL 3250K handoff at constant base LR `3e-4`. Existing training was not interrupted; dataset readiness is still receipt-gated. See [the XL handoff](pages/dfm14-xl-3250k-handoff.md) and [CPU release reconciliation](pages/dfm14-cpu-release.md).
 

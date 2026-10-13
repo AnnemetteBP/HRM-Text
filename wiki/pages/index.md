@@ -1,5 +1,12 @@
 # Operational Knowledge and Plans
 
+* [Cooperative CUDA Suspension](cooperative-cuda-suspension.md) - Isolated prototype, atomic-file handshake, recovery controller and parity evidence.
+
+* [Training Continuity](training-continuity.md) - Mandatory failure-tolerant evaluation handoffs and administrative-lock discipline.
+
+* [DFM14/DFM15 Evaluation Baseline](dfm14-evaluation-baseline.md) - Required inherited suites, all-50-language coverage, Andersen and versioned additions.
+* [DFM14 Evaluation Inventory](dfm14-evaluation-inventory.md) - Exact benchmark names and shard counts for campaign reconciliation.
+
 * [Shared Audit Pipeline](shared-audit-pipeline.md) - Reusable continuous scheduling and minimal non-thinking accept/reject reviews.
 
 * [DFM14 Additional Instructions](dfm14-additional-instruction-candidates.md) - New language-specific leads versus already registered multilingual sources.
@@ -16,6 +23,7 @@
 * [XL Non-Eager Evaluation Capacity](xl-non-eager-eval-capacity.md) - Bounded real-prompt eight-GPU capacity measurement, no W&B or plan changes.
 * [DFM13 XL 3150K Handoff](dfm13-xl-3150k-handoff.md) - Verified-sample gate and CPU-only exact budget preparation; not an activated training switch.
 * [DFM14 Plan](dfm14-plan.md) - Sixteen-language expansion and research scope; no changes to current DFM13 assembly.
+* [DFM15 Plan](dfm15-plan.md) - Native reasoning and direct-answer supervision; DFM14 remains unchanged.
 * [DFM14 XL 3250K Handoff](dfm14-xl-3250k-handoff.md) - Verified-transfer gate, exact one-pass packing and steady-LR continuation on the original XL run.
 * [DFM14 CPU Release](dfm14-cpu-release.md) - Accepted-only exports, publication, sampling and the 900K XXL-wide handoff gate.
 * [DFM14 Remote Production Handoff](dfm14-remote-production-handoff.md) - Transfer inputs, implementation order and isolation from live DFM13 training.
