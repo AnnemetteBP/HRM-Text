@@ -1,5 +1,6 @@
 """Construct every new task and check paired shards and semantic merge labels."""
 from pathlib import Path
+import yaml
 from dfm12.io import file_hash, write_json
 from scripts.prepare_dfm14_eval_extension import ROOT, OUT, MANIFEST, SUITE, REGISTRY, POPULATION
 from evaluation.dfm14_tasks import LANGUAGES, dala_dfm14, gec_dala_dfm14
@@ -7,6 +8,21 @@ from scripts.dala_semantic import extract_semantic_label
 
 
 def main():
+    # Constructor tests alone miss stale machine-specific paths in the launcher config.
+    suite = yaml.safe_load(SUITE.read_text())
+    def check_paths(value):
+        if isinstance(value, dict):
+            for item in value.values():
+                check_paths(item)
+        elif isinstance(value, list):
+            for item in value:
+                check_paths(item)
+        elif isinstance(value, str):
+            if '.py@' in value:
+                assert Path(value.split('@', 1)[0]).is_file(), value
+            elif value.startswith('manifest='):
+                assert Path(value.split('=', 1)[1]).resolve() == MANIFEST.resolve(), value
+    check_paths(suite)
     from scripts.headline_population_registry import load_registry
     populations = load_registry(POPULATION)
     assert sorted(len(p['languages']) for p in populations['populations']) == [16,48,50]

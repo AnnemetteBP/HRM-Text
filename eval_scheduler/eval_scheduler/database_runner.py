@@ -294,7 +294,16 @@ class DatabaseRunner:
                         elif not exclusive_active:
                             ready = self.store.ready_jobs()
                             exclusive = next((j for j in ready if j.action in EXCLUSIVE), None)
-                            busy = any(kind != 'wait' for _, _, kind in futures.values())
+                            # CPU publication must not strand the next training lease.
+                            busy = any(
+                                kind != 'wait' and not (
+                                    exclusive is not None
+                                    and exclusive.action == Action.TRAIN_UNTIL_STEP
+                                    and kind == 'cpu'
+                                    and not claim.job.requires_gpu
+                                )
+                                for claim, _, kind in futures.values()
+                            )
                             if exclusive is not None:
                                 # Stop replenishing clients once exclusive work is ready.
                                 if not busy:
