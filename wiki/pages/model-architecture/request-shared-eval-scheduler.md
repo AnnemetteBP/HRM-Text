@@ -4,20 +4,130 @@ title: SQLite and Request-Shared Evaluation Scheduler
 description: Opt-in durable job state, CPU-bounded clients, and demand-driven shared inference without changing live TSV campaigns.
 tags: [evaluation, scheduler, sqlite, vllm, performance]
 status: draft
-last_updated: 2026-10-10
+last_updated: 2026-10-13
 confidence: high
 ---
 # SQLite and Request-Shared Evaluation Scheduler
 
 ## Scope and Rollout
 
-### 2026-10-12: Early 1M supplement handoff
+XXL-wide migration, suspension and retries are documented in
+[XXL-wide handoffs](xxl-wide-scheduler-handoffs.md).
 
-See [local XXL-wide suspension and retry history](xxl-wide-scheduler-handoffs.md).
+### 2026-10-13: Comparable epoch-10 backfill before 3600K
 
-### 2026-10-10: XXL-wide /work/dfm migration at 950K
+`scripts/schedule_epoch10_comparable_backfill.py` updated the existing
+`logs/scheduler/dfm12_XL_epoch11_noidentity` SQLite plan without interruption:
+finish training to 3600K; epoch-10 missing evaluations and publication/averages;
+3600K export/evaluations; the existing 3600K-to-3650K training segment.
 
-See [the local 950K migration and coverage reconciliation](xxl-wide-scheduler-handoffs.md#2026-10-10-xxl-wide-workdfm-migration-at-950k).
+Uses the original XL epoch-10 **EMA** export
+`exports/dfm11_XL_epoch10_multilingual_ema_hf`, checkpoint step **2877261**,
+fractional epoch **10.0**, and the original XL W&B run in DFM5. It reuses 256
+checkpoint-bound completed task summaries and schedules 184 missing tasks:
+100 DaLA/DaLA-v2 tasks (400 inference shards) and 84 EuroEval tasks. Including
+400 DFM result exports, 184 merges, eight average jobs and the completion
+barrier, this adds 1077 rows. Current calibrated batch sizes, compiled persistent
+vLLM configuration, and training-tokenizer behavior are inherited from the
+3600K definitions. No VALEU tasks are added.
+
+`epoch10-comparable-backfill/` contains copied summaries, source hashes,
+`receipt.json`, preview TSV and the pre-edit SQLite backup.
+Historical core EuroEval summaries with train-step zero are rebound in the
+copies only, using their completed epoch-10 jobs and checkpoint state; original
+artifacts are unchanged. The completion barrier
+retains the existing terminal-failure policy so an exhausted backfill failure
+does not strand all GPUs indefinitely; incomplete averages must still be repaired.
+
+### 2026-10-12: Client environment-lock starvation
+
+Implemented after authorization: SQLite startup synchronizes each unique pending
+DFM project once under its runner lifetime lock, before any GPU dispatch. Legacy
+startup also performs this preparation. Sync uses `uv sync --locked --inexact`
+to preserve optional installed packages and refuse lockfile drift. All shared
+runtime `uv run --project` client/publication commands add `--no-sync`; standalone
+EuroEval `uv run --no-project --with ...` commands are unchanged. A failed sync
+fails startup rather than silently running an unprepared environment.
+During rollout, soft-stopped the coordinator and terminated only its childless
+DFM uv launchers (121 exact PIDs recorded in `uv-lock-cancelled-pids.json`).
+Completed work was retained; the same plan resumes remaining work with
+`resume-sync-once-3500k.log`. Environment setup logs are `environment-sync-N.log`.
+Scheduler tests: 206 passed.
+
+The one-time sync also waited on the Weka environment lock.
+After stopping that sync and confirming no local process had the lock file open,
+preserved the old `.venv/.lock` as `.lock.recovery-*` and allowed uv to create
+a fresh lock. Sync then succeeded, checking 186 packages in 11ms with no
+dependency changes. Do not automatically rotate locks: establish that no
+environment writer is active first. The exact cause of the stale distributed
+lock was not determined. Evaluation/publication resumed in the same plan.
+
+During 3500K, a 30-second sample showed 0 queued requests on every server,
+0-4 running requests across sampled instants, and 0-0.2% KV use. Meanwhile
+105 `uv run` processes had no evaluator children; several had waited minutes.
+An isolated `uv -v run --project dfm-evals python -c ...` reported waiting
+for the exclusive `dfm-evals/.venv/.lock` and timed out after 10 seconds.
+The corresponding `uv run --no-sync` interpreter probe completed in 56ms.
+Thus this observed idle period is client environment synchronization starvation,
+not insufficient server memory or batch size. Prepare/synchronize the environment
+once before a campaign and bypass synchronization on per-task launches; increasing
+client concurrency alone adds lock waiters. No live clients were restarted for
+this diagnostic. The previous ETA was not a guarantee under this bottleneck.
+
+### 2026-10-11: Full-campaign elapsed-time comparison
+
+Measured from checkpoint export-ready timestamps to the final 50-language
+average log's last write (includes evaluation, merge, sync and averaging):
+
+| Checkpoint | Export ready to final average | Training end to next training launch |
+| --- | ---: | ---: |
+| 3300K | 3h51m02s | 3h53m56s |
+| 3350K | 2h53m21s | 2h54m57s |
+| 3400K | 1h43m10s | 1h43m50s |
+| 3450K | 1h34m49s | 1h43m14s |
+
+Sources: `logs/scheduler/dfm14_XL_noidentity/checkpoints/step_*/export_hf_step_*.log`,
+`logs/scheduler/dfm12_XL_epoch11_noidentity/dfm14-averages/step_*/multilingual_average.log`,
+and `logs/training/dfm14_XL/step_*/train_until_step_*.log`.
+Training-end and final-average boundaries use file modification times; next
+training launch uses its explicit log timestamp. The 3400K wall window includes
+the reboot/recovery and retry delays. The 3450K pause includes historical
+Andersen backfill activity before export readiness. These are observed campaign
+times, not isolated scheduler-speed benchmarks or GPU-active durations.
+
+### 2026-10-11: Maintenance recovery at 3438K
+
+Maintenance again removed the local `/tmp` SQLite authority. Restored from
+`state.backup.sqlite` using SQLite backup after `quick_check=ok`, with no live
+workers or GPU processes. Only `dfm14-xl-step_3450000-train` was interrupted;
+fenced its old claim and reset it to pending with
+`resume_from_tag=ephemeral_step_3438000`. Validated DCP metadata against all
+eight shard extents. Completed evaluations and all 56 Andersen backfill rows
+were retained. Recovery backup: `maintenance-recovery-3438000-before.sqlite`.
+
+The handoff receipt had retained the previous 3650K cosine-start script hash.
+Reconstructing that one old literal exactly matched its hash; refreshed only
+this pin to the approved 3500K start (3750K end, 1e-5 floor), preserving the
+old receipt. All other pins and the prepared-data hash matched unchanged.
+W&B authentication to the original XL run was verified before launch.
+Runner uses the hrm CUDA_HOME/PATH above, SQLite, persistent servers and 64
+clients. Log: `resume-maintenance-3438000.log`; monitor: `hrm-0:4`.
+
+### 2026-10-10: Broker code removed
+
+Supersedes all historical proxy/gateway launch instructions below. The HTTP
+broker, NativeGatewayHost, broker load simulations and broker-only tests were
+removed. SharedServerPool supports direct connections only; it rejects the old
+`gateway` constructor option. The multilingual benchmark accepts only `direct`
+and `legacy`. `validate_shared` is now a direct-endpoint repeatability canary,
+not evidence of transport equivalence with a separate broker.
+
+The native-template compatibility proxy is retained: it adapts model prompts
+and responses, not scheduler admission. CPU budgeting, replica ownership,
+judge pairing, failed-client fencing and exclusive training drains remain.
+Historical benchmark results below are retained as evidence, not runnable
+instructions for the removed implementation. No running process was restarted
+for this cleanup.
 
 ### 2026-10-10: Resume training despite exhausted evaluation failures
 

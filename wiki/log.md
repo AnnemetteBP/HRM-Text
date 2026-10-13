@@ -1,5 +1,7 @@
 # Knowledge Bundle Update Log
 
+- 2026-10-13: Merged upstream main through `137ce1f`, preserving local broker removal, environment sync-once and backfill changes. Resolved documentation conflicts by retaining both histories. Retained verified `/work/mimir` DFM14 evaluation paths because upstream `/work/dfm` paths do not exist on this node; data hashes and task definitions are unchanged. All seven submodules match their intended upstream tips (including `llama.cpp`'s `codex/mixedlm`). No live training or scheduler restart.
+
 - 2026-10-13: Verified 243 repaired EuroEval retries, all 1,047 1M inference jobs complete, and same-process CUDA restoration after a roughly 103-minute pause. Also verified the short 1,015,800 pause/resume. Split [local XXL handoff history](pages/model-architecture/xxl-wide-scheduler-handoffs.md) from the general scheduler runbook. Pre-commit validation: 332 CPU tests passed; no GPU training interrupted.
 
 - 2026-10-12: Harmonized local XXL-wide 1M-to-final evaluation inventory and all nine average jobs with remote XL on SSH port 2546. Added 403 inference jobs per checkpoint with pinned historical inputs; preserved active training and completed results. Missing 1M tasks run at the 1.05M suspension. See [deployment details](pages/dfm14-evaluation-baseline.md#2026-10-12-local-xxl-campaign-reconciliation-installed).
@@ -25,6 +27,9 @@
 - 2026-10-10: Completed the XXL-wide 950K SQLite handoff, then restored [all-50-language DaLA/GEC coverage](pages/model-architecture/request-shared-eval-scheduler.md) at the user's request. Reconstructed the earlier 34 languages' exact pinned heldouts from HF and verified 272 shards; added 68 tasks per remaining checkpoint without replaying completed work. Training barriers and multilingual averages include the additions.
 
 - 2026-10-10: Prepared the local XXL-wide 950K [SQLite scheduler migration](pages/model-architecture/request-shared-eval-scheduler.md): legacy runner drains without interrupting training, local-disk authority, 64 direct clients, explicit judge-first and failure-tolerant training gates. Added exact step/epoch finalization for the XXL-wide wrapper; 77 focused tests passed. Detached handoff awaits the 950K boundary; migration is not yet complete.
+- 2026-10-11: Recovered the original Andersen validation split and eight DFM10 XL EMA exports/results from the old machine. Added the checksum-tested evaluation asset and scheduled 20 missing historical plus eight future Andersen eval/merge pairs behind ongoing training; see [XL Andersen backfill](pages/andersen-xl-evaluation-backfill.md).
+
+- 2026-10-10: Removed the obsolete HTTP broker and dedicated simulations; direct server sharing and native-template adaptation remain. All286 remaining scheduler/proxy tests pass. Recorded the [XL Andersen backfill](pages/andersen-xl-evaluation-backfill.md), blocked on the original validation split and historical artifacts.
 
 - 2026-10-10: Split pending DFM/DFM IFEval export and EuroEval publication into bounded CPU jobs in the SQLite scheduler; parallelized owned-server shutdown. The [64-client follow-up](pages/model-architecture/request-shared-eval-scheduler.md) completed 50,000 examples in 147s versus direct-32's 166s; the sampled request-completion window fell from 44s to 38s. No W&B writes, failures, or preemptions. Resumed original XL training from preserved 3,387,500 with 64 eval clients; 288 tests passed.
 
