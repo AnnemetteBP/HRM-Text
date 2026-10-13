@@ -806,7 +806,7 @@ def run(
     ),
     backend: str = typer.Option("tsv", help="tsv (legacy) or sqlite (request-shared, opt-in)."),
     cpu_cores: int = typer.Option(256, min=1, help="Node CPU budget, capped by process affinity."),
-    reserve_cores: int = typer.Option(8, min=0, help="CPUs reserved for gateway/model servers."),
+    reserve_cores: int = typer.Option(8, min=0, help="CPUs reserved for model servers."),
     client_cpu_cores: int = typer.Option(2, min=1, help="Default CPU lease per client; metadata cpu_cores overrides."),
     max_clients: int = typer.Option(128, min=1, help="Concurrent clients, not inference requests."),
     server_concurrency: int = typer.Option(1024, min=1, help="Shared server max sequences unless explicitly configured."),

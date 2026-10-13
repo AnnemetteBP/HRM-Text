@@ -1,4 +1,4 @@
-"""Opt-in real-model direct/shared transport parity; never logs to W&B.
+"""Opt-in real-model direct-endpoint repeatability; never logs to W&B.
 
 This is not a benchmark-suite score comparison. The receipt records explicit
 memory/concurrency overrides used to coexist with other work on the node.
@@ -131,9 +131,9 @@ def main(plan: Path, job_id: str, output: Path, gpu: int = 7,
                'gpu': gpu, 'free_mib_before': free, 'requests': requests, 'passed': False,
                'comparison_concurrency': comparison_concurrency,
                'production_settings': production_settings,
-               'judge_archive': str(judge_archive) if judge_archive else None}
-    # Historical proxy transport comparison, not the default direct pool.
-    pool = SharedServerPool(output, [gpu], gateway='proxy', max_requests_per_gpu=concurrency)
+               'judge_archive': str(judge_archive) if judge_archive else None,
+               'transport': 'direct', 'scope': 'direct-endpoint repeatability, not broker parity'}
+    pool = SharedServerPool(output, [gpu], max_requests_per_gpu=concurrency)
     try:
         def compare(url, log, monitor, alias):
             asyncio.run(batch(url, alias, requests, comparison_concurrency))

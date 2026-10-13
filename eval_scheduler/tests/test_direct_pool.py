@@ -27,6 +27,11 @@ def pool(tmp_path, gpus):
     return SharedServerPool(tmp_path, gpus, backend=backend, snapshot=lambda g: (100, 0, 100)), backend
 
 
+def test_removed_broker_option_is_rejected(tmp_path):
+    with pytest.raises(TypeError, match='gateway'):
+        SharedServerPool(tmp_path, [0], gateway='proxy')
+
+
 def test_direct_endpoints_spread_then_share_all_eight(tmp_path):
     p, backend = pool(tmp_path, range(8))
     barrier = Barrier(17)
@@ -45,7 +50,7 @@ def test_direct_endpoints_spread_then_share_all_eight(tmp_path):
             try:
                 barrier.wait(5)
                 state = p.snapshot_state()
-                assert p.gateway is None
+                assert not hasattr(p, 'gateway')
                 assert backend.acquire.call_count == 8
                 assert len(set(seen)) == 8
                 assert sum(s['clients'] for s in state['slots'].values()) == 16

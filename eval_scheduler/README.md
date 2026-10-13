@@ -4,7 +4,7 @@
 
 `run --backend sqlite --persistent-vllm` uses authoritative local SQLite state
 and direct connections from compatible clients to shared servers. There is no
-HTTP broker on this path. The default backend remains the
+HTTP broker implementation remains in the package. The default backend remains the
 legacy TSV runner. Migrate only a stopped plan using `database import`; the
 `database` command group provides explicit import/export, edits, locks and resets.
 

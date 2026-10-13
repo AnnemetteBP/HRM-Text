@@ -1,7 +1,7 @@
 """Process-local CPU admission for preparation jobs on one node.
 
 Share one pool between scheduler threads. Reserved CPUs are excluded from all
-preparation leases; this does not change gateway affinity or constrain foreign
+preparation leases; this does not change server affinity or constrain foreign
 processes. Affinity is scheduling containment, not a security sandbox.
 
     lease = pool.acquire(cpu_cores=2)
@@ -119,7 +119,7 @@ class CpuBudget:
             if executable is None:
                 raise RuntimeError("taskset is required; refusing an unpinned subprocess")
             result = dict(os.environ if env is None else env)
-            # Do not carry a gateway's thread-binding policy into a worker lease.
+            # Do not carry the server thread-binding policy into a worker lease.
             for name in ("GOMP_CPU_AFFINITY", "KMP_AFFINITY", "KMP_HW_SUBSET", "OMP_PLACES"):
                 result.pop(name, None)
             count = str(lease.cpu_cores)

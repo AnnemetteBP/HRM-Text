@@ -91,12 +91,6 @@ class Measurements:
                         leases = list(self.pool._leases.items())
                     results = list(workers.map(scrape, [lease for _, lease in leases]))
                     record['servers'] = {str(gpu): result for (gpu, _), result in zip(leases, results)}
-                    snapshot = self.path.parent / 'runtime.json'
-                    if snapshot.exists():
-                        shared = json.loads(snapshot.read_text()).get('shared', {})
-                        record['broker'] = {key: {field: state.get(field) for field in
-                            ('active', 'queued', 'failures', 'last_error', 'completed')}
-                            for key, state in shared.get('gateway_metrics', {}).get('backends', {}).items()}
                 except Exception as exc:
                     record['error'] = repr(exc)
                 handle.write(json.dumps(record) + '\n')
@@ -158,8 +152,8 @@ def summarize(path, wall_seconds):
 def main(plan: Path, output: Path, max_clients: int = 32, modes: str = 'direct,legacy'):
     selected_modes = modes.split(',')
     if not selected_modes or len(set(selected_modes)) != len(selected_modes) or any(
-            mode not in ('direct', 'shared', 'legacy') for mode in selected_modes):
-        raise ValueError('Choose direct, shared (historical proxy), and/or legacy')
+            mode not in ('direct', 'legacy') for mode in selected_modes):
+        raise ValueError('Choose direct and/or legacy')
     if output.exists():
         raise ValueError('Use a new output directory')
     sources = select_jobs(read_plan(plan))
@@ -190,8 +184,7 @@ def main(plan: Path, output: Path, max_clients: int = 32, modes: str = 'direct,l
             store = SQLiteJobStore(local / 'jobs.sqlite')
             store.import_jobs(jobs)
             publish_database_marker(directory, store.path)
-            pool = SharedServerPool(directory, list(range(8)), event=event,
-                                    gateway='proxy' if mode == 'shared' else None)
+            pool = SharedServerPool(directory, list(range(8)), event=event)
             runner = DatabaseRunner(directory, store, list(range(8)), pool, event=event, max_clients=max_clients)
             target = pool.backend.target
         else:
