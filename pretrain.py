@@ -154,6 +154,10 @@ class PretrainConfig(pydantic.BaseModel):
     max_steps: Optional[int] = None  # Optional early stop after this many optimizer steps (benchmarking/debugging).
     benchmark_state_fingerprint: bool = False
     stop_after_step: Optional[int] = None  # Gracefully stop after checkpointing this global optimizer step.
+    suspend_after_steps: list[int] = pydantic.Field(default_factory=list)
+    suspend_control_dir: Optional[str] = None
+    suspend_poll_interval_steps: int = pydantic.Field(default=10, ge=1)
+    suspend_wait_poll_seconds: float = pydantic.Field(default=2, gt=0)
     dataloader_prefetch_factor: int = pydantic.Field(default=8, ge=1)  # Batches prefetched by the (single) dataloader worker.
     log_interval: int = 5
     validation_interval: int = 0
@@ -161,6 +165,12 @@ class PretrainConfig(pydantic.BaseModel):
 
     @pydantic.model_validator(mode='after')
     def check_intervals(self):
+        from training_suspend.protocol import steps
+        self.suspend_after_steps = steps(self.suspend_after_steps)
+        if self.suspend_after_steps and not self.suspend_control_dir:
+            raise ValueError('suspend_after_steps requires suspend_control_dir')
+        if self.suspend_control_dir and not self.checkpoint_path:
+            raise ValueError('Suspension requires a recovery checkpoint_path')
         if self.lr_piecewise_points is not None:
             validate_lr_points(self.lr_piecewise_points)
             if (self.lr_rewarm_steps or self.lr_rewarm_start_step is not None
@@ -1409,6 +1419,13 @@ def launch(hydra_config: DictConfig):
     config = load_synced_config(hydra_config, rank=RANK)
     set_accelerator_type(config.accelerator_type)
     device = torch_device_for_accelerator(config.accelerator_type, local_rank=DEVICE_ID)
+    suspend_hook = None
+    if config.suspend_control_dir:
+        from training_suspend.runtime import SuspendHook
+        suspend_hook = SuspendHook(
+            config.suspend_control_dir, config.suspend_after_steps, device,
+            config.suspend_poll_interval_steps, config.suspend_wait_poll_seconds,
+        )
 
     # Seed RNGs to ensure consistency
     torch.random.manual_seed(config.seed + RANK)
@@ -1751,6 +1768,19 @@ def launch(hydra_config: DictConfig):
                     ephemeral_tag = f"ephemeral_step_{train_state.step}"
                     save_train_checkpoint(config, train_state, ephemeral_tag, epoch, batch_in_epoch, RANK, checkpoint_kind="ephemeral", local_batch_size=local_batch_size, resume_info=accumulation_resume_info, batch_in_epoch_exact=batch_in_epoch_exact)
                     remove_stale_ephemeral_checkpoints(config, ephemeral_tag, RANK)
+
+            if suspend_hook is not None:
+                def save_suspend_checkpoint():
+                    if not saved_regular_step_checkpoint:
+                        save_train_checkpoint(config, train_state, f"step_{train_state.step}", epoch, batch_in_epoch, RANK, local_batch_size=local_batch_size, resume_info=accumulation_resume_info, batch_in_epoch_exact=batch_in_epoch_exact)
+                    return str(Path(config.checkpoint_path) / f"checkpoint_state_step_{train_state.step}.json")
+
+                suspend_hook.after_step(
+                    train_state.step, save_suspend_checkpoint,
+                    stopping=stop_after_step_reached or gradient_skip_stop_reached or (
+                        config.max_steps is not None and train_state.step >= config.max_steps
+                    ),
+                )
 
             if stop_after_step_reached or gradient_skip_stop_reached or (
                 config.max_steps is not None and train_state.step >= config.max_steps

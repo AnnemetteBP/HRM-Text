@@ -565,6 +565,9 @@ def split_command_environment(argv: list[str]) -> tuple[dict[str, str], list[str
 
 
 def run_training_until_step(job: Job, gpus: tuple[int, ...]) -> int:
+    if job.metadata.get('cooperative_training'):
+        from .cooperative_training import run_boundary
+        return run_boundary(job, gpus)
     target_step = int(job.metadata["stop_after_step"])
     ckpt_tag = str(job.metadata.get("ckpt_tag") or f"step_{target_step}")
     completion_checkpoint_tag = str(

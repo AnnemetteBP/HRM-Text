@@ -1,0 +1,9 @@
+{
+  "shim_library": "/work/dfm/tmp/nccl-checkpoint-2.32.3/contrib/nccl_checkpoint/build/lib/libnccl-checkpoint-shim.so",
+  "nccl_library": "/work/dfm/tmp/nccl-shim-env/lib/python3.13/site-packages/nvidia/nccl/lib/libnccl.so.2",
+  "library_dirs": ["/home/ucloud/miniforge3/envs/audit/targets/x86_64-linux/lib"],
+  "redis_server": "/work/dfm/tmp/nccl-shim-tools/bin/redis-server",
+  "cuda_checkpoint": "/home/ucloud/miniforge3/envs/cuda-checkpoint-test/bin/cuda-checkpoint",
+  "max_restarts": 3,
+  "min_free_mib": 178000
+}
