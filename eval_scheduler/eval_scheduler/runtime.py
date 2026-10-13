@@ -52,6 +52,8 @@ def client_cpu_lease(budget, lease):
 
 
 def prepare_client_command(argv, env):
+    from .environments import without_project_sync
+    argv = without_project_sync(argv)
     allocation = getattr(_client_cpu, "allocation", None)
     if allocation is None:
         return argv, env
@@ -2811,6 +2813,8 @@ class Runner:
         return tuple(sorted(selected))
 
     def run(self) -> None:
+        from .environments import sync_project_environments
+        sync_project_environments(read_plan(self.plan_file), self.plan_dir)
         if self.server_pool is not None:
             with PlanLock(self.plan_dir):
                 jobs = read_plan(self.plan_file)

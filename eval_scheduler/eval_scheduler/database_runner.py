@@ -57,6 +57,7 @@ class DatabaseRunner:
         self.max_clients, self.client_cpu_cores = max_clients, client_cpu_cores
         self.checkpoint_wait_slots, self.poll_interval = checkpoint_wait_slots, poll_interval
         self.execute = execute or runtime.run_job
+        self._prepare_environments = execute is None
         self.event = event or (lambda message: None)
         self.headroom = headroom or self._headroom
         self._stop = threading.Event()
@@ -253,6 +254,9 @@ class DatabaseRunner:
             for job in jobs:
                 if job.status == JobStatus.PENDING:
                     self._validate(job)
+            if self._prepare_environments and not self.stopping():
+                from .environments import sync_project_environments
+                sync_project_environments(jobs, self.plan_dir)
             return self._run_locked()
 
     def _run_locked(self):
