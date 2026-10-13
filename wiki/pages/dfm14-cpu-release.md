@@ -4,10 +4,229 @@ title: DFM14 accepted CPU release and 900K handoff
 description: Resumable CPU release, verified publication and sampling while XXL-wide continues DFM13.
 status: draft
 confidence: high
-last_updated: 2026-10-07
+last_updated: 2026-10-09
 tags: [dfm14, release, sampling, training]
 ---
 # DFM14 CPU Release
+
+**2026-10-09 version decision:** the native-reasoning repair described below
+is now a [DFM15 addition](dfm15-plan.md), not a DFM14 update. DFM14's data,
+training config and scheduler remain unchanged. Historical DFM14 staging paths
+below describe the original build; the completed native stage is relocated to
+`data/dfm15/native-reasoning-v2/sampled_dfm15`. Neither repair may be promoted
+into live DFM14.
+
+## Eval path recovery (2026-10-09)
+
+The recent cross-machine pull imported `/work/mimir/HRM-Text` absolute paths
+into the DFM14 task suite, task registry, and heldout manifest. At 900K,
+Inspect failed before generation; retries repeatedly restarted vLLM and
+reduced batch size despite `oom_0`. This was not a model or CUDA failure.
+Localized these three configs to the existing `/work/dfm` files, verified
+every selected/evidence file against its pinned SHA256, and constructed all
+128 shards (32 tasks, 64,000 samples) on CPU. The preflight script now also
+checks task-module and manifest paths from the actual launcher YAML.
+Reset 82 affected failed/retrying rows under the existing plan lock with
+attempt zero (original batch 64), preserving completed jobs and four unrelated
+historical `valeu-da` failures. Resumed the existing persistent scheduler.
+After cross-machine pulls, run `scripts.check_dfm14_eval_extension` using the
+Inspect environment before launching these evaluations; config paths are
+machine-local and must not be assumed portable.
+
+## Native reasoning and direct-answer policy (2026-10-09)
+
+User decision: the model must support both thinking and non-thinking modes.
+Well-formed legacy reasoning examples must become Gemma-native reasoning,
+not ordinary answer text with their delimiters removed. This supersedes the
+plaintext-only repair policy below. Its staged v1 output must not be promoted.
+
+- Preserve a well-formed trace in a structured reasoning field and its final
+  answer separately; render the native thought channel with thinking enabled.
+- Repair malformed boundaries on CPU only when the reasoning/final separation
+  is unambiguous. Preserve content; do not invent missing answers or silently
+  reinterpret quoted markup, code examples, or user text.
+- If the reasoning cannot be recovered but an intact final answer can be
+  identified, strip the reasoning and retain a non-thinking example.
+- Otherwise quarantine the row with a reason for later repair, rather than
+  inserting malformed thoughts or speculative answer boundaries into training.
+- Keep ordinary instruction/chat and direct-answer supervision non-thinking.
+  Do not equate all visible explanations with hidden reasoning or automatically
+  duplicate every reasoning example into a direct-answer example.
+
+Implementation requirements: per-example mode selection, structured conversion,
+and opt-in native rendering for non-tool assistant reasoning (the shared live
+template only renders structured reasoning for tool-call messages). Verify both
+modes, multi-turn history, tools, target masking, truncation, and HF/inference
+template parity before rebuilding and switching the live dataset. Reasoning
+targets must have balanced channels and a retained final response after length
+filtering. Record per-source converted/repaired/stripped/quarantined counts and
+before/after evidence. Do not reuse flattened v1 text as conversion input: use
+the immutable original examples, which retain the reasoning boundaries.
+
+### Native CPU build launched (2026-10-09)
+
+`python -u -m dfm14.build_native_reasoning --workers 16 --sample` stages the
+replacement under `data/dfm14/native-reasoning-v2`, using immutable original
+source arrays, not v1 outputs. Log: `logs/dfm14/native-reasoning-v2/build.log`.
+It runs detached with nice 10, ionice best-effort priority 7, and OMP/MKL threads
+1. No GPU generation/auditing or live training changes are involved.
+
+The parser lives in `dfm14/native_reasoning.py`. A separate pinned template is
+generated in the staging root: ordinary assistant reasoning is rendered only
+with thinking enabled, while the shared template and existing exports remain
+unchanged. Current-target reasoning is supervised after the model-turn prefix;
+previous assistant thoughts are removed from history while their answers remain.
+Modes are selected per example, not by blindly enabling thinking globally.
+
+Explicit answer blocks and missing/duplicate thought openers have conservative
+repairs. Nemotron-only handling recovers terminal action JSON incorrectly inside
+thoughts, including a lost analysis-key prefix, only when the complete expected
+JSON schema parses. Requested visible JSON analysis stays visible. No speculative
+semantic repair or new GPU judgment is performed.
+
+If reasoning plus final answer cannot fit 4097 tokens, drop the reasoning and
+disable thinking for that example. If the complete answer still cannot fit,
+quarantine the row; do not truncate a thought channel or its final answer.
+Quarantined rows are removed from sampled selections, preserving the order and
+repetitions of retained rows. Every source writes before/after evidence and
+quarantine reasons; `repairs.json` summarizes source counts and epoch `repair.json`
+reports sampled native-thinking occurrences and removed occurrences. Other
+inherited sources are unchanged; no exhaustive absence-of-markup claim is made.
+
+39 CPU tests passed, covering mode/template parity, prompt/target boundaries,
+history, tool syntax, malformed cases, length limits, quarantine and sampled-row
+redirection. This is not an end-to-end GPU inference validation. The build will
+produce `sampled_dfm14/ready.json` only after full index validation. Promotion,
+packed-step-budget adjustment, and a checkpoint-safe handoff remain separate.
+Measure retained sampled exposure before claiming that mode balance is sufficient;
+the intended learned behavior is explicit thinking-mode control, not autonomous
+selection of when to reason.
+
+### Native reasoning existed before this conversion
+
+Read-only sample on 2026-10-09 of 10,000 randomly selected live DFM14 epoch_0
+rows (NumPy seed 142026, without replacement) found 15 response targets with
+`<|channel>thought` (0.15%) and zero prompts containing `<|think|>`.
+Three inspected hits mapped through original DFM11 backing offsets to
+`nemotron_agentic__data__interactive_agent.jsonl`, inherited from NVIDIA's
+Nemotron Agentic corpus. One explicitly had a thought channel followed by a
+native `get_product_details` tool call. This is evidence of prior native
+reasoning exposure, not a full census or proof that all hits have that source.
+The historical template renders tool-call reasoning regardless of the
+`enable_thinking` switch, explaining the observed thought targets without
+thinking-enabled prompts. Thus the new conversion expands and regularizes
+mode-controlled reasoning; it does not introduce thought tokens for the first
+time. Existing inherited tool-call examples are not changed by this scoped repair.
+
+## CPU reasoning-wrapper repair (2026-10-08, superseded policy)
+
+**Superseded 2026-10-09:** historical implementation below is not the approved
+native-reasoning policy and its staged output is not approved for training.
+
+At the user's request, `python -m dfm14.repair_reasoning --workers 16 --sample`
+repairs the five inherited affected source families and the Norwegian stray
+prompt delimiter identified below. The current staged policy keeps reasoning
+as visible step-by-step text under DFM14's existing non-thinking contract;
+it does not enable hidden thinking or insert `<|think|>` into assistant text.
+Legacy think/answer serialization wrappers are removed deterministically.
+Nested and orphan delimiters have explicit tests; ambiguous remaining markup
+blocks publication. This is format repair, not a new semantic quality audit.
+
+The job verifies affected token ranges against the frozen sampled corpus,
+keeps originals immutable, writes replacement arrays and changed rendered-row
+evidence, then builds a separate sample preserving row order, repetition and
+unaffected examples. Changed rows are redirected to repaired token storage;
+the old backing remains present but is no longer selected for those rows.
+Lengths and per-epoch token totals are recalculated and fully bounds-checked.
+No live path is replaced automatically: a checkpoint-safe switch and updated
+packed-step budget are required before training uses the staged output.
+
+- Work directory: `data/dfm14/reasoning-repair-v1`.
+- Staged result: `data/dfm14/reasoning-repair-v1/sampled_dfm14`.
+- Completion gate: `sampled_dfm14/ready.json`, status `validated_staged_not_promoted`.
+- Log: `logs/dfm14/reasoning-marker-repair/build.log`.
+- Tests: `tests/test_dfm14_reasoning_repair.py` (16 passing after malformed-tag cases).
+
+The full pass also found meta-commentary referring to quoted think tags.
+The repair modernizes recognized prose references to the word "reasoning",
+preserving the actual solution; it does not erase arbitrary code examples.
+An ordered one-shot continuation waits for the initial CPU pool to finish,
+reuses completed parts, and retries failed/unfinished parts with these rules
+before sampling. Its log is `logs/dfm14/reasoning-marker-repair/resume.log`.
+
+The initial failed frozen-range comparison was a diagnostic's final-chunk
+slice-length bug, not a corpus mismatch; it was fixed before rewriting data.
+
+## Literal reasoning-marker audit (2026-10-08)
+
+Read-only diagnostic `scripts/audit_dfm14_reasoning_markers.py` decoded 78,441
+rows across 1,393 active source groups: DFM11 base (153 groups), corrected DFM12
+(360), DFM13 (603), and DFM14 (277). Each group samples up to five parts and
+20 random rows per part with a deterministic seed. DFM11 repeat-zero and
+cap-zero routes are excluded. These are tokenized source-reservoir samples,
+not a census or epoch-weighted prevalence estimate; rare leaks can be missed.
+
+Confirmed assistant-target literal `<think>`/`</think>` occurrences:
+
+| Source | Sample rows with target markers |
+| --- | ---: |
+| `allenai/big-reasoning-traces` | 100/100 |
+| `allenai/open_math_2_50k_r1-original` | 20/20 |
+| `allenai/verifiable-reasoning-filtered-gpt-41` | 99/100 |
+| `allenai/verifiable-reasoning-filtered-o4-mini` | 22/40 |
+| `nvidia/Nemotron-Terminal-Corpus`, local `nemotron_terminal_corpus_native__` / materialized `schneiderkamplab/dfm10-nemotron-terminal-sft` | 100/100 |
+
+All five enter through the inherited DFM11 base. The Norwegian addition
+`schneiderkamplab/dfm12-norwegian-magpie-qwen3-bokmaal` had a stray `</think>` in
+one sampled prompt (1/20), not its supervised response. No matching markers
+were found in the 23,940 sampled rows of the 277 DFM14 additions, or the
+31,036 sampled DFM13 rows. This is not proof that those populations are clean.
+The disabled composite `dfm_dyna_instruct/.../danish-verifiable-reasoning`
+also contains tags, but is not an active exposure; the direct Synquid route
+had zero hits in 20 samples. Repaired OpenMathInstruct2 and both modernized
+OpenHermes routes had zero hits in 100 samples each.
+
+Root cause: the Nemotron terminal converter preserves content verbatim; the
+generic tokenizer also preserves message content. The shared Gemma template's
+`strip_thinking` macro strips native channel spans, not plain `<think>` XML.
+`enable_thinking=False` therefore does not sanitize these inherited targets.
+DFM14's specific native-instruction adapter extracts leading think blocks and
+rejects unconverted control markup, but it is not applied retroactively to
+inherited arrays. Native `<|think|>` enables thinking in the system turn;
+actual thought text uses channel delimiters, so replacing the literal XML tag
+with `<|think|>` directly would not be a correct repair.
+
+Evidence with source-part paths, row indices, decoded prefixes and excerpts:
+`logs/dfm14/reasoning-marker-audit/source-sample.jsonl`.
+No training datasets, conversions, or runtime settings were changed by this audit.
+
+## 874K pause correction (2026-10-08)
+
+The completed `ephemeral_step_874000` was preserved under
+`checkpoints/dfm14/XXL-wide-paused-874000`. Launcher SIGINT left seven orphaned
+NCCL workers spinning after the launcher exited. These exact training workers
+were terminated; all eight GPUs then reported zero utilization and memory.
+The scheduler remains stopped. The checkpoint-stop helper now snapshots child
+process identities before interruption and waits for/terminates surviving
+workers rather than treating launcher exit as sufficient proof of shutdown.
+
+Later on 2026-10-08, resume was requested: the existing 900K training row was
+reset to resume from the preserved 874K checkpoint, and the scheduler restarted.
+At launch all eight GPUs had only about 8.5 GiB free; admission remains gated
+on GPU availability, without terminating unrelated processes.
+
+## Idle-gated resume (2026-10-07)
+
+XXL-wide was stopped after preserving complete `ephemeral_step_873000` in
+`checkpoints/dfm14/XXL-wide-paused-873000`. The existing scheduler is paused.
+`scripts/resume_dfm14_after_idle.py` samples all eight GPU utilization values
+every 10 seconds and requires 300 consecutive seconds of zero readings.
+It then terminates only the snapshotted Mimir vLLM servers on ports 8200-8207
+and their children, waits for GPUs to be empty, and updates the existing
+900K training row to resume from the preserved 873K checkpoint.
+Log: `logs/training/dfm14_XXL_wide/resume_after_idle.log`.
+This is a one-shot operational watcher, not a general inactivity guarantee
+between utilization samples. Replacement server processes are not targeted.
 
 ## Cross-machine inheritance mismatch (2026-10-07)
 
