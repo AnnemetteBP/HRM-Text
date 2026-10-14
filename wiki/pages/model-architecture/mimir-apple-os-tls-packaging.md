@@ -173,3 +173,13 @@ at 16:40 CEST under the same submission ID. This supersedes the rejected status
 above. Availability was not changed; manual release remains selected. Despite
 the earlier agreement banner, the resubmission succeeded. Evidence:
 `logs/sdu-store/submission-13/macos-resubmission-2026-10-14.png`.
+
+## iOS public release — 14 October 2026
+
+At the user's explicit request, released iOS 0.1.5 build 13 using Release This
+Version and confirmed the 175-country/region distribution list, including China
+mainland and France. Apple changed the version to **Ready for Distribution**,
+superseding Pending Developer Release. Public storefront propagation was not
+independently checked. Evidence:
+`logs/sdu-store/submission-13/ios-release-2026-10-14.png`.
+macOS was last observed **In Review** and was not released.
