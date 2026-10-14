@@ -164,3 +164,12 @@ technical clarification or confirm a successful appeal. No availability changes
 or resubmission were made pending the user's decision about China mainland.
 The account also displays a new Developer Program License Agreement acceptance
 requirement for the SDU Account Holder before app updates/submissions.
+
+Later on 14 October, the user explicitly requested resubmission retaining China.
+Saved an additional review-note clarification distinguishing local API-format
+compatibility from OpenAI services, then used Update Review and Resubmit to App
+Review with unchanged macOS 0.1.5 build 13. Apple confirmed **Waiting for Review**
+at 16:40 CEST under the same submission ID. This supersedes the rejected status
+above. Availability was not changed; manual release remains selected. Despite
+the earlier agreement banner, the resubmission succeeded. Evidence:
+`logs/sdu-store/submission-13/macos-resubmission-2026-10-14.png`.
